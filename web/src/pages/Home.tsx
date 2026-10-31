@@ -5,7 +5,8 @@ type View = 'mine' | 'open' | 'overdue' | 'all';
 const VIEWS: [View, string][] = [['mine', 'Waiting for me'], ['open', 'Open'], ['overdue', 'Overdue'], ['all', 'All']];
 
 // Home: the next action is obvious (report button, "waiting for me"), with status and due dates at a glance.
-export function Home({ me, onReport, onOpen }: { me: Me; onReport: () => void; onOpen: (id: number) => void }) {
+export function Home({ me, onReport, onOpen, onCapas }: { me: Me; onReport: () => void; onOpen: (id: number) => void; onCapas: () => void }) {
+  const [myCapas, setMyCapas] = useState(0);
   const [view, setView] = useState<View>('mine');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<DeviationItem[]>([]);
@@ -17,6 +18,7 @@ export function Home({ me, onReport, onOpen }: { me: Me; onReport: () => void; o
     setRows(await api<DeviationItem[]>('GET', `/api/deviations?${params}`));
   };
   useEffect(() => {
+    void api<unknown[]>('GET', '/api/capas?mine=1').then((r) => setMyCapas(r.length));
     void load();
     void Promise.all((['mine', 'open', 'overdue'] as View[]).map(async (v) => [v, (await api<DeviationItem[]>('GET', `/api/deviations?view=${v}`)).length] as const))
       .then((c) => setCounts((old) => ({ ...old, ...Object.fromEntries(c) })));
@@ -42,6 +44,7 @@ export function Home({ me, onReport, onOpen }: { me: Me; onReport: () => void; o
         <div className="stat info"><b>{counts.mine}</b><span>Waiting for me</span></div>
         <div className="stat bad"><b>{counts.overdue}</b><span>Overdue</span></div>
         <div className="stat"><b>{counts.open}</b><span>Open</span></div>
+        <button className="stat info stat-link" onClick={onCapas}><b>{myCapas}</b><span>CAPAs waiting for me</span></button>
       </div>
       <div className="row">
         {VIEWS.map(([v, label]) => (
@@ -67,7 +70,7 @@ export function Home({ me, onReport, onOpen }: { me: Me; onReport: () => void; o
                 <td>{d.batches || <span className="muted">none</span>}</td>
                 <td>{d.area}</td>
                 <td>{d.classification ? CLASS_LABEL[d.classification] : '—'}</td>
-                <td><span className={`chip ${STEP_CHIP[d.step]}`}>{STEP_LABEL[d.step]}</span>{d.waitingForMe && <span className="chip chip-info">you</span>}</td>
+                <td><span className={`chip ${STEP_CHIP[d.step]}`}>{STEP_LABEL[d.step]}</span>{d.openCapas > 0 && <span className="chip">{d.openCapas} CAPA{d.openCapas > 1 ? 's' : ''} open</span>}{d.waitingForMe && <span className="chip chip-info">you</span>}</td>
                 <td>{d.overdue ? <span className="chip chip-bad">Overdue · {plantDate(d.targetDate)}</span> : plantDate(d.targetDate)}</td>
               </tr>
             ))}

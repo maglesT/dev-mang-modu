@@ -7,9 +7,10 @@ import { Home } from './pages/Home.js';
 import { ReportForm } from './pages/ReportForm.js';
 import { DeviationPage } from './pages/DeviationPage.js';
 import { Admin } from './pages/Admin.js';
+import { CapaList, CapaPage } from './pages/Capas.js';
 import { Alerts } from './components/Alerts.js';
 
-type Page = 'home' | 'report' | 'deviation' | 'admin' | 'users' | 'audit' | 'password';
+type Page = 'home' | 'report' | 'deviation' | 'capas' | 'capa' | 'admin' | 'users' | 'audit' | 'password';
 
 export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
@@ -43,6 +44,10 @@ export function App() {
     setOpenId(id);
     setPage('deviation');
   };
+  const openCapa = (id: number) => {
+    setOpenId(id);
+    setPage('capa');
+  };
   const tab = (p: Page, label: string) => (
     <button className={page === p ? 'tab on' : 'tab'} onClick={() => setPage(p)}>{label}</button>
   );
@@ -54,6 +59,7 @@ export function App() {
         <span className="brand"><img src="/medhanta-mark.png" alt="Medhanta" /><span><b>Deviations &amp; CAPA</b><small>by Medhanta</small></span></span>
         <nav>
           {!isAdmin && tab('home', 'Deviations')}
+          {!isAdmin && tab('capas', 'CAPAs')}
           {me.roles.some((r) => r === 'qa' || r === 'admin') && tab('audit', 'Audit trail')}
           {isAdmin && tab('admin', 'Admin')}
           {isAdmin && tab('users', 'Users')}
@@ -66,9 +72,11 @@ export function App() {
       </header>
       <main className="page">
         <Alerts me={me} />
-        {page === 'home' && (isAdmin ? <Admin /> : <Home me={me} onReport={() => setPage('report')} onOpen={open} />)}
+        {page === 'home' && (isAdmin ? <Admin /> : <Home me={me} onReport={() => setPage('report')} onOpen={open} onCapas={() => setPage('capas')} />)}
         {page === 'report' && <ReportForm onDone={open} onCancel={() => setPage('home')} />}
-        {page === 'deviation' && <DeviationPage me={me} id={openId} onBack={() => setPage('home')} />}
+        {page === 'deviation' && <DeviationPage key={openId} me={me} id={openId} onBack={() => setPage('home')} onOpenCapa={openCapa} />}
+        {page === 'capas' && <CapaList me={me} onOpen={openCapa} />}
+        {page === 'capa' && <CapaPage key={openId} me={me} id={openId} onBack={() => setPage('capas')} onOpenDeviation={open} onOpenCapa={openCapa} />}
         {page === 'admin' && <Admin />}
         {page === 'audit' && <AuditTrail />}
         {page === 'users' && <Users me={me} />}
