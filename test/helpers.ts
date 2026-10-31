@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { connect, type Sql } from '../server/db.js';
 import { migrate } from '../db/migrate.js';
-import { buildApp } from '../server/app.js';
+import { buildApp, type AppOptions } from '../server/app.js';
 import { hashPassword } from '../server/passwords.js';
 import type { Role } from '../server/auth.js';
 
@@ -40,9 +40,9 @@ export interface TestApp extends TestDb {
   app: FastifyInstance;
 }
 
-export async function freshApp(): Promise<TestApp> {
+export async function freshApp(opts: Partial<AppOptions> = {}): Promise<TestApp> {
   const db = await freshDb();
-  const app = await buildApp({ sql: db.sql, webRoot: '/nonexistent' });
+  const app = await buildApp({ sql: db.sql, webRoot: '/nonexistent', ...opts });
   return {
     ...db,
     app,

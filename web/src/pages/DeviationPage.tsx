@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { FISHBONE, Fishbone, emptyFishbone, hasFishbone } from '../components/Fishbone.js';
 import { Signals } from '../components/Signals.js';
+import { AiSuggest } from '../components/AiSuggest.js';
 import {
   api, ApiError, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
   type Deviation, type Me, type NamedItem, type SectionVersion,
@@ -406,6 +407,8 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
         <b>Fishbone: possible causes considered</b>
         <p className="muted small">Optional. Note what was considered in each category, then state the root cause below.</p>
         <Fishbone value={fishbone} effect={str((latestOf(d, 'report')?.data as Record<string, unknown> | undefined)?.title)} onChange={setFishbone} />
+        {!correct && <AiSuggest deviationId={d.id}
+          onAdd={(k, text) => setFishbone((fb) => ({ ...fb, [k]: (fb[k].trim() ? `${fb[k].trim()}\n${text}` : text).slice(0, 2000) }))} />}
       </div>
       <label>Root cause *<textarea rows={4} value={f.rootCause} onChange={(e) => setF({ ...f, rootCause: e.target.value })} /></label>
       <label className="check"><input type="checkbox" checked={f.mostLikely} onChange={(e) => setF({ ...f, mostLikely: e.target.checked })} /> The true root cause could not be confirmed; the most likely cause is stated</label>

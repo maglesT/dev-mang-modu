@@ -18,9 +18,10 @@ State on 2026-10-31, for the next working session.
 | Compose defaults: localhost port, project name (D-25) | #10 | merged |
 | S7 fishbone in the investigation (D-26) | #11 | merged |
 | S8 "Things to look at": rule-based flags, similar earlier cases (D-28) | #12 | merged |
+| S9 AI-suggested causes with Gemini (D-29) | #13 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-28: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-29: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -64,7 +65,8 @@ Decisions D-01 to D-28: `docs/decisions.md`. Rule → test list: `docs/traceabil
 
 ## Next steps
 
-Owner asked (D-27): S9 AI-suggested causes with Gemini (default model `gemini-4-argon`, Google's stable flagship on 31 Oct 2026; model name as a setting), in very simple language.
+S7 to S9 (owner requests) are built. To switch the AI on, the owner's server needs `GEMINI_API_KEY` in `ops/.env`
+(default model `gemini-4-argon`, Google's stable flagship on 31 Oct 2026). Tests never call Google (fake fetch, browser route).
 
 ## Earlier possible follow-ups
 

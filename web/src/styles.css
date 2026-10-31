@@ -280,3 +280,9 @@ table.list td:first-child { white-space: nowrap; }
 .signals .flags { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
 .signals .similar { border-left: 3px solid var(--line); padding: 2px 10px; margin: 8px 0; }
 .signals .similar p { margin: 2px 0; }
+
+/* S9 AI help (D-29). */
+.ai-help { border: 1px dashed var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.ai-help .row { margin: 4px 0; align-items: center; }
+.ai-result ol { padding-left: 1.2em; display: grid; gap: 8px; }
+.ai-result li p { margin: 2px 0; }
