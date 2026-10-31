@@ -59,8 +59,13 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
       where exists (select 1 from unnest(a.batch_numbers) n where ${tx.unsafe(norm('n'))} = any(${q.batchesNorm}))
       order by raised_at limit 200`;
     // Which of the newer views this Batchwright has (to_regclass needs no rights on the view itself).
+    // A view counts only if this login may read it (a view created before its grant is skipped, not a failure).
+    // CASE fixes the order: no schema rights means no lookups at all.
     const present = new Set((await tx<{ name: string }[]>`
-      select n as name from unnest(${OPTIONAL}::text[]) n where to_regclass(${src.schema} || '.' || n) is not null`).map((r) => r.name));
+      select n as name from unnest(${OPTIONAL}::text[]) n
+      where case when not has_schema_privilege(${src.schema}, 'USAGE') then false
+                 when to_regclass(format('%I.%I', ${src.schema}::text, n)) is null then false
+                 else has_table_privilege(format('%I.%I', ${src.schema}::text, n), 'SELECT') end`).map((r) => r.name));
     const has = (name: string) => present.has(name);
     const references = has('batch_reference_v1') ? await tx<BatchwrightData['references']>`
       select batch_number, kind, code, version, title from ${v('batch_reference_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, kind, code limit 200` : [];
@@ -99,7 +104,10 @@ export function batchwrightFindings(d: BatchwrightData): string[] {
   for (const b of d.batches) out.push(`${b.batch_number} (${b.product_code ?? 'product ?'}): status ${b.status.toLowerCase().replace(/_/g, ' ')}${b.released ? ', released' : ', not released'}.`);
   // Values outside their limits, grouped per batch, item and step.
   const groups = new Map<string, BatchwrightData['values']>();
-  for (const x of d.values.filter((x) => x.kind === 'PARAMETER')) {
+  // The newer views describe in-process checks and actuals in full; the same values are not reported twice.
+  const ipcBatches = new Set(d.ipc.map((x) => x.batch_number));
+  const actualTags = new Set(d.actuals.map((x) => `${x.batch_number}|${x.tag}`));
+  for (const x of d.values.filter((x) => x.kind === 'PARAMETER' && !(x.role === 'IPC' && ipcBatches.has(x.batch_number)) && !actualTags.has(`${x.batch_number}|${x.item}`))) {
     const k = `${x.batch_number}|${x.item}|${x.step}`;
     groups.set(k, [...(groups.get(k) ?? []), x]);
   }
@@ -130,24 +138,30 @@ export function batchwrightFindings(d: BatchwrightData): string[] {
   // its action and alert limits, and Batchwright's own result.
   const checks = new Map<string, BatchwrightData['ipc']>();
   for (const x of d.ipc) checks.set(`${x.batch_number}|${x.step}|${x.item}`, [...(checks.get(`${x.batch_number}|${x.step}|${x.item}`) ?? []), x]);
+  const side = (n: number, lo: number | null, hi: number | null, what: string) =>
+    lo !== null && n < lo ? `below the ${what} limit ${lo}` : hi !== null && n > hi ? `above the ${what} limit ${hi}` : null;
   for (const [k, xs] of checks) {
     const [batch, step, item] = k.split('|');
-    const first = xs[0]!;
-    const unit = first.unit ?? '';
-    const where = `${first.step_title ?? step}${first.instrument_code ? ` on ${first.instrument_code}` : ''}`;
     const singles = xs.filter((x) => x.aggregate === null);
-    const outside = singles.filter((x) => { const n = num(x.value_text); const l = num(x.lower_text); const h = num(x.upper_text); return n !== null && ((l !== null && n < l) || (h !== null && n > h)); });
-    const agg = xs.filter((x) => x.aggregate !== null);
+    const ref = singles[0] ?? xs[0]!;
+    const unit = ref.unit ?? '';
+    const where = `${ref.step_title ?? step}${ref.instrument_code ? ` on ${ref.instrument_code}` : ''}`;
+    // Each reading against its own limits (a retest may have its own).
+    const outside = singles.filter((x) => { const n = num(x.value_text); return n !== null && side(n, num(x.lower_text), num(x.upper_text), 'action') !== null; });
     const failed = xs.some((x) => /fail/i.test(x.result ?? ''));
-    if (!outside.length && !failed && !agg.some((a) => { const n = num(a.value_text); const al = num(a.alert_lower_text); const ah = num(a.alert_upper_text); return n !== null && ((al !== null && n < al) || (ah !== null && n > ah)); })) continue;
+    const aggNotes = xs.filter((x) => x.aggregate !== null && num(x.value_text) !== null).map((a) => {
+      const n = num(a.value_text)!;
+      const note = side(n, num(a.lower_text), num(a.upper_text), 'action') ?? side(n, num(a.alert_lower_text), num(a.alert_upper_text), 'alert');
+      return { text: `${a.aggregate} ${a.value_text} ${unit}${note ? ` (${note})` : ''}`.trim(), flagged: note !== null };
+    });
+    if (!outside.length && !failed && !aggNotes.some((x) => x.flagged)) continue;
     const parts: string[] = [];
-    if (outside.length) parts.push(`${outside.length} of ${singles.length} reading(s) outside ${num(first.lower_text) ?? '–'}–${num(first.upper_text) ?? '–'} ${unit}: ${outside.map((x) => x.value_text).join(', ')} ${unit}`.trim());
-    for (const a of agg) {
-      const n = num(a.value_text); const lo = num(a.lower_text); const al = num(a.alert_lower_text); const hi = num(a.upper_text); const ah = num(a.alert_upper_text);
-      const note = n === null ? '' : (lo !== null && n < lo) || (hi !== null && n > hi) ? ' (outside the action limit)' : (al !== null && n < al) || (ah !== null && n > ah) ? ' (below or above the alert limit)' : '';
-      parts.push(`${a.aggregate} ${a.value_text} ${unit}${note}`.trim());
+    if (outside.length) {
+      const lims = [...new Set(outside.map((x) => `${num(x.lower_text) ?? '–'}–${num(x.upper_text) ?? '–'} ${unit}`.trim()))].join(' / ');
+      parts.push(`${outside.length} of ${singles.length} reading(s) outside ${lims}: ${outside.map((x) => x.value_text).join(', ')} ${unit}`.trim());
     }
-    out.push(`${batch}: ${item} check at ${where}${failed ? ' FAILED' : ''}: ${parts.join('; ')}.`);
+    parts.push(...aggNotes.map((x) => x.text));
+    out.push(`${batch}: ${item} check at ${where}${failed ? ' FAILED' : ''}${parts.length ? `: ${parts.join('; ')}` : ' (Batchwright recorded the result only)'}.`);
   }
   // Process actuals (S18) outside or close to their limits.
   for (const a of d.actuals) {
@@ -162,7 +176,7 @@ export function batchwrightFindings(d: BatchwrightData): string[] {
   }
   const detailed = new Set(d.exceptionDetails.map((x) => x.exception_id));
   for (const e of d.exceptions.filter((x) => x.exception_type !== 'MANUAL_ENTRY_FALLBACK' && x.category !== 'MANUAL_ENTRY' && !detailed.has(x.exception_id))) out.push(`${e.batch_number}: exception ${e.exception_id} (${e.exception_type.toLowerCase().replace(/_/g, ' ')}${e.severity ? `, ${e.severity.toLowerCase()}` : ''}).`);
-  const manual = d.exceptions.filter((x) => x.exception_type === 'MANUAL_ENTRY_FALLBACK' || x.category === 'MANUAL_ENTRY').length;
+  const manual = new Set([...d.exceptions, ...d.exceptionDetails].filter((x) => x.exception_type === 'MANUAL_ENTRY_FALLBACK' || x.category === 'MANUAL_ENTRY').map((x) => `${x.batch_number}|${x.exception_id}`)).size;
   if (manual) out.push(`${manual} value(s) were entered by hand instead of from the instrument (manual-entry exceptions).`);
   for (const a of d.alarms) out.push(`Alarm ${a.alarm_code}${a.gmp_critical ? ' (GMP-critical)' : ''} on ${a.subject_code ?? a.subject_kind ?? '?'}${a.acked_at ? '' : ', not acknowledged'}.`);
   if (d.equipmentUsed.length) out.push(`Equipment used by the batch: ${d.equipmentUsed.join(', ')} (looked up in the Logbook too).`);

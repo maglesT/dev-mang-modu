@@ -118,7 +118,8 @@ describe('data collection (S17)', () => {
     const lb = f.find((x) => x.source === 'logbook')!;
     expect([bw.status, lb.status]).toEqual(['ok', 'ok']);
     const bwText = bw.data.findings.join('\n');
-    expect(bwText).toMatch(/breaking_force at step TB-13@: 2 of 3 reading\(s\) outside the limit: 48 N, 52 N \(limits 60 to 140 N\)/);
+    // With the S16 views the in-process check is described from ipc_result_v1 (not again from cpp_value_v1).
+    expect(bwText).toMatch(/hardness check at .* on HT-01 FAILED: 2 of 3 reading\(s\) outside 60–140 N: 48, 52 N/);
     expect(bwText).toMatch(/dryer.inlet_temp_C .*51.0 degC inside the limits but close to one/);
     expect(bwText).toMatch(/exception EX-4/);
     // The batch's equipment (FBD-01, HT-01) was looked up in the Logbook although the report named none.
@@ -133,7 +134,10 @@ describe('data collection (S17)', () => {
     const bw = f.find((x) => x.source === 'batchwright')!;
     expect(bw.views).toEqual(expect.arrayContaining(['ipc_result_v1', 'process_actual_v1', 'exception_detail_v1', 'equipment_use_v1']));
     const text = bw.data.findings.join('\n');
-    expect(text).toContain('RAB26004: hardness check at Thickness and breaking force of the cores on HT-01 FAILED: 2 of 3 reading(s) outside 60–140 N: 48, 52 N; mean 65 N (below or above the alert limit).');
+    expect(text).toContain('RAB26004: hardness check at Thickness and breaking force of the cores on HT-01 FAILED: 2 of 3 reading(s) outside 60–140 N: 48, 52 N; mean 65 N (below the alert limit 70).');
+    // The same check and actual are not reported again from the older value view.
+    expect(text).not.toMatch(/breaking_force/);
+    expect(text.match(/dryer.inlet_temp_C/g)).toHaveLength(1);
     expect(text).toContain('RAB26004: dryer.inlet_temp_C at step p-dry@: 51.0 degC inside the limits but close to one (limits 50 to 70 degC).');
     expect(text).toContain('RAB26004: exception EX-21 (ipc check failed, action) at Thickness and breaking force of the cores: Breaking force below the individual limit; status open.');
     expect(text).not.toMatch(/thickness check/);
@@ -152,6 +156,9 @@ describe('data collection (S17)', () => {
       const bw = ((await call(older, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; status: string; views: string[] }[]).find((x) => x.source === 'batchwright')!;
       expect(bw.status).toBe('ok');
       expect(bw.views).toEqual(['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1']);
+      // Without them the values come from cpp_value_v1.
+      const full = ((await call(older, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; data: { findings: string[] } }[]).find((x) => x.source === 'batchwright')!;
+      expect(full.data.findings.join('\n')).toMatch(/breaking_force at step TB-13@: 2 of 3 reading\(s\) outside the limit: 48 N, 52 N \(limits 60 to 140 N\)/);
     } finally {
       await older.close();
       await t.owner.unsafe(`drop schema ${OLD} cascade`);

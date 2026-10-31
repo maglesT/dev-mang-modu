@@ -31,9 +31,9 @@ results or process actuals, `step_use_v1.equipment_code` is empty there, and `ex
 | View | Columns |
 |------|---------|
 | `report.equipment_use_v1` | `batch_number`, `equipment_code`, `equipment_type`, `room_code`, `step`, `started_at`, `ended_at`, `read_at`, `data_as_of` |
-| `report.ipc_result_v1` | `batch_number`, `step`, `step_title`, `check_kind`, `item`, `instrument_code`, `reading` (null for an aggregate), `value_text`, `unit`, `lower_text`, `upper_text`, `aggregate` (e.g. mean), `alert_lower_text`, `alert_upper_text`, `result` (PASS / FAIL), `recorded_at`, `read_at`, `data_as_of` |
+| `report.ipc_result_v1` | `batch_number`, `step`, `step_title`, `check_kind`, `item`, `instrument_code`, `reading` (null for an aggregate), `value_text`, `unit`, `lower_text`, `upper_text`, `aggregate` (e.g. mean), `alert_lower_text`, `alert_upper_text`, `result` (PASS / ALERT / FAIL, Batchwright's verdict), `recorded_at`, `read_at`, `data_as_of` |
 | `report.process_actual_v1` | `batch_number`, `step`, `tag`, `value_text`, `unit`, `lower_text`, `upper_text`, `within_limits`, `recorded_at`, `read_at`, `data_as_of` |
-| `report.exception_detail_v1` | `batch_number`, `exception_id`, `exception_type`, `category`, `severity`, `step`, `step_title`, `description`, `status`, `disposition`, `disposed_by`, `disposed_at`, `raised_at`, `read_at`, `data_as_of` |
+| `report.exception_detail_v1` | `batch_number`, `exception_id`, `exception_type`, `category`, `severity`, `step`, `step_title`, `description`, `status`, `disposition`, `disposed_by` (pseudonymous person id), `disposed_at`, `raised_at`, `read_at`, `data_as_of` |
 
 The reader checks which of the S16 views exist (`to_regclass`) and reads only those; each fetch records the views read.
 
