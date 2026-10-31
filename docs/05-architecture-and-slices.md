@@ -75,6 +75,9 @@ that repo is attached; I'll ask when a slice needs it.
 | S4 | CAPA register and closure: raise from a deviation or directly (audit, complaint, other); done, verify, effectiveness, close; CAPA list and page; QA closes the deviation (D-14) and reopens it | DV-08–10 | M | Raise a CAPA from an audit finding; close a deviation with open CAPAs |
 | S5 | Batch lookup, trends, PDF: "affects batch X", trend table and chart, one PDF per deviation and per CAPA | DV-11, DV-12, DV-21 | M | Look up a batch; print a deviation |
 | S6 | Integrity check, backup with checksum and off-host copy, restore check, traceability, handover | DV-22, CP-01 support | S | Restore check and traceability list |
+| S7 | Fishbone in the investigation (owner request, D-26) | DV-04 | S | Fill in a fishbone, sign, see it on the page and PDF |
+| S8 | Rule-based flags and similar past deviations (D-27) | — | S | See repeats and earlier root causes on a deviation |
+| S9 | AI-suggested possible causes, Gemini (D-27) | — | M | Ask for suggestions while investigating |
 
 **Estimate:** about 8–9 working sessions (one more for the CAPA register). The logbook copy makes S0, S1 and S5 small. I'll start
 a fresh session after S3 with a handover note.

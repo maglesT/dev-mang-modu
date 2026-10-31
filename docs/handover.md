@@ -16,9 +16,10 @@ State on 2026-10-31, for the next working session.
 | S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | #8 | merged |
 | Fix: audit trail 500 on text object ids (found on the server) | #9 | merged |
 | Compose defaults: localhost port, project name (D-25) | #10 | merged |
+| S7 fishbone in the investigation (D-26) | #11 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-25: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-27: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -61,6 +62,10 @@ Decisions D-01 to D-25: `docs/decisions.md`. Rule → test list: `docs/traceabil
 - Batch search normalises case, spaces, dashes, slashes and dots and looks only at the latest versions.
 
 ## Next steps
+
+Owner asked (D-27): S8 rule-based flags and similar past deviations, then S9 AI-suggested causes with Gemini.
+
+## Earlier possible follow-ups
 
 All planned slices are built. Possible follow-ups, none required by a binding clause:
 - a light lookup from Batchwright or the logbook to the batch check (owner said "later");

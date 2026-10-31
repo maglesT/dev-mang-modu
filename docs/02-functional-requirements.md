@@ -50,7 +50,7 @@ step, who must act next, and the due date** at the top.
 |----------------|-----|-------------------------------------------|
 | **1. Report** | any User | Planned or unplanned; title; what happened; where (area from a list; equipment as free text, optional); when it happened (date/time, may be earlier than now); product and batch number(s), free text, "none" allowed (e.g. a facility event); immediate action taken; for a **planned** deviation, the reason for it; attachments (optional). The server assigns the number (`DEV-2026-0001`, never reused) and stores the reporter and report time. |
 | **2. Classify** | QA | Minor / major / critical; deviation type (from a short list); impact assessment (product, batches affected, other batches or products possibly affected) as text; investigator (a user); tick "product and batch checked" (DV-20). The classifier cannot be the person who reported it. Sets the target closure date from the classification. For a **planned** deviation: QA approves before it is carried out (*Approved* e-signature) or rejects it. |
-| **3. Investigate** | investigator | Root cause (plain text). Tick "root cause could not be confirmed; most likely cause stated" where it applies. Tick "human error", with a justification that system or procedure causes were ruled out. **Other batches and products:** list each one checked with its outcome (affected / not affected), or state why no other batch or product could be involved. Conclusion. The investigator signs it *Investigation complete*. |
+| **3. Investigate** | investigator | Fishbone (optional): possible causes considered under People, Machine / equipment, Method, Material, Measurement, Environment (D-26). Root cause (plain text). Tick "root cause could not be confirmed; most likely cause stated" where it applies. Tick "human error", with a justification that system or procedure causes were ruled out. **Other batches and products:** list each one checked with its outcome (affected / not affected), or state why no other batch or product could be involved. Conclusion. The investigator signs it *Investigation complete*. |
 | **CAPAs** | QA | QA raises one or more CAPAs from the deviation (section 3a). Each is its own record linked to the deviation, and the deviation page lists them with status and due date. A major or critical deviation needs at least one. For a minor one QA may record "no CAPA: the immediate action was appropriate, because…". |
 | **4. Close** | QA | Closure summary; batch disposition notes (text, e.g. "batch B123 may be released; see QA decision"); *Closed* e-signature. Allowed when the investigation is signed and the CAPAs are **raised** (each with owner and due date), or "no CAPA" is recorded for a minor deviation. The closing step shows the deviation's history. Open CAPAs do **not** block closure: they stay on the CAPA list until closed, and the deviation shows "Closed · 2 CAPAs open" (D-14). |
 
@@ -127,7 +127,7 @@ The trend view also counts CAPAs by source and status.
 **Considered and dropped**
 - QA head and area head roles: no binding clause needs a second QA level or an area approval. QA (the quality unit, 211.22; the "designated/competent person", SchM 18.2.2, EU 5.15) is enough (D-08).
 - Risk matrix or score for classification: three plain levels meet every clause; no text requires scoring.
-- Root-cause tool suite (fishbone, 5-why): plain text meets 1.5(s) / 1.4(xiv).
+- Root-cause tool suite (5-why): plain text meets 1.5(s) / 1.4(xiv). (Fishbone added at the owner's request, D-26.)
 - CAPA workflow engine, CAPA risk scoring, CAPA approval of the plan before work starts: one fixed sequence (raise, done, verify, check, close) meets SchM 1.5(s), 2.3.3 and C1 1.4(xiv).
 - Complaint, audit and change-control modules: out of scope; a free-text source reference is enough for v1.
 - Blocking deviation closure until every CAPA is closed: no clause requires it, and open CAPAs stay tracked (D-14).
@@ -151,4 +151,5 @@ The trend view also counts CAPAs by source and status.
 - Trend view: 211.180(e)(2) annual review of investigations, SchM 2.3.2(d), EU 1.10(iv). One table and one chart; no dashboard.
 - Attachments: core need (photos, printouts as evidence); A11 8.1 requires them to be printable with the record.
 - Reopen: needed so a closed record is never edited in place (A11 9, P11 11.10(e) audit trail).
+- Fishbone (six categories, optional) in the investigation: owner request (D-26).
 - Deviation-type and area lists: needed for the trend view (counts by area and type); a free-text field cannot be counted.

@@ -31,6 +31,7 @@ test('DV-04 to DV-07: the investigator writes the root cause, checks other batch
   const number = await inInvestigation(`WT-${Date.now().toString(36)}`);
   await logIn(page, 'us2');
   await page.getByRole('button', { name: number }).click();
+  await page.getByLabel('Fishbone: Machine / equipment').fill('Feeder speed changed during maintenance.');
   await page.getByLabel('Root cause *').fill('Feeder speed changed after maintenance; not reset.');
   await page.getByRole('button', { name: 'Add a batch checked' }).click();
   await page.getByLabel('Other product 1').fill('Paracetamol 500 mg');
@@ -41,6 +42,8 @@ test('DV-04 to DV-07: the investigator writes the root cause, checks other batch
   await expect(page.locator('.statusbar')).toContainText('Awaiting closure');
   await expect(page.locator('.signature')).toContainText('Investigation complete · US2');
   await expect(page.getByText('PCM-OLD-1: not affected')).toBeVisible();
+  // The signed investigation shows the fishbone with the cause noted under its category.
+  await expect(page.getByRole('group', { name: 'Fishbone diagram' })).toContainText('Feeder speed changed during maintenance.');
 });
 
 test('DV-05: ticking human error asks for a justification before signing', async ({ page }) => {
