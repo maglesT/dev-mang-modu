@@ -104,7 +104,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa }: { me: Me; id: numb
   return (
     <>
       <button className="link" onClick={onBack}>← All deviations</button>
-      <h1>{d.number} · {str(report.title)}</h1>
+      <div className="home-head"><h1>{d.number} · {str(report.title)}</h1><a className="button" href={`/api/deviations/${d.id}/pdf`}>Print PDF</a></div>
       <div className={`statusbar ${d.overdue ? 'blocked' : 'fit'}`}>
         <span className={`chip ${STEP_CHIP[d.step]}`}>{STEP_LABEL[d.step]}</span>
         {d.classification && <span className="chip">{CLASS_LABEL[d.classification]}</span>}

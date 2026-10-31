@@ -248,3 +248,18 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .upload { display: grid; gap: 6px; }
 .stat-link { text-align: left; cursor: pointer; font: inherit; }
 .filters label { display: flex; gap: 6px; align-items: center; }
+/* S5: batch check and trend */
+.ok-notice { background: var(--ok-soft); border-color: #bfe5cc; }
+svg.bars { width: 100%; max-width: 760px; height: auto; margin: 8px 0 12px; }
+svg.bars .axis { stroke: var(--line-strong); stroke-width: 1; }
+svg.bars .tick { fill: var(--muted); font-size: 11px; }
+svg.bars .mark { fill: var(--info); }
+svg.bars .hit { fill: transparent; }
+svg.bars .bar:hover .mark { fill: #174f94; }
+table.trend td, table.trend th { text-align: right; }
+table.trend td:first-child, table.trend th:first-child { text-align: left; }
+table.trend tr.total td { border-top: 2px solid var(--line-strong); font-weight: 600; }
+@media print { header.bar, form.filters, form.row { display: none; } }
+table.list td:first-child { white-space: nowrap; }
+.scroll { overflow-x: auto; }
+.stat-link { padding: 14px 16px; border-radius: var(--radius); }

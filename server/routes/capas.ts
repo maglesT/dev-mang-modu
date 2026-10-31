@@ -148,7 +148,8 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
       select g.id::int, g.object_id::int as "versionId", g.printed_name as "printedName", g.meaning, g.signed_at as "signedAt"
       from signatures g where g.object_type = 'capa' and g.object_id in (select id from capa_versions where capa_id = ${id}) order by g.signed_at`;
     const history = await sql`
-      select a.id::int, a.at, u.full_name as actor, a.action, a.reason from audit_log a left join users u on u.id = a.actor_id
+      select a.id::int, a.at, u.full_name as actor, a.action, a.old_value as "oldValue", a.new_value as "newValue", a.reason
+      from audit_log a left join users u on u.id = a.actor_id
       where (a.object_type = 'capa' and a.object_id = ${String(id)})
          or (a.object_type = 'capa_version' and a.object_id in (select id::text from capa_versions where capa_id = ${id}))
       order by a.at, a.id`;
