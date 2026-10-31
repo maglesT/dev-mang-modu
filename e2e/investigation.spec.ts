@@ -151,3 +151,14 @@ test('S9: the investigator asks the AI, reads simple suggestions and adds one to
   await help.getByRole('button', { name: 'Add to fishbone' }).click();
   await expect(page.getByLabel('Machine / equipment: what was checked')).toHaveValue('Feeder speed changed');
 });
+
+test('DV-23: the Measure band fetches related data; a system that is not connected says so', async ({ page }) => {
+  const number = await inInvestigation(`DC-${Date.now().toString(36)}`);
+  await logIn(page, 'us2');
+  await page.getByRole('button', { name: number }).click();
+  const card = page.getByRole('region', { name: 'Data collection' });
+  await card.getByRole('button', { name: 'Fetch related data' }).click();
+  await expect(card).toContainText('Batch record (Batchwright)');
+  await expect(card).toContainText('Not connected on this installation.');
+  await expect(card.getByRole('button', { name: 'Fetch again' })).toBeVisible();
+});

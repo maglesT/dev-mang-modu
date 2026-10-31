@@ -154,6 +154,7 @@ The trend view also counts CAPAs by source and status.
 - Fishbone (six categories, optional) in the investigation: owner request (D-26).
 - "Things to look at" on the deviation page: rule-based repeat flags and similar earlier cases with their root causes and CAPAs (owner request, D-27, D-28). Advice only.
 - AI-suggested possible causes (Gemini) in very simple language, with "how to check" (owner request, D-27, D-29). Advice only; audited; off without a key.
+- Data collection (Measure): uploads, and "Fetch related data" from Batchwright and the Logbook, read-only, kept as checksummed copies with plain-words findings (D-37, DV-23).
 - Unusual months on the trend (one c-chart rule, explained on screen; D-30). Advice only.
 - The deviation page is organised as DMAIC: Define, Measure, Analyze, Improve, Control, with a progress bar (owner request, D-31). The same steps; a view only.
 - Deviation-type and area lists: needed for the trend view (counts by area and type); a free-text field cannot be counted.

@@ -24,9 +24,11 @@ State on 2026-10-31, for the next working session.
 | S12 initial impact assessment and action taken (D-34); plan for S12–S17 (D-32, D-33) | #17 | merged |
 | S13 investigation tools I: Is / Is Not, 6M with evidence, 5 Whys, drafts (D-35) | #18 | merged |
 | S14 investigation tools II: barriers, FMEA, KT, fault tree, CAPA strength, Pareto (D-36) | #19 | merged |
+| S15 Logbook read-only views + demo seed (Logbook PRs #17, #18) | Logbook | merged |
+| S17 data collection from Batchwright and the Logbook, DV-23 (D-37) | #20 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-36: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-37: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -37,6 +39,19 @@ Decisions D-01 to D-36: `docs/decisions.md`. Rule → test list: `docs/traceabil
 - **No backups yet** (skipped at the owner's request). The daily `ops/backup.sh` with `OFFSITE_DIR` and one
   `ops/restore-check.sh` run are needed before real use (DV-22).
 - Suggested to the owner: a read-only deploy key is enough for `git pull`.
+
+## For the server session (S17 deployment)
+
+- Set in `ops/.env`: `LOGBOOK_REPORT_URL=postgres://logbook_report:<pw>@<logbook db host>:5432/logbook` and
+  `BATCHWRIGHT_REPORT_URL=postgres://ebmr_report:<pw>@<host>:5432/ebmr_tablets_demo` (the hosted demo database).
+- The Logbook role needs LOGIN and a password and a `pg_hba` line (Logbook README, "Database roles"); the Logbook
+  migration 0013 must have run (Logbook v0.5.0). Batchwright's `ebmr_report` already has LOGIN; it needs a `pg_hba`
+  line for the deviations container's address, and Batchwright's new views from its S16 PR.
+- Network: the deviations container must reach the Logbook database container (join its Docker network or publish
+  its port on a private address) and the host PostgreSQL 5432 (e.g. `host.docker.internal` with
+  `extra_hosts: ["host.docker.internal:host-gateway"]`). Not on the public interface.
+- Test on the hosted demo: a deviation for batch RAB26004, equipment PRESS-01, event 31 Oct 2026 22:00 IST, then
+  "Fetch related data". Expected findings are listed in `docs/07-data-contracts.md`.
 
 ## Owner's working rules (from the brief and the owner)
 

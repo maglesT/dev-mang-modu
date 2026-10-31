@@ -324,7 +324,8 @@ describe('audit trail view', () => {
       expect.objectContaining({ objectType: 'system', objectId: 'integrity' }),
     ]));
     expect((await call(t.app, qa, 'GET', '/api/audit?user=qa1')).statusCode).toBe(200);
-  });
+    // Seeds 200 users and runs ANALYZE: slow on a busy machine.
+  }, 60_000);
 });
 
 describe('review fixes (S1, deviations)', () => {

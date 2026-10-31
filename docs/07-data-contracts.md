@@ -28,21 +28,20 @@ New in S16:
 Not read: `report.deviation_fact_v1` and every `site.deviation*` / `site.capa*` table (owner: read the batch data
 directly, not Batchwright's deviation module).
 
-## Shared demo scenario (the same codes in both systems)
+## Shared demo scenario (the same codes in all three systems; follows the hosted Batchwright demo)
 
-- Product `PCM500` "Paracetamol 500 mg Tablets"; batch **`PCM-2610-014`**; an earlier batch `PCM-2610-013`.
-- Rooms / areas: `GRN-RM-1` (granulation), `CMP-RM-2` (compression).
-- Equipment: fluid bed dryer **`FBD-01`** (GRN-RM-1), tablet press **`CMP-02`** (CMP-RM-2), hardness tester
-  instrument **`HT-01`** (CMP-RM-2).
-- SOPs: `SOP-PRD-014` "Fluid bed drying" v04 (step says "dry approx 30 min"), `SOP-PRD-021` "Tablet compression" v07,
-  `SOP-QC-005` "Hardness testing" v03, `SOP-ENG-010` "Preventive maintenance of tablet presses" v02.
-- Event: 31 Oct 2026, from about 14:00 IST on `CMP-02`, tablet hardness 2 kg/cm² against 5–8 kg/cm²
-  (in-process check failed; 20 of 100 tablets low).
-- Batchwright (S16): batch `PCM-2610-014` with granulation drying on `FBD-01` recorded at **20 min** against a
-  target of 30 (a value outside its limit), compression on `CMP-02`, the failed hardness checks after 14:00,
-  an exception or alarm for the failure, the master record citing the four SOPs. Batch `PCM-2610-013` on the
-  same equipment, normal.
-- Logbook (S15): `CMP-02` usage for `PCM-2610-013` and `PCM-2610-014`; cleaning between them; last preventive
-  maintenance of `CMP-02` 40 days before the event (none since); a breakdown on `CMP-02` two days before
-  ("upper punch sticking", repaired); `HT-01` calibration with `nextDue` the day before the event (overdue at the
-  event); `FBD-01` usage and cleaning; SOP references on `CMP-02` (`SOP-ENG-010`) and in the settings.
+- Product **`RAB-GR-20`** "Rabeprazole sodium 20 mg gastro-resistant tablets (DEMO-ONLY)", master family `RAB-WG-DEMO`.
+- Batch **`RAB26004`** (the deviation); earlier normal batch `RAB26002` on the same equipment (released).
+- Rooms `GRAN-1` (granulation: RMG-01, FBD-01, MILL-01) and `COMP-1` (compression: PRESS-01, BAL-COMP-01, HT-01, FRB-01).
+- Batchwright (hosted demo, created by the server session): drying step TB-05 records `dryer.inlet_temp_C`
+  (50.0–70.0 °C) and LOD (2.0–3.5 %); RAB26004 has 51.0 °C and 3.4 %, inside but at the edge (RAB26002: 60.0 °C, 2.8 %).
+  Compression step TB-13 "Thickness and breaking force of the cores" on HT-01, in N, individual limits 60–140 N;
+  RAB26004 has 2 of 10 below 60 N (48, 52): the check failed, an exception was raised, the batch is on hold.
+  SOPs come from the master and route level (`batch_reference_v1`), not per step.
+- Logbook (demo seed, Logbook PR #18), event 31 Oct 2026 22:00 IST: FBD-01 use and cleaning for both batches;
+  PRESS-01 use for RAB26002, cleaning, use for RAB26004 (19:00–23:30 IST); last preventive maintenance of PRESS-01
+  40 days before, none since; a PRESS-01 breakdown two days before ("Upper punch sticking", repaired); HT-01
+  calibration with next due 30 Oct 2026 (overdue at the event); SOP-ENG-010 on PRESS-01 and in the settings.
+- Expected findings of "Fetch related data" for RAB26004: breaking force check failed (48 N, 52 N below 60);
+  dryer inlet 51.0 °C close to its lower limit; the exception; HT-01 calibration overdue at the event; PRESS-01 last
+  preventive maintenance 40 days before; the PRESS-01 breakdown two days before.

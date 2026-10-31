@@ -15,6 +15,8 @@ import { deviationRoutes } from './routes/deviations.js';
 import { investigationRoutes } from './routes/investigation.js';
 import { signalRoutes } from './routes/signals.js';
 import { aiRoutes, type AiOptions } from './routes/ai.js';
+import { dataRoutes } from './routes/data.js';
+import type { Sources } from './readers/fetch.js';
 import { capaRoutes } from './routes/capas.js';
 import { reportRoutes } from './routes/reports.js';
 import { integrityRoutes } from './routes/integrity.js';
@@ -30,9 +32,11 @@ export interface AppOptions {
   cookieSecure?: boolean;
   // S9: Gemini settings; the AI suggestions are off without them.
   ai?: AiOptions;
+  // S17: read-only sources (Logbook, Batchwright); each is optional.
+  sources?: Sources;
 }
 
-export async function buildApp({ sql, logger = false, webRoot, cookieSecure = true, ai }: AppOptions): Promise<FastifyInstance> {
+export async function buildApp({ sql, logger = false, webRoot, cookieSecure = true, ai, sources = {} }: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger, trustProxy: true });
   app.decorate('cookieSecure', cookieSecure);
   await app.register(fastifyCookie);
@@ -65,6 +69,7 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
   investigationRoutes(app, sql);
   signalRoutes(app, sql);
   aiRoutes(app, sql, ai);
+  dataRoutes(app, sql, sources);
   capaRoutes(app, sql);
   reportRoutes(app, sql);
   integrityRoutes(app, sql);
