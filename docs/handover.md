@@ -20,9 +20,10 @@ State on 2026-10-31, for the next working session.
 | S8 "Things to look at": rule-based flags, similar earlier cases (D-28) | #12 | merged |
 | S9 AI-suggested causes with Gemini (D-29) | #13 | merged |
 | S10 unusual months on the trend, c-chart (D-30) | #14 | merged |
+| S11 DMAIC view on each deviation (D-31) | #15 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-30: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-31: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -66,7 +67,7 @@ Decisions D-01 to D-30: `docs/decisions.md`. Rule → test list: `docs/traceabil
 
 ## Next steps
 
-S7 to S10 (owner requests) are built. Offered, not requested: investigation hints on the Home list; a flag when a cause recurs after its CAPA closed. Declined: recording which AI suggestions were used. To switch the AI on, the owner's server needs `GEMINI_API_KEY` in `ops/.env`
+S7 to S11 (owner requests) are built. Offered, not requested: investigation hints on the Home list; a flag when a cause recurs after its CAPA closed. Declined: recording which AI suggestions were used. To switch the AI on, the owner's server needs `GEMINI_API_KEY` in `ops/.env`
 (default model `gemini-4-argon`, Google's stable flagship on 31 Oct 2026). Tests never call Google (fake fetch, browser route).
 
 ## Earlier possible follow-ups

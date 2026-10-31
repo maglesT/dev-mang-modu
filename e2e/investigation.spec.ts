@@ -44,6 +44,10 @@ test('DV-04 to DV-07: the investigator writes the root cause, checks other batch
   await expect(page.getByText('PCM-OLD-1: not affected')).toBeVisible();
   // The signed investigation shows the fishbone with the cause noted under its category.
   await expect(page.getByRole('group', { name: 'Fishbone diagram' })).toContainText('Feeder speed changed during maintenance.');
+  // S11: the DMAIC view moves on: Define, Measure and Analyze are done; Improve (CAPAs) is next.
+  const dmaic = page.getByRole('list', { name: 'DMAIC progress' });
+  await expect(dmaic).toContainText('Analyze · done');
+  await expect(dmaic).toContainText('Improve · in progress');
 });
 
 test('DV-05: ticking human error asks for a justification before signing', async ({ page }) => {
@@ -59,7 +63,7 @@ test('DV-14: a correction needs a reason and keeps the earlier version readable'
   await logIn(page, 'us1');
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await page.getByRole('button', { name: number }).click();
-  await page.locator('section').filter({ hasText: '1. Report' }).getByRole('button', { name: 'Correct' }).click();
+  await page.locator('section').filter({ has: page.getByRole('heading', { name: 'Report', exact: true }) }).getByRole('button', { name: 'Correct' }).click();
   await page.getByLabel('Title *').fill('Tablet weight above upper limit');
   await page.getByRole('button', { name: 'Save correction' }).click();
   await expect(page.getByText('Give the reason for the correction.')).toBeVisible();

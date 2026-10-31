@@ -79,6 +79,7 @@ that repo is attached; I'll ask when a slice needs it.
 | S8 | Rule-based flags and similar past deviations (D-27) | — | S | See repeats and earlier root causes on a deviation |
 | S9 | AI-suggested possible causes, Gemini (D-27, D-29) | — | M | Ask for suggestions while investigating |
 | S10 | Unusual months on the trend: c-chart limit (D-30) | DV-12 support | S | See a month marked ▲ with its usual level |
+| S11 | DMAIC view on each deviation (D-31) | — | S | See which DMAIC phase a deviation is in |
 
 **Estimate:** about 8–9 working sessions (one more for the CAPA register). The logbook copy makes S0, S1 and S5 small. I'll start
 a fresh session after S3 with a handover note.

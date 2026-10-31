@@ -13,7 +13,10 @@ export interface SignalData { flags: Flag[]; similar: Similar[] }
 export function Signals({ id, onOpen }: { id: number; onOpen: (id: number) => void }) {
   const [s, setS] = useState<SignalData | null>(null);
   useEffect(() => { api<SignalData>('GET', `/api/deviations/${id}/signals`).then(setS).catch(() => setS(null)); }, [id]);
-  if (!s || (!s.flags.length && !s.similar.length)) return null;
+  if (!s) return null;
+  if (!s.flags.length && !s.similar.length) {
+    return <section className="card signals" aria-label="Things to look at"><p className="muted small">No repeats or similar earlier cases found by the rules. The impact assessment is under Define; other batches checked are part of the investigation.</p></section>;
+  }
   const link = (r: Ref) => <button key={r.id} className="link" onClick={() => onOpen(r.id)} title={r.title}>{r.number}</button>;
   return (
     <section className="card signals" aria-label="Things to look at">
