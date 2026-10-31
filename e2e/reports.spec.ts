@@ -7,7 +7,7 @@ test('DV-11: a deviation affecting a batch is listed for that batch, flagged as 
   const areas = await (await us1.get('/api/areas')).json();
   const { number } = await post(us1, '/api/deviations', {
     planned: false, title: 'Granule LOD high', description: 'LOD 3.5% vs NMT 3%.', areaId: areas[0].id,
-    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Paracetamol 500 mg', batch }], immediateAction: 'Re-dried.',
+    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Paracetamol 500 mg', batch }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Re-dried.',
   });
   await us1.dispose();
   await logIn(page, 'qa2');
@@ -33,7 +33,7 @@ test('DV-21: the deviation page offers a PDF copy', async ({ page }) => {
   const areas = await (await us1.get('/api/areas')).json();
   const { number, id } = await post(us1, '/api/deviations', {
     planned: false, title: 'PDF check', description: 'x', areaId: areas[0].id, eventAt: new Date(Date.now() - 600_000).toISOString(),
-    products: [], noBatch: true, immediateAction: 'x',
+    products: [], noBatch: true, initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
   });
   await us1.dispose();
   await logIn(page, 'us1');

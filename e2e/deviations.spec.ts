@@ -12,7 +12,12 @@ async function report(page: Page, title: string, batch: string, planned = false)
   await page.getByLabel('Area *').selectOption({ label: 'Granulation' });
   await page.getByLabel('Product 1').fill('Paracetamol 500 mg');
   await page.getByLabel('Batch 1').fill(batch);
-  await page.getByLabel('Immediate action taken *').fill('Restarted after informing QA.');
+  // S12: the reporter's initial impact assessment.
+  await page.getByRole('radiogroup', { name: 'Could product quality be affected?' }).getByLabel('Not known yet').check();
+  await page.getByRole('radiogroup', { name: 'Could patient safety be at risk?' }).getByLabel('No', { exact: true }).check();
+  await page.getByRole('radiogroup', { name: 'Could other batches be affected?' }).getByLabel('No', { exact: true }).check();
+  await page.getByLabel('Short assessment *').fill('Granules held 10 minutes; moisture to be checked.');
+  await page.getByLabel('Action taken (immediate action) *').fill('Restarted after informing QA.');
   await page.getByRole('button', { name: 'Save and get a number' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText(title);
   return (await page.getByRole('heading', { level: 1 }).textContent())!.split(' · ')[0]!;

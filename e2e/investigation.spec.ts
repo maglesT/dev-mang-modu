@@ -7,7 +7,7 @@ async function inInvestigation(batch: string) {
   const areas = await (await us1.get('/api/areas')).json();
   const { id, number } = await post(us1, '/api/deviations', {
     planned: false, title: 'Tablet weight out of limit', description: 'IPC weight 520 mg vs 500 ± 5%.', areaId: areas[0].id,
-    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Paracetamol 500 mg', batch }], immediateAction: 'Machine stopped.',
+    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Paracetamol 500 mg', batch }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Machine stopped.',
   });
   await us1.dispose();
   const qa = await apiAs('qa1');

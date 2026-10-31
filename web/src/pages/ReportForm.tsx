@@ -1,10 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, localInputValue, type NamedItem } from '../api.js';
 
+export type Answer = '' | 'yes' | 'no' | 'unknown';
+export interface InitialImpact { productQuality: Answer; patientSafety: Answer; otherBatches: Answer; notes: string }
 export interface ReportValues {
   planned: boolean; title: string; description: string; areaId: number; equipment: string; eventAt: string;
-  immediateAction: string; plannedReason: string; noBatch: boolean; products: { product: string; batch: string }[];
+  immediateAction: string; actionTakenAt?: string | null; initialImpact?: InitialImpact;
+  plannedReason: string; noBatch: boolean; products: { product: string; batch: string }[];
 }
+export const ANSWER_LABEL: Record<string, string> = { yes: 'Yes', no: 'No', unknown: 'Not known yet' };
+const IMPACT_QUESTIONS: [keyof Omit<InitialImpact, 'notes'>, string][] = [
+  ['productQuality', 'Could product quality be affected?'],
+  ['patientSafety', 'Could patient safety be at risk?'],
+  ['otherBatches', 'Could other batches be affected?'],
+];
+const noImpact: InitialImpact = { productQuality: '', patientSafety: '', otherBatches: '', notes: '' };
 
 // DV-01: one short form for everyone. The number is given at once on saving.
 // With `correct`, the same form corrects a saved report (DV-14): a reason is required.
@@ -16,8 +26,9 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
 }) {
   const [areas, setAreas] = useState<NamedItem[]>([]);
   const [f, setF] = useState(initial
-    ? { ...initial, eventAt: localInputValue(new Date(initial.eventAt)) }
-    : { planned: false, title: '', description: '', areaId: 0, equipment: '', eventAt: localInputValue(), immediateAction: '', plannedReason: '', noBatch: false });
+    ? { ...initial, eventAt: localInputValue(new Date(initial.eventAt)), actionTakenAt: initial.actionTakenAt ? localInputValue(new Date(initial.actionTakenAt)) : '' }
+    : { planned: false, title: '', description: '', areaId: 0, equipment: '', eventAt: localInputValue(), immediateAction: '', actionTakenAt: '', plannedReason: '', noBatch: false });
+  const [impact, setImpact] = useState<InitialImpact>(initial?.initialImpact ?? noImpact);
   const [products, setProducts] = useState(initial?.products.length ? initial.products : [{ product: '', batch: '' }]);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
@@ -34,7 +45,10 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
     try {
       const rows = f.noBatch ? [] : products.filter((p) => p.product.trim() || p.batch.trim());
       const { products: _ignored, ...rest } = f as typeof f & { products?: unknown };
-      const data = { ...rest, areaId: Number(f.areaId), eventAt: new Date(f.eventAt).toISOString(), products: rows };
+      const data = {
+        ...rest, areaId: Number(f.areaId), eventAt: new Date(f.eventAt).toISOString(), products: rows,
+        actionTakenAt: f.actionTakenAt ? new Date(f.actionTakenAt).toISOString() : null, initialImpact: impact,
+      };
       if (correct) {
         await correct(data, reason);
         onDone(0);
@@ -80,7 +94,22 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
         {!f.noBatch && <button type="button" onClick={() => setProducts([...products, { product: '', batch: '' }])}>Add another batch</button>}
         <label className="check"><input type="checkbox" checked={f.noBatch} onChange={(e) => setF({ ...f, noBatch: e.target.checked })} /> No product or batch concerned (e.g. a facility event)</label>
       </div>
-      <label>Immediate action taken *<textarea rows={3} value={f.immediateAction} onChange={set('immediateAction')} /></label>
+      <fieldset className="impact">
+        <legend><b>Initial impact assessment *</b> <span className="muted small">Your first view; QA assesses it again when classifying.</span></legend>
+        {IMPACT_QUESTIONS.map(([k, q]) => (
+          <div className="row" key={k} role="radiogroup" aria-label={q}>
+            <span className="q">{q}</span>
+            {(['yes', 'no', 'unknown'] as const).map((a) => (
+              <label className="check" key={a}><input type="radio" name={k} checked={impact[k] === a} onChange={() => setImpact({ ...impact, [k]: a })} /> {ANSWER_LABEL[a]}</label>
+            ))}
+          </div>
+        ))}
+        <label>Short assessment *<textarea rows={2} value={impact.notes} onChange={(e) => setImpact({ ...impact, notes: e.target.value })} placeholder="e.g. Tablets made since 14:00 may be soft; batch on hold." /></label>
+      </fieldset>
+      <div className="grid2">
+        <label>Action taken (immediate action) *<textarea rows={3} value={f.immediateAction} onChange={set('immediateAction')} /></label>
+        <label>When the action was taken<input type="datetime-local" value={f.actionTakenAt ?? ''} onChange={set('actionTakenAt')} /></label>
+      </div>
       {correct && <label>Reason for the correction *<input value={reason} onChange={(e) => setReason(e.target.value)} /></label>}
       {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
       <div className="actions">

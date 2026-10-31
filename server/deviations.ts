@@ -17,6 +17,15 @@ const productBatch = z.object({
   batch: text(80).refine((b) => normaliseBatch(b).length > 0, 'A batch number needs letters or digits.'),
 });
 
+// S12 (D-34): the reporter's initial impact assessment: three quick answers and a short note.
+const answer = (what: string) => z.enum(['yes', 'no', 'unknown'], { errorMap: () => ({ message: `Initial impact: answer "${what}" (yes, no or not known).` }) });
+export const initialImpactData = z.object({
+  productQuality: answer('product quality affected?'),
+  patientSafety: answer('patient safety at risk?'),
+  otherBatches: answer('other batches possibly affected?'),
+  notes: z.string().trim().min(1, 'Initial impact: write a short assessment.').max(3000),
+}, { errorMap: () => ({ message: 'Give the initial impact assessment.' }) });
+
 // DV-01: the report. Product and batch are free text (owner default); "none" must be said explicitly.
 export const reportData = z
   .object({
@@ -29,6 +38,9 @@ export const reportData = z
     products: z.array(productBatch).max(20),
     noBatch: z.boolean().default(false),
     immediateAction: text(5000),
+    // S12: when the immediate action was taken (optional; never in the future).
+    actionTakenAt: z.string().datetime({ offset: true }).nullable().default(null),
+    initialImpact: initialImpactData,
     // DV-01 / 211.100(b): a planned deviation is justified before it happens.
     plannedReason: z.string().trim().max(5000).default(''),
   })
@@ -38,6 +50,7 @@ export const reportData = z
     if (d.planned && !d.plannedReason) ctx.addIssue({ code: 'custom', path: ['plannedReason'], message: 'Give the reason for the planned deviation.' });
     // DV-13: the event cannot be in the future (2 minutes allowed for clock differences).
     if (new Date(d.eventAt).getTime() > Date.now() + 120_000) ctx.addIssue({ code: 'custom', path: ['eventAt'], message: 'When it happened cannot be in the future.' });
+    if (d.actionTakenAt && new Date(d.actionTakenAt).getTime() > Date.now() + 120_000) ctx.addIssue({ code: 'custom', path: ['actionTakenAt'], message: 'When the action was taken cannot be in the future.' });
   });
 export type ReportData = z.infer<typeof reportData>;
 

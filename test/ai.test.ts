@@ -38,7 +38,7 @@ afterAll(async () => { await t.close(); await off.close(); });
 async function inInvestigation() {
   const r = await call(t.app, c.us1!, 'POST', '/api/deviations', {
     planned: false, title: 'Tablet weight high', description: 'IPC weight 530 mg against 500 mg.', areaId, equipment: 'Press 7',
-    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Metformin', batch: 'MET-1' }], immediateAction: 'Press stopped.',
+    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Metformin', batch: 'MET-1' }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Press stopped.',
   });
   const id = r.json().id as number;
   await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, { classification: 'major', typeId, impact: 'MET-1 only.', investigatorId: ids.us2, productBatchChecked: true });
@@ -106,7 +106,7 @@ describe('AI suggestions (S9)', () => {
     expect((await suggest(id, 'admin1')).statusCode).toBe(403);
     expect((await suggest(id, 'qa1')).statusCode).toBe(200);
     const r = await call(t.app, c.us1!, 'POST', '/api/deviations', {
-      planned: false, title: 'Not yet classified', description: 'x', areaId, eventAt: new Date(Date.now() - 600_000).toISOString(), noBatch: true, products: [], immediateAction: 'x',
+      planned: false, title: 'Not yet classified', description: 'x', areaId, eventAt: new Date(Date.now() - 600_000).toISOString(), noBatch: true, products: [], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
     });
     expect((await suggest(r.json().id, 'qa1')).statusCode).toBe(409);
   });

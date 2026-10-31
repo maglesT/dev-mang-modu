@@ -25,7 +25,7 @@ afterAll(() => t.close());
 async function report(area: string, product: string, batch: string) {
   return (await call(t.app, c.us1!, 'POST', '/api/deviations', {
     planned: false, title: `Issue on ${batch}`, description: 'x', areaId: areas[area], eventAt: new Date(Date.now() - 60_000).toISOString(),
-    products: [{ product, batch }], immediateAction: 'x',
+    products: [{ product, batch }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
   })).json() as { id: number; number: string };
 }
 const classify = (id: number, classification = 'major') =>
@@ -86,7 +86,7 @@ describe('PDF copies', () => {
     const d = await report('Granulation', 'Paracetamol 500', 'PDF-1');
     await call(t.app, c.us1!, 'POST', `/api/deviations/${d.id}/correct`, {
       kind: 'report', reason: 'Title corrected',
-      data: { planned: false, title: 'Corrected title', description: 'x', areaId: areas.Granulation, eventAt: new Date(Date.now() - 60_000).toISOString(), products: [{ product: 'Paracetamol 500', batch: 'PDF-1' }], immediateAction: 'x' },
+      data: { planned: false, title: 'Corrected title', description: 'x', areaId: areas.Granulation, eventAt: new Date(Date.now() - 60_000).toISOString(), products: [{ product: 'Paracetamol 500', batch: 'PDF-1' }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x' },
     });
     const res = await t.app.inject({ method: 'GET', url: `/api/deviations/${d.id}/pdf`, headers: { cookie: c.us2! } });
     expect(res.statusCode).toBe(200);

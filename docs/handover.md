@@ -21,9 +21,10 @@ State on 2026-10-31, for the next working session.
 | S9 AI-suggested causes with Gemini (D-29) | #13 | merged |
 | S10 unusual months on the trend, c-chart (D-30) | #14 | merged |
 | S11 DMAIC view on each deviation (D-31) | #15 | merged |
+| S12 initial impact assessment and action taken (D-34); plan for S12–S17 (D-32, D-33) | #17 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-31: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-34: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 

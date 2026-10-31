@@ -25,7 +25,7 @@ async function report(areaId: number, over: object = {}) {
   const r = await call(t.app, c.us1!, 'POST', '/api/deviations', {
     planned: false, title: 'Tablet weight out of limit', description: 'IPC weight high on press.', areaId, equipment: '',
     eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: `Product ${n}`, batch: `B-${n}-${Math.random().toString(36).slice(2, 7)}` }],
-    immediateAction: 'Press stopped.', ...over,
+    initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Press stopped.', ...over,
   });
   expect(r.statusCode, r.body).toBe(201);
   return r.json().id as number;

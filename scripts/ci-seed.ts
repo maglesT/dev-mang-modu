@@ -35,7 +35,7 @@ const people = await call(qa, 'GET', '/api/people');
 const userId = people.find((p: { username: string }) => p.username === 'seeduser').id;
 const { id } = await call(user, 'POST', '/api/deviations', {
   planned: false, title: 'Seed – ünïcödé ✓', description: 'Seeded for the backup check.', areaId, eventAt: new Date(Date.now() - 60_000).toISOString(),
-  products: [{ product: 'Seed product', batch: 'SEED-1' }], immediateAction: 'None.',
+  products: [{ product: 'Seed product', batch: 'SEED-1' }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'None.',
 });
 await call(qa, 'POST', `/api/deviations/${id}/classify`, { classification: 'minor', typeId, impact: 'x', investigatorId: userId, productBatchChecked: true });
 await call(user, 'POST', `/api/deviations/${id}/investigate`, { data: { rootCause: 'x', otherBatches: [], noOtherReason: 'x', conclusion: 'x' }, signature: sig('seeduser') });

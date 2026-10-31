@@ -9,7 +9,7 @@ async function awaitingClosure(batch: string) {
   const areas = await (await us1.get('/api/areas')).json();
   const { id, number } = await post(us1, '/api/deviations', {
     planned: false, title: 'Leaflet rev 3 in line', description: 'Old leaflet revision found.', areaId: areas[1].id,
-    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Amlodipine 5 mg', batch }], immediateAction: 'Line stopped.',
+    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Amlodipine 5 mg', batch }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Line stopped.',
   });
   await us1.dispose();
   const qa = await apiAs('qa1');
