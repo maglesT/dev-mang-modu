@@ -25,7 +25,10 @@ the trend view and PDF copies support reviews and inspections.
 5. Optional, AI help in investigations (D-29): put `GEMINI_API_KEY=...` (and, to change the model,
    `GEMINI_MODEL=...`) in `ops/.env` and restart. Deviation facts are then sent to Google
    (user names are not; free text goes as written).
-6. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
+6. Optional, data from the Logbook and Batchwright (D-37): set `LOGBOOK_REPORT_URL` (role `logbook_report`, database
+   `logbook`) and `BATCHWRIGHT_REPORT_URL` (role `ebmr_report`, database `ebmr_tablets`) in `ops/.env`. Both roles are
+   read-only; each system's README has its `pg_hba` line. The app container must reach both databases.
+7. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
    Run `ops/restore-check.sh <dump>` periodically and record the result (CP-03).
 

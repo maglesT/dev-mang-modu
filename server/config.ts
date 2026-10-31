@@ -15,6 +15,10 @@ const schema = z.object({
   // S9 (D-29): AI-suggested causes through Google Gemini. Without a key the feature is off.
   GEMINI_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-4-argon'),
+  // S17 (D-37): read-only connections to the Logbook and Batchwright report views. Without one, that
+  // source shows as "not configured" and nothing else changes.
+  LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
+  BATCHWRIGHT_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
 });
 
 export type Config = z.infer<typeof schema>;

@@ -262,6 +262,18 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         }
       }
     }
+    // S17 (DV-23): data collected from the Logbook and Batchwright: every fetch, with its findings.
+    const fetches = await sql<{ id: number; source: string; status: string; params: Row; data: { findings?: string[] }; row_count: number; sha256: string; error: string | null; fetched_at: string; by: string }[]>`
+      select f.id::int, f.source, f.status, f.params, f.data, f.row_count, f.sha256, f.error, f.fetched_at, u.full_name as by
+      from data_fetches f join users u on u.id = f.fetched_by where f.deviation_id = ${id} order by f.id`;
+    if (fetches.length) {
+      content.push(heading('Data collected (read from other systems)'));
+      for (const f of fetches) {
+        content.push(t(`${f.source === 'batchwright' ? 'Batch record (Batchwright)' : 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
+        for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
+      }
+    }
     content.push(heading('CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], c.dueDate]), [60, 50, '*', 70, 70, 50]));
     content.push(heading('Attachments'), table(['File', 'Size', 'SHA-256', 'By', 'When', 'Withdrawn'], d.attachments.map((a) => [a.filename, a.size, a.sha256, a.uploadedBy, plant(a.uploadedAt as string), a.withdrawnReason ?? '']), ['*', 30, 120, 50, 60, 60]));
     content.push(heading('History (audit trail)'), table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], d.history.map((h) => [plant(h.at as string), h.actor ?? 'System', h.action, val(h.oldValue), val(h.newValue), h.reason ?? '']), [60, 50, 60, '*', '*', 60]));

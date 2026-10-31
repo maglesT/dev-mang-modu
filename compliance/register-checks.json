@@ -491,6 +491,13 @@
    "clause": "6.1",
    "anchor": "6.1.",
    "phrase": "corrective action shall be taken"
+  },
+  {
+   "rule": "DV-23",
+   "src": "A11",
+   "clause": "5",
+   "anchor": "Computerised systems exchanging data electronically",
+   "phrase": "correct and secure entry and processing of data"
   }
  ]
 }

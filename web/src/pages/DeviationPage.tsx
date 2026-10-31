@@ -6,6 +6,7 @@ import {
 } from '../components/Tools.js';
 import { Signals } from '../components/Signals.js';
 import { AiSuggest } from '../components/AiSuggest.js';
+import { DataCollection } from '../components/DataCollection.js';
 import { DmaicBar, PhaseHead } from '../components/DmaicBar.js';
 import {
   api, ApiError, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
@@ -171,7 +172,10 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       {d.step !== 'rejected' && <>
         <PhaseHead k="M" step={d.step} />
         <Signals id={d.id} onOpen={onOpenDeviation} />
-      </>}
+        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && (me.roles.includes('user') || me.roles.includes('qa'))} />
+        <Attachments d={d} me={me} open={open} onChange={load} />
+        </>}
+      {d.step === 'rejected' && <Attachments d={d} me={me} open={open} onChange={load} />}
 
       <PhaseHead k="A" step={d.step} />
       <section className="card">
@@ -212,7 +216,6 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
 
       <Closure d={d} me={me} onOpenCapa={onOpenCapa} onChange={load} />
 
-      <Attachments d={d} me={me} open={open} onChange={load} />
 
       <section className="card">
         <h2>History</h2>

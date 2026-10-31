@@ -92,6 +92,10 @@ export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
       whenItHappened: d.report.eventAt, productsAndBatches: d.report.products, immediateAction: d.report.immediateAction, reportersInitialImpact: d.report.initialImpact ?? null,
       planned: d.report.planned, classification: d.cls?.classification ?? null, type: d.type, impactAssessment: d.cls?.impact ?? null,
       hintsFromRules: signals?.flags.map((f) => f.text) ?? [],
+      // S17: what the latest fetch from the batch record and the Logbook showed (plain-words findings only).
+      dataFindings: (await sql<{ source: string; findings: string[] | null }[]>`
+        select distinct on (source) source, data->'findings' as findings from data_fetches
+        where deviation_id = ${id} and status = 'ok' order by source, id desc`).map((r) => ({ source: r.source, findings: r.findings ?? [] })),
       similarEarlierCases: signals?.similar.map((s) => ({ title: s.title, rootCause: s.rootCause, causes: s.causes, capas: s.capas.map((c) => c.description) })) ?? [],
     };
     const body = {

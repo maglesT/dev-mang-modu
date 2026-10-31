@@ -9,11 +9,12 @@ export interface ConnectOptions {
   searchPath?: string;
 }
 
-export function connect(url: string, { role, searchPath }: ConnectOptions = {}): Sql {
+export function connect(url: string, { role, searchPath }: ConnectOptions = {}, max = 10): Sql {
   // Sessions run in UTC so timestamps never depend on the server's local zone.
   const options = [role && `-c role=${role}`, searchPath && `-c search_path=${searchPath}`].filter(Boolean).join(' ');
   return postgres(url, {
     connection: { TimeZone: 'UTC', ...(options ? { options } : {}) },
     onnotice: () => {},
+    max,
   });
 }

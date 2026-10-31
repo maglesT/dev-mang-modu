@@ -17,7 +17,7 @@ Draft 2 also covers the CAPA register (D-13) and the closure rule (D-14), both o
 4. **Removability:** "Why required" names the clause that breaks if the rule is dropped.
    Candidates that failed are in section D.
 
-**Result: 22 product rules (DV-01 to DV-22) and 11 customer-procedure rules (CP-01 to CP-11).**
+**Result: 23 product rules (DV-01 to DV-23) and 11 customer-procedure rules (CP-01 to CP-11).** DV-23 was added on 31 Oct 2026 when the owner asked for data from the Logbook and Batchwright (D-37).
 
 **Source keys:** **211**, **P11**: 21 CFR Parts 211 and 11 (eCFR 2026-10-28). **C1 / C4 /
 C5**: EudraLex Vol 4 Part I, Chapters 1, 4 and 5. **A11**: Annex 11 (2011). **SchM**: Revised
@@ -60,6 +60,7 @@ Machine-checked clause/phrase pairs for every rule: `compliance/register-checks.
 | DV-20 | Critical manually entered data are independently checked, by a second person or by the system. Input is checked. | SchM 17.2.8, 20.6; A11 6; 211.68(b) | SchM 17.2.8 ("independently checked"); SchM 20.6 / A11 6. | System checks on every field (required, dates in order, no future event time). The free-text **product and batch**, which no system can check, are confirmed by QA at classification ("product and batch checked", a field, not a signature). QA must be someone other than the reporter, so it is a true second person, and it happens before release decisions rely on the lookup. | Reporter cannot classify their own deviation; classification needs the confirmation. |
 | DV-21 | Accurate, complete readable copies are available, showing changes since the original entry and the audit trail. | P11 11.10(b); 211.180(c); A11 8.1, 8.2 | P11 11.10(b); A11 8.1, 8.2. | One PDF per deviation (with its CAPAs) and per CAPA: every section with all versions marked, signatures, attachment list and history. Attachments downloadable as stored. Lists and trends print from the browser. | PDF includes versions, signatures and history. |
 | DV-22 | Records are protected and retrievable for the whole retention period. Backups are regular, exact, complete and safe from alteration or loss. Stored data are checked, and nothing is silently lost. | P11 11.10(c); 211.68(b), 211.180(a); C4 4.10, 4.11; A11 7.1, 7.2; SchM 17.2.7, 20.4, 20.9 | 211.68(b) (backup exact, complete, secure); SchM 20.9 (no permanent loss); SchM 20.4 (no omissions). | Nothing deleted, which meets every retention period (1 year after expiry, C4 4.11 five years after certification). Each save is all-or-nothing and confirmed on screen. The daily backup script writes a SHA-256 for each backup and copies it to a second, off-host location set at install (default kept 1 year). The restore check verifies the checksum. A nightly integrity check re-reads records and verifies signature hashes. | No delete path; tampered row detected; restore check passes with checksum. |
+| DV-23 | Data read from other systems (Logbook, batch record) is checked for correct and secure entry and processing. | A11 5 | A11 5 (data exchanged electronically needs built-in checks). Applies since the system reads the Logbook and Batchwright (D-37). | Read-only roles on versioned views (`_v1`), inside a read-only transaction; matched on the deviation's normalised batch numbers, its equipment and the equipment the batch used, and a window around the event. Each fetch is stored as an insert-only copy with source, views read, what was matched, read time, data-as-of, row count, any error, and a SHA-256 of the stored JSON, also written to the audit trail; the nightly integrity check recomputes it. A source that is missing or fails is recorded as such and never blocks the deviation. Nothing is written to the other systems. Findings are advice; the investigator decides. | Copy checksum matches and is audited; tampering detected; app cannot change or delete a copy; failure recorded. |
 
 ## B. Customer procedures (required; the product supports them but cannot do them)
 
@@ -84,7 +85,6 @@ Machine-checked clause/phrase pairs for every rule: `compliance/register-checks.
 | P11 11.30 (open systems) | Closed system: access is controlled by the manufacturer, including when hosted (P11 11.3(b)(4)). |
 | P11 11.10(h) (device checks) | No device input. |
 | P11 11.200(b), 11.300(c), (e) | No biometrics, tokens or cards. |
-| A11 5 (data exchange) | No interfaces in v1 (standalone). |
 | A11 15 (batch certification) | The system never certifies or releases batches. |
 | C5 5.44 / SchM 18.4.6 (yield deviation) | Recorded as an ordinary deviation. |
 | SchM 20.10 | Permits recording by other means; requires nothing of the product. |

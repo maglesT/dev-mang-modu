@@ -12,6 +12,7 @@ export interface IntegrityResult {
   capaVersions: number;
   signatures: number;
   attachments: number;
+  dataFetches: number;
   problems: string[];
 }
 
@@ -106,6 +107,18 @@ async function check(sql: Sql): Promise<IntegrityResult> {
   const fileIds = new Set(files.map((f) => f.id));
   for (const id of added.keys()) if (!fileIds.has(id)) problems.push(`Attachment ${id}: in the audit trail but missing from the records.`);
 
+  // S17 (DV-23): copies of Logbook and Batchwright data still match their SHA-256 and the one in the audit trail.
+  const fetches = await sql<{ id: number; ok: boolean; sha256: string }[]>`
+    select id::int, encode(sha256(convert_to(data::text, 'UTF8')), 'hex') = sha256 as ok, sha256 from data_fetches`;
+  const fetched = new Map((await sql<{ id: number; sha256: string }[]>`
+    select (new_value->>'fetchId')::int as id, new_value->>'sha256' as sha256 from audit_log where action = 'data.fetched'`).map((a) => [a.id, a.sha256]));
+  for (const f of fetches) {
+    if (!f.ok) problems.push(`Data fetch ${f.id}: the stored copy no longer matches its SHA-256.`);
+    if (fetched.get(f.id) !== f.sha256) problems.push(`Data fetch ${f.id}: its SHA-256 differs from the one in the audit trail.`);
+  }
+  const fetchIds = new Set(fetches.map((f) => f.id));
+  for (const id of fetched.keys()) if (!fetchIds.has(id)) problems.push(`Data fetch ${id}: in the audit trail but missing from the records.`);
+
   // A closed deviation has a signed latest closure section; a closed CAPA has its closing signature.
   const closed = await sql<{ id: number; number: string; ok: boolean }[]>`
     select d.id::int, d.number, exists (select 1 from latest_sections l join signatures g on g.object_type = 'section' and g.object_id = l.id and g.meaning = 'closed'
@@ -118,7 +131,7 @@ async function check(sql: Sql): Promise<IntegrityResult> {
     from capas c where c.step = 'closed'`;
   for (const c of closedCapas) if (!c.ok) problems.push(`CAPA ${c.number}: closed without its closing signature.`);
 
-  return { checkedAt: new Date(), sections: sections.length, capaVersions: capaVersions.length, signatures: sigs.length, attachments: files.length, problems };
+  return { checkedAt: new Date(), sections: sections.length, capaVersions: capaVersions.length, signatures: sigs.length, attachments: files.length, dataFetches: fetches.length, problems };
 }
 
 // Runs the check once a day from the server process (DV-22, "periodically").
