@@ -13,6 +13,7 @@ import { auditRoutes } from './routes/audit.js';
 import { listRoutes } from './routes/lists.js';
 import { deviationRoutes } from './routes/deviations.js';
 import { investigationRoutes } from './routes/investigation.js';
+import { signalRoutes } from './routes/signals.js';
 import { capaRoutes } from './routes/capas.js';
 import { reportRoutes } from './routes/reports.js';
 import { integrityRoutes } from './routes/integrity.js';
@@ -59,6 +60,7 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
   listRoutes(app, sql);
   deviationRoutes(app, sql);
   investigationRoutes(app, sql);
+  signalRoutes(app, sql);
   capaRoutes(app, sql);
   reportRoutes(app, sql);
   integrityRoutes(app, sql);

@@ -17,9 +17,10 @@ State on 2026-10-31, for the next working session.
 | Fix: audit trail 500 on text object ids (found on the server) | #9 | merged |
 | Compose defaults: localhost port, project name (D-25) | #10 | merged |
 | S7 fishbone in the investigation (D-26) | #11 | merged |
+| S8 "Things to look at": rule-based flags, similar earlier cases (D-28) | #12 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-27: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-28: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -63,7 +64,7 @@ Decisions D-01 to D-27: `docs/decisions.md`. Rule → test list: `docs/traceabil
 
 ## Next steps
 
-Owner asked (D-27): S8 rule-based flags and similar past deviations, then S9 AI-suggested causes with Gemini.
+Owner asked (D-27): S9 AI-suggested causes with Gemini (default model `gemini-4-argon`, Google's stable flagship on 31 Oct 2026; model name as a setting), in very simple language.
 
 ## Earlier possible follow-ups
 

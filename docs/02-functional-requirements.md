@@ -152,4 +152,5 @@ The trend view also counts CAPAs by source and status.
 - Attachments: core need (photos, printouts as evidence); A11 8.1 requires them to be printable with the record.
 - Reopen: needed so a closed record is never edited in place (A11 9, P11 11.10(e) audit trail).
 - Fishbone (six categories, optional) in the investigation: owner request (D-26).
+- "Things to look at" on the deviation page: rule-based repeat flags and similar earlier cases with their root causes and CAPAs (owner request, D-27, D-28). Advice only.
 - Deviation-type and area lists: needed for the trend view (counts by area and type); a free-text field cannot be counted.

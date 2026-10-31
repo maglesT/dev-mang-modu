@@ -81,3 +81,15 @@ test('DV-21: a file is attached and listed; withdrawing keeps it listed with the
   await page.getByRole('button', { name: 'Withdraw' }).click();
   await expect(page.getByText('withdrawn: Wrong printout')).toBeVisible();
 });
+
+test('S8: a deviation naming a batch from another deviation shows the hint, with a link to it', async ({ page }) => {
+  const batch = `RP-${Date.now().toString(36)}`;
+  const first = await inInvestigation(batch);
+  const second = await inInvestigation(batch);
+  await logIn(page, 'us2');
+  await page.getByRole('button', { name: second }).click();
+  const hints = page.getByRole('region', { name: 'Things to look at' });
+  await expect(hints).toContainText('This batch is also named in 1 other deviation');
+  await hints.getByRole('button', { name: first }).first().click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(first);
+});

@@ -76,7 +76,7 @@ export function App() {
         <Alerts me={me} />
         {page === 'home' && (isAdmin ? <Admin /> : <Home me={me} onReport={() => setPage('report')} onOpen={open} onCapas={() => setPage('capas')} />)}
         {page === 'report' && <ReportForm onDone={open} onCancel={() => setPage('home')} />}
-        {page === 'deviation' && <DeviationPage key={openId} me={me} id={openId} onBack={() => setPage('home')} onOpenCapa={openCapa} />}
+        {page === 'deviation' && <DeviationPage key={openId} me={me} id={openId} onBack={() => setPage('home')} onOpenCapa={openCapa} onOpenDeviation={open} />}
         {page === 'capas' && <CapaList me={me} onOpen={openCapa} />}
         {page === 'batch' && <BatchTrends onOpen={open} />}
         {page === 'capa' && <CapaPage key={openId} me={me} id={openId} onBack={() => setPage('capas')} onOpenDeviation={open} onOpenCapa={openCapa} />}
