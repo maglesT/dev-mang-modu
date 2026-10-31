@@ -13,7 +13,7 @@ State on 2026-10-31, for the next working session.
 | S3 investigation, corrections, attachments | #5 | merged |
 | S4 CAPA register, closure, reopen | #6 | merged |
 | S5 batch lookup page, trend view, PDF per deviation and per CAPA | #7 | merged |
-| S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | #8 | open, then merge |
+| S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | #8 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
 Decisions D-01 to D-24: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
