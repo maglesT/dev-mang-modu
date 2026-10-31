@@ -39,7 +39,9 @@ export function auditRoutes(app: FastifyInstance, sql: Sql) {
         -- User records are shown by their user ID (unique, never reused), not the internal number.
         case when a.object_type = 'user' then coalesce(t.username, a.object_id) end as subject
       from audit_log a left join users u on u.id = a.actor_id
-      left join users t on a.object_type = 'user' and a.object_id ~ '^[0-9]+$' and t.id = a.object_id::bigint
+      -- Compared as text: object_id also holds user names (unknown-user logins) and 'integrity', and SQL does not
+      -- promise to test a guard before a cast, so a ::bigint here fails once the planner joins by hash.
+      left join users t on a.object_type = 'user' and t.id::text = a.object_id
       where ${objectType ? sql`a.object_type = ${objectType}` : sql`true`}
         and ${objectId ? sql`a.object_id = ${objectId}` : sql`true`}
         and ${user

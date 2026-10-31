@@ -309,6 +309,22 @@ describe('audit trail view', () => {
     const plain = (await login(t.app, 'reader1')).cookie;
     expect((await call(t.app, plain, 'GET', '/api/audit')).statusCode).toBe(403);
   });
+
+  it('DV-15: the audit trail lists rows whose object is not a number (unknown-user login, integrity check)', async () => {
+    await login(t.app, 'no-such-user', 'wrong-password');
+    await t.owner`insert into audit_log (action, object_type, object_id) values ('integrity.passed', 'system', 'integrity')`;
+    // Enough users for the planner to join users by hash, which computes the join key for every audit row.
+    for (let i = 0; i < 200; i++) await seedUser(t.owner, uniq('bulk'), ['user']);
+    await t.owner`analyze`;
+    const qa = (await login(t.app, 'qa1')).cookie;
+    const all = await call(t.app, qa, 'GET', '/api/audit');
+    expect(all.statusCode).toBe(200);
+    expect(all.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'login.failed', subject: 'no-such-user' }),
+      expect.objectContaining({ objectType: 'system', objectId: 'integrity' }),
+    ]));
+    expect((await call(t.app, qa, 'GET', '/api/audit?user=qa1')).statusCode).toBe(200);
+  });
 });
 
 describe('review fixes (S1, deviations)', () => {
