@@ -1,6 +1,6 @@
 # Deliverable (a): Source documents
 
-Status: draft for owner approval · 2026-10-31
+Status: draft for owner approval · 2026-10-31 (all binding sources in hand)
 
 These are the official texts the compliance register will cite. Only clauses that a
 deviation system needs are used. The official files are kept **out of git** (`sources/`
@@ -67,8 +67,7 @@ laboratory process. If a site records an OOS as a deviation, the same screens wo
    an optional domain reference.
 2. **EU GMP Chapter 1:** no longer needed. I fetched rev 3 (in force 31 Jan 2013) from the
    official EU site (row 3).
-3. **Repository:** please create an empty private repo, e.g. `maglesT/deviations`, and
-   tell me its name. Until then the documents are kept locally in this session.
+3. **Repository:** done. The owner created `maglesT/dev-mang-modu` (2026-10-31).
 
 ## Simplicity review
 
