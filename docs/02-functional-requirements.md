@@ -1,8 +1,7 @@
 # Deliverable (b): Functional requirements (draft 1)
 
 Status: draft for owner approval · 2026-10-31.
-Clause references are a first reading (see `01-source-documents.md`). Rule IDs (DV-xx)
-come with the compliance register, deliverable (c).
+Rule IDs (DV-xx, CP-xx) refer to `03-compliance-register.md`.
 
 ## 1. Purpose and scope
 
@@ -34,8 +33,8 @@ with an e-signature. One web app in the browser (desktop PCs, tablets through th
 | **QA** | Everything a User can do, plus: classify, assign the investigator, approve a planned deviation, extend a target date (with reason), verify actions, decide on effectiveness checks, close or reopen a deviation. View the audit trail. |
 | **Admin** | Users and role assignment; the area and deviation-type lists; target-date settings. **No** deviation entries and **no** signatures. |
 
-A user may hold several roles. Nobody verifies their own action, and the person who
-reported a deviation cannot close it (see D-09).
+A user may hold several roles. There is no rule that the reporter cannot close or that an
+owner cannot verify their own action: no binding clause requires it (D-09, register section D).
 
 ## 3. The deviation record
 
@@ -110,6 +109,7 @@ A QA *Reopen* (with reason) moves a closed deviation back to Investigation.
 - CSV export and report builder: one PDF per deviation (printed copies, A11 8.1; inspection, 211.180(c)), plus browser print of lists and trends.
 - Batch or product master data: free text (owner default); no need for a product list.
 - Area-head acknowledgement of immediate action: not required by any clause.
+- "Reporter cannot close / owner cannot verify own action": no binding clause requires independence from the reporter; QA approval (DV-10) is enough (D-09).
 - Extension approval workflow: QA extends with a reason; that is enough.
 
 **Kept that someone could call extra**
@@ -120,6 +120,5 @@ A QA *Reopen* (with reason) moves a closed deviation back to Investigation.
 - Target dates and overdue: SchM 2.3.3 (CAPA completed in a timely manner) and the core need to see due dates at a glance.
 - Trend view: 211.180(e)(2) annual review of investigations, SchM 2.3.2(d), EU 1.10(iv). One table and one chart; no dashboard.
 - Attachments: core need (photos, printouts as evidence); A11 8.1 requires them to be printable with the record.
-- Reporter cannot close their own deviation: so that the quality unit's review is independent of the reporter (211.22(a)). Recorded as D-09 for the register to confirm or drop.
 - Reopen: needed so a closed record is never edited in place (A11 9, P11 11.10(e) audit trail).
 - Deviation-type and area lists: needed for the trend view (counts by area and type); a free-text field cannot be counted.
