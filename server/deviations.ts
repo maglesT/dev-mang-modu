@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Sql, Tx } from './db.js';
+import { contentHash } from './signatures.js';
 
 // Plant time zone for dates (target dates, overdue); storage stays UTC (DV-16).
 export const PLANT_TZ = 'Asia/Kolkata';
@@ -100,3 +101,33 @@ export const investigationData = z
     if (d.otherBatches.length === 0 && !d.noOtherReason) ctx.addIssue({ code: 'custom', path: ['otherBatches'], message: 'List the other batches or products checked, or say why none could be affected.' });
   });
 export type InvestigationData = z.infer<typeof investigationData>;
+
+export const latestId = async (tx: Tx | Sql, id: number, kind: string) =>
+  (await tx<{ id: number }[]>`select id::int from latest_sections where deviation_id = ${id} and kind = ${kind}`)[0]?.id;
+export const isSigned = async (tx: Tx | Sql, sectionId: number | undefined, meaning: string) =>
+  sectionId !== undefined && (await tx`select 1 from signatures where object_type = 'section' and object_id = ${sectionId} and meaning = ${meaning}`).length > 0;
+
+// The planned-deviation approval covers the report and the classification (S2). It stays valid only while
+// both are unchanged: the stored hash must match the hash of the current versions (DV-14, DV-16).
+async function approvalValid(tx: Tx, id: number): Promise<boolean> {
+  const rows = await tx<{ id: number; kind: string; data: unknown }[]>`
+    select id::int, kind, data from latest_sections where deviation_id = ${id} and kind in ('report', 'classification')`;
+  const report = rows.find((r) => r.kind === 'report');
+  const classification = rows.find((r) => r.kind === 'classification');
+  if (!classification) return false;
+  const [s] = await tx<{ content_hash: string }[]>`
+    select content_hash from signatures where object_type = 'section' and object_id = ${classification.id} and meaning = 'approved'`;
+  return s?.content_hash === contentHash('section', classification.id, { report: report?.data, classification: classification.data });
+}
+
+// The step a deviation is in after its sections changed (DV-14: a correction supersedes earlier signatures).
+export async function recomputeStep(tx: Tx, d: { id: number; planned: boolean; step: Step }): Promise<Step> {
+  if (d.step === 'closed' || d.step === 'rejected') return d.step;
+  const classification = await latestId(tx, d.id, 'classification');
+  if (!classification) return 'classification';
+  if (d.planned && !(await approvalValid(tx, d.id))) return 'approval';
+  const investigation = await latestId(tx, d.id, 'investigation');
+  if (!(await isSigned(tx, investigation, 'investigation_complete'))) return 'investigation';
+  return 'closure';
+}
+

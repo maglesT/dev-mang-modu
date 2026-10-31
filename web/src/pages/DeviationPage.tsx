@@ -378,8 +378,12 @@ function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: bo
   const withdraw = async (attachmentId: number) => {
     const reason = window.prompt('Reason for withdrawing this file (it stays in the record):')?.trim();
     if (!reason) return;
-    await api('POST', `/api/attachments/${attachmentId}/withdraw`, { reason });
-    await onChange();
+    try {
+      await api('POST', `/api/attachments/${attachmentId}/withdraw`, { reason });
+      await onChange();
+    } catch {
+      setError('Only the person who attached the file or QA can withdraw it.');
+    }
   };
   const canAct = open && !me.roles.includes('admin');
   return (
@@ -392,7 +396,7 @@ function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: bo
             {a.withdrawnAt ? <s>{a.filename}</s> : <a href={`/api/attachments/${a.id}`}>{a.filename}</a>}
             <span className="muted"> · {Math.ceil(a.size / 1024)} KB · {a.uploadedBy} · {plantTime(a.uploadedAt)}</span>
             {a.withdrawnAt ? <span className="muted"> · withdrawn: {a.withdrawnReason}</span>
-              : canAct && <button className="link small" onClick={() => withdraw(a.id)}>Withdraw</button>}
+              : canAct && (a.uploaderId === me.id || me.roles.includes('qa')) && <button className="link small" onClick={() => withdraw(a.id)}>Withdraw</button>}
           </li>
         ))}
       </ul>

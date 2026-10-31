@@ -5,7 +5,7 @@ import { audit } from '../audit.js';
 import { parseId, requireRole, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
 import {
-  PLANT_TZ, addSection, classificationData, normaliseBatch, overdueSql, reportData, targetDate, writeBatches,
+  PLANT_TZ, addSection, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -157,9 +157,10 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
       order by a.at, a.id`;
     const approval = d.step === 'approval' ? await approvalContent(sql, id) : null;
     // After a correction the latest investigation version needs signing again (DV-14).
-    const investigation = d.step === 'investigation' ? await latest(sql, id, 'investigation') : undefined;
+    const inv = d.step === 'investigation' ? await latest(sql, id, 'investigation') : undefined;
+    const investigation = inv && !(await isSigned(sql, inv.id, 'investigation_complete')) ? inv : undefined;
     const attachments = await sql`
-      select a.id::int, a.filename, a.mime, a.size, a.sha256, a.uploaded_at as "uploadedAt", u.full_name as "uploadedBy",
+      select a.id::int, a.filename, a.mime, a.size, a.sha256, a.uploaded_at as "uploadedAt", u.full_name as "uploadedBy", a.uploaded_by::int as "uploaderId",
         w.reason as "withdrawnReason", w.withdrawn_at as "withdrawnAt"
       from attachments a join users u on u.id = a.uploaded_by left join attachment_withdrawals w on w.attachment_id = a.id
       where a.deviation_id = ${id} order by a.id`;
@@ -226,7 +227,8 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
           if (d.reporter_id === req.user!.id) return reply.code(403).send({ error: 'reporter_cannot_approve' });
           const a = (await approvalContent(tx, id))!;
           await sign(tx, { signer, shownHash: body.data.contentHash, objectType: 'section', objectId: a.sectionId, meaning, content: a.content });
-          const step: Step = meaning === 'approved' ? 'investigation' : 'rejected';
+          // After a renewed approval the deviation returns to where it was (e.g. its signed investigation stays valid).
+          const step: Step = meaning === 'approved' ? await recomputeStep(tx, { ...d, step: 'investigation' }) : 'rejected';
           await tx`update deviations set step = ${step} where id = ${id}`;
           const reason = 'reason' in body.data ? (body.data.reason as string) : null;
           await audit(tx, { actorId: req.user!.id, action: `deviation.${meaning}`, objectType: 'deviation', objectId: id, new: { step }, reason });

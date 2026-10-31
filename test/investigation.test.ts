@@ -194,3 +194,34 @@ describe('attachments', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('review fixes (S3)', () => {
+  it('DV-02, DV-14: after a report correction a planned deviation can be approved again, and returns to its step', async () => {
+    const id = await inInvestigation(true);
+    await investigate(id);
+    expect((await get(id)).step).toBe('closure');
+    await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/correct`, { kind: 'report', data: report({ planned: true, plannedReason: 'Trial of supplier B' }), reason: 'Reason clarified' });
+    let d = await get(id);
+    expect(d.step).toBe('approval');
+    const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/approve`, { ...sig('qa2'), contentHash: d.approvalHash });
+    expect(res.statusCode, res.body).toBe(200);
+    d = await get(id);
+    // The investigation was signed before and is unchanged, so the deviation goes back to closure.
+    expect(d.step).toBe('closure');
+    expect(d.investigationHash).toBeNull();
+  });
+
+  it('DV-03: a classification correction checks the investigator and type like the first classification', async () => {
+    const id = await inInvestigation();
+    const data = { classification: 'major', typeId, impact: 'x', investigatorId: ids.admin1, productBatchChecked: true };
+    const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/correct`, { kind: 'classification', data, reason: 'swap' });
+    expect(res.statusCode).toBe(400);
+    expect((await get(id)).investigator).toBe('US2');
+  });
+
+  it('DV-01: a report correction needs an active area from the list', async () => {
+    const id = await inInvestigation();
+    const res = await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/correct`, { kind: 'report', data: report({ areaId: 999999 }), reason: 'x' });
+    expect(res.statusCode).toBe(400);
+  });
+});

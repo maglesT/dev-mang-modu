@@ -6,7 +6,7 @@ import { audit } from '../audit.js';
 import { parseId, requireRole, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, classificationData, investigationData, reportData, targetDate, writeBatches,
+  addSection, classificationData, investigationData, latestId, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -25,10 +25,6 @@ const lockHeader = async (tx: Tx, id: number) =>
   (await tx<Header[]>`select id::int, planned, reporter_id::int, step, classification, investigator_id::int
     from deviations where id = ${id} for update`)[0];
 
-const latestId = async (tx: Tx | Sql, id: number, kind: string) =>
-  (await tx<{ id: number }[]>`select id::int from latest_sections where deviation_id = ${id} and kind = ${kind}`)[0]?.id;
-const isSigned = async (tx: Tx | Sql, sectionId: number | undefined, meaning: string) =>
-  sectionId !== undefined && (await tx`select 1 from signatures where object_type = 'section' and object_id = ${sectionId} and meaning = ${meaning}`).length > 0;
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
 const signFail = (reply: FastifyReply, e: unknown) => {
@@ -36,30 +32,6 @@ const signFail = (reply: FastifyReply, e: unknown) => {
   throw e;
 };
 const otherRows = (d: InvestigationData) => d.otherBatches.map((b) => ({ product: b.product, batch: b.batch, outcome: b.outcome, role: 'other' as const }));
-
-// The planned-deviation approval covers the report and the classification (S2). It stays valid only while
-// both are unchanged: the stored hash must match the hash of the current versions (DV-14, DV-16).
-async function approvalValid(tx: Tx, id: number): Promise<boolean> {
-  const rows = await tx<{ id: number; kind: string; data: unknown }[]>`
-    select id::int, kind, data from latest_sections where deviation_id = ${id} and kind in ('report', 'classification')`;
-  const report = rows.find((r) => r.kind === 'report');
-  const classification = rows.find((r) => r.kind === 'classification');
-  if (!classification) return false;
-  const [s] = await tx<{ content_hash: string }[]>`
-    select content_hash from signatures where object_type = 'section' and object_id = ${classification.id} and meaning = 'approved'`;
-  return s?.content_hash === contentHash('section', classification.id, { report: report?.data, classification: classification.data });
-}
-
-// The step a deviation is in after its sections changed (DV-14: a correction supersedes earlier signatures).
-async function recomputeStep(tx: Tx, d: Header): Promise<Step> {
-  if (d.step === 'closed' || d.step === 'rejected') return d.step;
-  const classification = await latestId(tx, d.id, 'classification');
-  if (!classification) return 'classification';
-  if (d.planned && !(await approvalValid(tx, d.id))) return 'approval';
-  const investigation = await latestId(tx, d.id, 'investigation');
-  if (!(await isSigned(tx, investigation, 'investigation_complete'))) return 'investigation';
-  return 'closure';
-}
 
 export function investigationRoutes(app: FastifyInstance, sql: Sql) {
   const actor = { preHandler: requireRole('user', 'qa') };
@@ -144,12 +116,25 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
       if (!allowed) return { status: 403, error: 'forbidden' };
       if (kind === 'report' && (data.data as ReportData).planned !== d.planned) return { status: 400, error: 'invalid_request', problems: ['Planned or unplanned cannot be changed.'] };
 
+      if (kind === 'report') {
+        const [area] = await tx`select 1 from areas where id = ${(data.data as ReportData).areaId} and active`;
+        if (!area) return { status: 400, error: 'invalid_request', problems: ['Choose an area from the list.'] };
+      }
+      if (kind === 'classification') {
+        // The same checks as the first classification (DV-03, D-08: Admin never investigates).
+        const c = data.data as ClassificationData;
+        const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
+        const [inv] = await tx`select 1 from users u where u.id = ${c.investigatorId} and u.active and u.locked_at is null
+          and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))`;
+        if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
+      }
       const section = await addSection(tx, id, kind, data.data, user.id, reason);
       if (kind === 'report') {
         const r = data.data as ReportData;
-        const [area] = await tx`select 1 from areas where id = ${r.areaId}`;
-        if (!area) throw new Error('unknown area');
         await writeBatches(tx, id, section.id, r.products.map((p) => ({ ...p, role: 'own' as const })));
+        // The approval of a planned deviation covers the report; a new classification version carries the renewed approval.
+        const cls = await tx<{ data: unknown }[]>`select data from latest_sections where deviation_id = ${id} and kind = 'classification'`;
+        if (d.planned && cls[0]) await addSection(tx, id, 'classification', cls[0].data, user.id, 'Report corrected: approval to be renewed');
       } else if (kind === 'classification') {
         const c = data.data as ClassificationData;
         const target = c.classification !== d.classification ? await targetDate(tx, id, c.classification) : null;

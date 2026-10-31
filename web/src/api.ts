@@ -162,7 +162,7 @@ export interface Deviation {
   history: { id: number; at: string; actor: string | null; action: string; oldValue: unknown; newValue: unknown; reason: string | null }[];
   approvalHash: string | null;
   investigationHash: string | null;
-  attachments: { id: number; filename: string; mime: string; size: number; sha256: string; uploadedAt: string; uploadedBy: string; withdrawnReason: string | null; withdrawnAt: string | null }[];
+  attachments: { id: number; filename: string; mime: string; size: number; sha256: string; uploadedAt: string; uploadedBy: string; uploaderId: number; withdrawnReason: string | null; withdrawnAt: string | null }[];
 }
 
 // A datetime-local value in the browser's own zone.
