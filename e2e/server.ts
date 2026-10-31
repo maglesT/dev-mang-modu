@@ -3,8 +3,8 @@ import { connect } from '../server/db.js';
 import { migrate } from '../db/migrate.js';
 import { buildApp } from '../server/app.js';
 import globalSetup from '../test/global-setup.js';
-import { APP_ROLE, TEST_DATABASE_URL } from '../test/helpers.js';
-import { E2E_PORT, E2E_SCHEMA } from './config.js';
+import { APP_ROLE, TEST_DATABASE_URL, seedUser } from '../test/helpers.js';
+import { E2E_PORT, E2E_SCHEMA, USERS } from './config.js';
 
 await globalSetup();
 const owner = connect(TEST_DATABASE_URL);
@@ -15,6 +15,7 @@ await owner.end();
 
 const schemaOwner = connect(TEST_DATABASE_URL, { searchPath: E2E_SCHEMA });
 await migrate(schemaOwner);
+for (const [username, roles] of Object.entries(USERS)) await seedUser(schemaOwner, username, [...roles]);
 await schemaOwner.end();
 
 const sql = connect(TEST_DATABASE_URL, { role: APP_ROLE, searchPath: E2E_SCHEMA });
