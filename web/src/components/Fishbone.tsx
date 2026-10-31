@@ -1,4 +1,5 @@
 // Fishbone (Ishikawa) diagram: possible causes per category, pointing at the deviation (D-26).
+// Same categories as FISHBONE in server/deviations.ts (the web build cannot import server code); keep both in step.
 // Editable in the investigation form, read-only on the page. Three categories above the spine, three below.
 export const FISHBONE = [
   ['man', 'People'], ['machine', 'Machine / equipment'], ['method', 'Method'],

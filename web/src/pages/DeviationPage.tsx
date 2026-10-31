@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Fishbone, emptyFishbone, hasFishbone } from '../components/Fishbone.js';
+import { FISHBONE, Fishbone, emptyFishbone, hasFishbone } from '../components/Fishbone.js';
 import {
   api, ApiError, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
   type Deviation, type Me, type NamedItem, type SectionVersion,
@@ -51,7 +51,11 @@ function Versions({ d, kind }: { d: Deviation; kind: Kind }) {
       {all.slice(0, -1).reverse().map((v) => (
         <div key={v.id} className="old-version">
           <b>Version {v.version}</b> · {v.savedBy} · {plantTime(v.savedAt)}{v.reason ? ` · reason: ${v.reason}` : ''}
-          <Fields rows={Object.entries(v.data).map(([k, x]) => [k, typeof x === 'object' ? JSON.stringify(x) : str(x)])} />
+          <Fields rows={Object.entries(v.data).flatMap(([k, x]): [string, ReactNode][] =>
+            // The fishbone shows one line per category with text, as in the PDF (D-26).
+            k === 'fishbone' && x && typeof x === 'object'
+              ? FISHBONE.filter(([c]) => str((x as Record<string, unknown>)[c]).trim()).map(([c, label]) => [`fishbone: ${label}`, str((x as Record<string, unknown>)[c])])
+              : [[k, typeof x === 'object' ? JSON.stringify(x) : str(x)]])} />
         </div>
       ))}
     </details>
