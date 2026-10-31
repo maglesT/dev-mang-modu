@@ -21,17 +21,29 @@ export async function buildQuery(sql: Sql, deviationId: number): Promise<(Query 
   const usable = rows.filter((b) => b.batch_norm && !NOT_A_BATCH.has(b.batch_norm));
   const eventAt = new Date(r.data.eventAt);
   // The equipment field is free text: every word that looks like a code (letters, digits, dashes) is tried.
-  const equipment = [...new Set(String(r.data.equipment ?? '').split(/[\s,;/]+/).map((x) => x.trim()).filter((x) => /^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$/.test(x)))];
+  // Only words with a digit count as codes (PRESS-01, FBD-01), so "Tablet press" is not looked up as two codes.
+  const equipment = [...new Set(String(r.data.equipment ?? '').split(/[\s,;/]+/).map((x) => x.trim()).filter((x) => /^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$/.test(x) && /\d/.test(x)))];
   return {
     batches: usable.map((b) => b.batch), batchesNorm: usable.map((b) => b.batch_norm), equipment, eventAt,
     from: new Date(eventAt.getTime() - WINDOW_BEFORE_DAYS * 86_400_000), to: new Date(eventAt.getTime() + WINDOW_AFTER_DAYS * 86_400_000),
   };
 }
 
+// The error shown and stored says what kind of problem it was; the driver's text (host, port, role) goes to the log only.
+export function plainError(e: unknown): string {
+  const m = e instanceof Error ? `${(e as { code?: string }).code ?? ''} ${e.message}` : '';
+  if (/ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|ECONNRESET|connect/i.test(m)) return 'The system could not be reached.';
+  if (/password|authentication|no pg_hba|28P01|28000/i.test(m)) return 'The read-only login was refused.';
+  if (/statement timeout|57014|canceling statement/i.test(m)) return 'The system took too long to answer (over 15 s).';
+  if (/does not exist|42P01|42703|3F000/i.test(m)) return 'An expected report view is missing or has changed.';
+  if (/permission denied|42501/i.test(m)) return 'The read-only login may not read the report views.';
+  return 'The data could not be read.';
+}
+
 type Outcome = { source: 'logbook' | 'batchwright'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
 const count = (d: Record<string, unknown>) => Object.values(d).reduce<number>((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
 
-export async function fetchRelated(sql: Sql, sources: Sources, deviationId: number, userId: number) {
+export async function fetchRelated(sql: Sql, sources: Sources, deviationId: number, userId: number, log: (msg: string) => void = () => {}) {
   const q = await buildQuery(sql, deviationId);
   if (!q) return null;
   const outcomes: Outcome[] = [];
@@ -44,7 +56,8 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
       usedEquipment = d.equipmentUsed;
       outcomes.push({ source: 'batchwright', status: 'ok', data: { ...d, findings: batchwrightFindings(d) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: BATCHWRIGHT_VIEWS });
     } catch (e) {
-      outcomes.push({ source: 'batchwright', status: 'failed', data: {}, rows: 0, error: e instanceof Error ? e.message.slice(0, 500) : 'failed', views: BATCHWRIGHT_VIEWS });
+      log(`Batchwright read failed: ${e instanceof Error ? e.message : String(e)}`);
+      outcomes.push({ source: 'batchwright', status: 'failed', data: {}, rows: 0, error: plainError(e), views: BATCHWRIGHT_VIEWS });
     }
   }
   const lq = { ...q, equipment: [...new Set([...q.equipment, ...usedEquipment])] };
@@ -54,7 +67,8 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
       const d = await readLogbook(sources.logbook, lq);
       outcomes.push({ source: 'logbook', status: 'ok', data: { ...d, findings: logbookFindings(d, lq) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: LOGBOOK_VIEWS });
     } catch (e) {
-      outcomes.push({ source: 'logbook', status: 'failed', data: {}, rows: 0, error: e instanceof Error ? e.message.slice(0, 500) : 'failed', views: LOGBOOK_VIEWS });
+      log(`Logbook read failed: ${e instanceof Error ? e.message : String(e)}`);
+      outcomes.push({ source: 'logbook', status: 'failed', data: {}, rows: 0, error: plainError(e), views: LOGBOOK_VIEWS });
     }
   }
   const params = { batches: q.batches, equipment: lq.equipment, eventAt: q.eventAt, from: q.from, to: q.to };

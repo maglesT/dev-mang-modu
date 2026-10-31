@@ -22,6 +22,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     stopIntegrity();
     await app.close();
     await sql.end();
+    // The read-only connections to the Logbook and Batchwright too.
+    await Promise.all(Object.values(sources).map((x) => x.sql.end()));
     process.exit(0);
   });
 }

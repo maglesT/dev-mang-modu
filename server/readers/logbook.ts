@@ -1,4 +1,5 @@
 import type { Sql } from '../db.js';
+import { PLANT_TZ } from '../deviations.js';
 
 // S17 (D-37, DV-23): reads the Logbook's read-only report views (contract: docs/07-data-contracts.md).
 // Nothing is written to the Logbook. Values are compared as text; no casts on the other system's data.
@@ -24,6 +25,8 @@ export async function readLogbook(src: Source, q: Query): Promise<LogbookData> {
   const v = (name: string) => s(`${src.schema}.${name}`);
   const codes = q.equipment.map((c) => c.toUpperCase());
   return s.begin('read only', async (tx) => {
+    // One slow view must not hold a connection: every read in this transaction stops after 15 s.
+    await tx`set local statement_timeout = '15s'`;
     const equipment = await tx<LogbookData['equipment']>`
       select code, name, kind, location, needs_calibration, sop_refs from ${v('equipment_v1')}
       where upper(code) = any(${codes}) order by code`;
@@ -33,7 +36,7 @@ export async function readLogbook(src: Source, q: Query): Promise<LogbookData> {
       from ${v('entry_v1')}
       where (upper(equipment_code) = any(${codes}) and coalesce(activity_end, activity_start, entered_at) between ${q.from} and ${q.to})
          or (${q.batchesNorm.length > 0} and ${tx.unsafe(norm('batch'))} = any(${q.batchesNorm}))
-      order by coalesce(activity_start, entered_at), entry_id`;
+      order by coalesce(activity_start, entered_at), entry_id limit 500`;
     // The last preventive maintenance before the event, whenever it was.
     const lastPreventive = await tx<LogbookData['lastPreventive']>`
       select distinct on (upper(equipment_code)) equipment_code, coalesce(activity_end, activity_start) as at, data
@@ -45,7 +48,8 @@ export async function readLogbook(src: Source, q: Query): Promise<LogbookData> {
     const calibrations = await tx<LogbookData['calibrations']>`
       select equipment_code, performed_at, result, next_due::text, certificate_ref from ${v('calibration_v1')}
       where upper(equipment_code) = any(${codes}) and performed_at <= ${q.to}
-      order by equipment_code, performed_at desc`;
+        and performed_at >= ${new Date(q.eventAt.getTime() - 2 * 365 * 86_400_000)}
+      order by equipment_code, performed_at desc limit 50`;
     const sops = await tx<LogbookData['sops']>`select type, sop_ref from ${v('logbook_sop_v1')} order by type, sop_ref`;
     const [asOf] = await tx<{ at: string | null }[]>`select greatest(
       (select max(data_as_of) from ${v('equipment_v1')} where upper(code) = any(${codes})),
@@ -55,9 +59,9 @@ export async function readLogbook(src: Source, q: Query): Promise<LogbookData> {
   });
 }
 
-const DAY = 86_400_000;
-const plantDate = (d: Date) => new Date(d.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
-const days = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / DAY);
+// Calendar days in plant time (a breakdown late the evening before is "1 day before").
+const plantDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: PLANT_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const days = (a: Date, b: Date) => Math.round((Date.parse(plantDate(a)) - Date.parse(plantDate(b))) / 86_400_000);
 
 // Plain-words findings for the investigator (advice; the copy above is the evidence).
 export function logbookFindings(d: LogbookData, q: Query): string[] {
@@ -75,7 +79,8 @@ export function logbookFindings(d: LogbookData, q: Query): string[] {
     else if (days(q.eventAt, new Date(pm.at)) > 30) out.push(`${e.code}: last preventive maintenance ${days(q.eventAt, new Date(pm.at))} days before the event. Check whether it was due.`);
   }
   for (const b of d.entries.filter((x) => x.type === 'maintenance' && x.data?.kind === 'breakdown')) {
-    const at = new Date(b.activity_start ?? b.activity_end ?? q.eventAt);
+    // The Logbook records when a breakdown happened in data.occurredAt; the activity is the repair.
+    const at = new Date(String(b.data.occurredAt ?? b.activity_start ?? b.activity_end ?? q.eventAt));
     const when = days(q.eventAt, at);
     out.push(`${b.equipment_code}: breakdown ${when > 0 ? `${when} day(s) before` : when < 0 ? `${-when} day(s) after` : 'on the day of'} the event${b.data.failureCategory ? ` (${String(b.data.failureCategory)})` : ''}${b.data.rootCause ? `: ${String(b.data.rootCause)}` : ''}.`);
   }

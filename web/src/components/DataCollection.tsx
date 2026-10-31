@@ -36,7 +36,7 @@ function SourceView({ f }: { f: Fetch }) {
       {f.status === 'not_configured' && <p className="muted small">Not connected on this installation.</p>}
       {f.status === 'failed' && <p className="error">Could not read it: {f.error}</p>}
       {f.status === 'ok' && <>
-        {(d.findings ?? []).length > 0 && <ul className="flags" aria-label={`${NAME[f.source]}: what the data shows`}>{d.findings!.map((x) => <li key={x}>{x}</li>)}</ul>}
+        {(d.findings ?? []).length > 0 && <ul className="flags" aria-label={`${NAME[f.source]}: what the data shows`}>{d.findings!.map((x, i) => <li key={i}>{x}</li>)}</ul>}
         {f.source === 'batchwright' ? <>
           <Table title="Batches" rows={list(d.batches)} cols={[['Batch', (r) => s(r.batch_number)], ['Product', (r) => s(r.product_code)], ['Status', (r) => s(r.status)], ['Issued', (r) => time(r.issued_at)], ['Released', (r) => (r.released ? 'yes' : 'no')]]} />
           <Table title="Steps, equipment and rooms" rows={list(d.steps)} cols={[['Batch', (r) => s(r.batch_number)], ['Step', (r) => s(r.step_id ?? r.step)], ['Equipment', (r) => s(r.equipment_code)], ['Room', (r) => s(r.room_code)], ['Start', (r) => time(r.started_at)], ['End', (r) => time(r.ended_at)], ['Material lots', (r) => list(r.material_lots).map((l) => s(l.lot)).join(', ')]]} />
@@ -66,7 +66,7 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
   useEffect(() => { void load().catch(() => setFetches([])); }, [deviationId]);
   const fetchNow = async () => {
     setBusy(true); setError('');
-    try { await api('POST', `/api/deviations/${deviationId}/fetch`, {}); await load(); } catch { setError('The data could not be fetched. Please try again.'); } finally { setBusy(false); }
+    try { await api('POST', `/api/deviations/${deviationId}/fetch`, {}); await load(); } catch (e) { setError(e instanceof Error && e.message !== 'too_soon' && e.message.length > 12 ? e.message : 'The data was fetched less than 30 seconds ago, or could not be fetched. Please try again shortly.'); } finally { setBusy(false); }
   };
   const latest = (src: Fetch['source']) => fetches?.find((f) => f.source === src);
   const first = fetches?.[0];

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runIntegrityCheck } from '../server/integrity.js';
 import { buildApp } from '../server/app.js';
+import { plainError } from '../server/readers/fetch.js';
 import { call, freshApp, freshDb, login, seedUser, type TestApp } from './helpers.js';
 
 // S17 (D-37, DV-23): "Fetch related data" from the Logbook and Batchwright. In CI the two systems are stood in
@@ -45,7 +46,7 @@ async function standIns(o: TestApp['owner']) {
       (3, 'HT-01', 'Hardness tester', 'instrument', 'COMP-1', true, true, '{}');
     insert into ${LB}.entry_v1 (entry_id, version, equipment_code, equipment_kind, type, change, activity_start, activity_end, product_code, batch, data, entered_by, signed) values
       (10, 1, 'PRESS-01', 'equipment', 'maintenance', 'completed', '${at(-40 * 24 - 2)}', '${at(-40 * 24)}', null, null, '{"kind":"preventive"}', 'Eng One', '{performed,verified}'),
-      (11, 1, 'PRESS-01', 'equipment', 'maintenance', 'completed', '${at(-50)}', '${at(-48)}', null, null, '{"kind":"breakdown","failureCategory":"mechanical","rootCause":"Upper punch sticking"}', 'Eng One', '{performed,verified,released}'),
+      (11, 1, 'PRESS-01', 'equipment', 'maintenance', 'completed', '${at(-50)}', '${at(-48)}', null, null, '{"kind":"breakdown","failureCategory":"mechanical","rootCause":"Upper punch sticking","occurredAt":"${at(-49)}"}', 'Eng One', '{performed,verified,released}'),
       (12, 1, 'PRESS-01', 'equipment', 'equipment_use', 'completed', '${at(-3)}', '${at(1.5)}', 'RAB-GR-20', 'RAB26004', '{}', 'Op One', '{performed}'),
       (13, 1, 'PRESS-01', 'equipment', 'equipment_cleaning', 'completed', '${at(-24)}', '${at(-23)}', null, null, '{}', 'Op One', '{performed}');
     insert into ${LB}.calibration_v1 (equipment_code, performed_at, result, next_due, certificate_ref) values ('HT-01', '${at(-93 * 24)}', 'pass', '${day(-1)}', 'CAL-77');
@@ -99,7 +100,7 @@ describe('data collection (S17)', () => {
     const lb = f.find((x) => x.source === 'logbook')!;
     expect([bw.status, lb.status]).toEqual(['ok', 'ok']);
     const bwText = bw.data.findings.join('\n');
-    expect(bwText).toMatch(/breaking_force at step TB-13@: check failed; 2 of 3 reading\(s\) outside the limit: 48 N, 52 N/);
+    expect(bwText).toMatch(/breaking_force at step TB-13@: 2 of 3 reading\(s\) outside the limit: 48 N, 52 N \(limits 60 to 140 N\)/);
     expect(bwText).toMatch(/dryer.inlet_temp_C .*51.0 degC inside the limits but close to one/);
     expect(bwText).toMatch(/exception EX-4/);
     // The batch's equipment (FBD-01, HT-01) was looked up in the Logbook although the report named none.
@@ -108,15 +109,24 @@ describe('data collection (S17)', () => {
   });
 
   it('DV-23: the equipment named in the report is looked up too: PM age and a breakdown before the event', async () => {
-    const id = (await report({ equipment: 'PRESS-01' })).json().id as number;
+    const id = (await report({ equipment: 'Tablet press PRESS-01' })).json().id as number;
     await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/fetch`, {});
     const f = (await call(t.app, c.us1!, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; data: { findings: string[]; entries: unknown[]; sops: unknown[] } }[];
     const lb = f.find((x) => x.source === 'logbook')!;
     const text = lb.data.findings.join('\n');
     expect(text).toMatch(/PRESS-01: last preventive maintenance 40 days before the event/);
-    expect(text).toMatch(/PRESS-01: breakdown 2 day\(s\) before the event \(mechanical\): Upper punch sticking/);
+    // Calendar days in plant time between the breakdown (49 h before) and the event.
+    const plant = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    const n = Math.round((Date.parse(plant(event)) - Date.parse(plant(new Date(at(-49))))) / 86_400_000);
+    expect(text).toContain(`PRESS-01: breakdown ${n} day(s) before the event (mechanical): Upper punch sticking.`);
     expect(lb.data.entries.length).toBeGreaterThanOrEqual(2);
     expect(lb.data.sops).toEqual([{ type: 'maintenance', sop_ref: 'SOP-ENG-010' }]);
+    // Only words with a digit count as equipment codes ("Tablet press" is not looked up).
+    const params = (f as unknown as { source: string; params: { equipment: string[] } }[]).find((x) => x.source === 'logbook')!.params.equipment;
+    expect(params).toContain('PRESS-01');
+    expect(params).not.toContain('Tablet');
+    // A second fetch within 30 seconds is refused (each fetch is kept).
+    expect((await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/fetch`, {})).statusCode).toBe(429);
   });
 
   it('DV-23: each copy is insert-only with a SHA-256 in the record and the audit trail; the integrity check catches a changed copy', async () => {
@@ -160,8 +170,21 @@ describe('data collection (S17)', () => {
     const id2 = (await report()).json().id as number;
     await call(bad, bc, 'POST', `/api/deviations/${id2}/fetch`, {});
     const h = (await call(bad, bc, 'GET', `/api/deviations/${id2}/fetches`)).json() as { source: string; status: string; error: string | null }[];
-    expect(h.find((x) => x.source === 'logbook')).toMatchObject({ status: 'failed', error: expect.stringMatching(/no_such_schema/) });
+    expect(h.find((x) => x.source === 'logbook')).toMatchObject({ status: 'failed', error: 'An expected report view is missing or has changed.' });
     expect(h.find((x) => x.source === 'batchwright')!.status).toBe('ok');
     await bad.close();
+  });
+
+  it('DV-23: an error is stored and shown in plain words, never with the host, port or login name', () => {
+    const cases: [Error, string][] = [
+      [Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), { code: 'ECONNREFUSED' }), 'The system could not be reached.'],
+      [new Error('password authentication failed for user "ebmr_report"'), 'The read-only login was refused.'],
+      [new Error('canceling statement due to statement timeout'), 'The system took too long to answer (over 15 s).'],
+      [new Error('relation "report.cpp_value_v1" does not exist'), 'An expected report view is missing or has changed.'],
+    ];
+    for (const [e, text] of cases) {
+      expect(plainError(e)).toBe(text);
+      expect(plainError(e)).not.toMatch(/10\.0\.0\.5|5432|ebmr_report/);
+    }
   });
 });

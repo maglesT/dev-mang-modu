@@ -28,6 +28,7 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
     return { batches: [], steps: [], values: [], exceptions: [], alarms: [], references: [], equipmentUsed: [], readAt: now!.at, dataAsOf: null };
   }
   return s.begin('read only', async (tx) => {
+    await tx`set local statement_timeout = '15s'`;
     const b = tx.unsafe(norm('batch_number'));
     const batches = await tx<BatchwrightData['batches']>`
       select batch_number, product_code, strength, family_code, status, issued_at, completed_at, released
@@ -35,18 +36,18 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
     const steps = await tx<BatchwrightData['steps']>`
       select batch_number, step, step_id, nullif(equipment_code, '') as equipment_code, nullif(equipment_type, '') as equipment_type,
         nullif(room_code, '') as room_code, started_at, ended_at, coalesce(material_lots, '[]'::jsonb) as material_lots
-      from ${v('step_use_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, started_at nulls last`;
+      from ${v('step_use_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, started_at nulls last limit 1000`;
     const values = await tx<BatchwrightData['values']>`
       select batch_number, kind, item, step, attempt, reading, role, value_text, unit, lower_text, upper_text, target_text, limit_tier, failed, recorded_at
-      from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, recorded_at nulls last, step, item, reading`;
+      from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, recorded_at nulls last, step, item, reading limit 3000`;
     const exceptions = await tx<BatchwrightData['exceptions']>`
       select batch_number, exception_id, exception_type, category, severity, raised_at
-      from ${v('exception_v1')} where ${b} = any(${q.batchesNorm}) order by raised_at`;
+      from ${v('exception_v1')} where ${b} = any(${q.batchesNorm}) order by raised_at limit 500`;
     const alarms = await tx<BatchwrightData['alarms']>`
       select alarm_code, source, gmp_critical, subject_kind, subject_code, raised_at, acked_at, coalesce(batch_numbers, '{}') as batch_numbers
       from ${v('alarm_v1')} a
       where exists (select 1 from unnest(a.batch_numbers) n where ${tx.unsafe(norm('n'))} = any(${q.batchesNorm}))
-      order by raised_at`;
+      order by raised_at limit 200`;
     const references = await tx<BatchwrightData['references']>`
       select batch_number, kind, code, version, title from ${v('batch_reference_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, kind, code`;
     const [asOf] = await tx<{ at: string | null }[]>`select greatest(
@@ -78,11 +79,15 @@ export function batchwrightFindings(d: BatchwrightData): string[] {
     const hi = num(xs[0]!.upper_text);
     const unit = xs[0]!.unit ?? '';
     const limits = lo !== null || hi !== null ? ` (limits ${lo ?? '–'} to ${hi ?? '–'} ${unit})` : '';
-    // Batchwright marks the readings of a failed check; the values actually outside the limits are named.
-    const outside = xs.filter((x) => { const n = num(x.value_text); return n !== null && ((lo !== null && n < lo) || (hi !== null && n > hi)); });
-    if (xs.some((x) => x.failed) || outside.length) {
-      const named = outside.length ? outside : xs.filter((x) => x.failed);
-      out.push(`${batch}: ${item} at step ${step}: check failed; ${named.length} of ${xs.length} reading(s) outside the limit: ${named.map((x) => `${x.value_text} ${unit}`.trim()).join(', ')}${limits}.`);
+    // Each reading against its own limits; Batchwright marks every reading of a failed check, so only the
+    // readings actually outside their limits are named.
+    const outside = xs.filter((x) => { const n = num(x.value_text); const l = num(x.lower_text); const h = num(x.upper_text); return n !== null && ((l !== null && n < l) || (h !== null && n > h)); });
+    if (outside.length) {
+      out.push(`${batch}: ${item} at step ${step}: ${outside.length} of ${xs.length} reading(s) outside the limit: ${outside.map((x) => `${x.value_text} ${unit}`.trim()).join(', ')}${limits}.`);
+      continue;
+    }
+    if (xs.some((x) => x.failed)) {
+      out.push(`${batch}: ${item} at step ${step}: the check failed (${xs.filter((x) => x.failed).length} of ${xs.length} reading(s) marked failed${xs[0]!.limit_tier ? `, ${xs[0]!.limit_tier.toLowerCase()} limit` : ''})${limits}.`);
       continue;
     }
     // Inside the limits but close to one (within 10 % of the range): worth a look.
