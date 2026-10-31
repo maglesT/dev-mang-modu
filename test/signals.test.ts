@@ -53,6 +53,12 @@ describe('investigation hints (S8)', () => {
     expect(f?.text).toMatch(/also named in 1 other deviation/);
   });
 
+  it('S8: placeholder batches such as "N/A" or "none" never count as the same batch', async () => {
+    await report(await newArea(), { products: [{ product: 'Facility', batch: 'N/A' }] });
+    const id = await report(await newArea(), { products: [{ product: 'Utilities', batch: 'n.a.' }] });
+    expect(await kinds(id)).not.toContain('batch');
+  });
+
   it('S8: the same equipment is flagged once; the same area only from two other deviations', async () => {
     const a = await newArea();
     await report(a, { equipment: 'Comp-01' });

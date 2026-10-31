@@ -7,7 +7,11 @@ import { FISHBONE, normaliseBatch } from '../deviations.js';
 // Advice only: nothing here is saved, signed or required. Values are compared as text, never cast.
 const WINDOW_DAYS = 90;
 const LATE_REPORT_DAYS = 3;
+// Similar earlier cases come from the last year (and any deviation naming the same batch).
+const SIMILAR_DAYS = 365;
 const NOT_A_PRODUCT = new Set(['none', 'na', 'n/a', 'nil', '-']);
+// Placeholder batch numbers (after normalising) never count as the same batch.
+const NOT_A_BATCH = new Set(['none', 'na', 'nil', 'nan', 'null', 'nobatch', 'notapplicable', '0']);
 const STOP = new Set(['with', 'from', 'that', 'this', 'were', 'was', 'have', 'been', 'during', 'after', 'before', 'found', 'into', 'than', 'then', 'over', 'under', 'line', 'batch']);
 const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !STOP.has(w)));
 const normEquipment = (s: string) => normaliseBatch(s);
@@ -43,28 +47,36 @@ export async function computeSignals(sql: Sql, id: number): Promise<Signals | nu
   const equipment = String(me.report.equipment ?? '').trim();
   const eqNorm = normEquipment(equipment);
   const products = [...new Set(own.map((b) => b.product.trim().toLowerCase()).filter((p) => p && !NOT_A_PRODUCT.has(p)))];
-  const batches = [...new Set(own.map((b) => b.batch_norm).filter(Boolean))];
+  const batches = [...new Set(own.map((b) => b.batch_norm).filter((b) => b && !NOT_A_BATCH.has(b)))];
 
-  // Other deviations sharing at least one thing with this one (newest first, capped for speed).
+  // Candidates: reported up to a year before (or 90 days after) this one, plus any deviation naming one of its
+  // batches. Latest versions are read per deviation through the (deviation_id, kind, version) index.
   const cands = await sql<Candidate[]>`
-    select * from (
+    with batch_hits as (
+      select distinct b.deviation_id from batches b join sections s on s.id = b.section_id
+      where b.batch_norm = any(${batches})
+        and s.version = (select max(s2.version) from sections s2 where s2.deviation_id = s.deviation_id and s2.kind = s.kind)
+    ), cand as (
+      select d.id from deviations d
+      where d.reported_at between ${me.reported_at}::timestamptz - make_interval(days => ${SIMILAR_DAYS})
+                              and ${me.reported_at}::timestamptz + make_interval(days => ${WINDOW_DAYS})
+      union select deviation_id from batch_hits
+    ), rows as (
       select d.id::int, d.number, d.step, d.reported_at, r.data->>'title' as title,
         (r.data->>'areaId') = ${areaId} as same_area,
         (${me.type_id ?? ''} <> '' and c.data->>'typeId' = ${me.type_id ?? ''}) as same_type,
         (${eqNorm} <> '' and lower(regexp_replace(coalesce(r.data->>'equipment', ''), '[\\s\\-/._]+', '', 'g')) = ${eqNorm}) as same_equipment,
-        exists (select 1 from batches b join latest_sections s on s.id = b.section_id
-                where b.deviation_id = d.id and b.role = 'own' and lower(trim(b.product)) = any(${products})) as same_product,
-        exists (select 1 from batches b join latest_sections s on s.id = b.section_id
-                where b.deviation_id = d.id and b.batch_norm = any(${batches})) as same_batch,
+        exists (select 1 from batches b where b.section_id = r.id and b.role = 'own' and lower(trim(b.product)) = any(${products})) as same_product,
+        d.id in (select deviation_id from batch_hits) as same_batch,
         i.data->>'rootCause' as root_cause, i.data->'fishbone' as fishbone, coalesce(i.data->>'humanError' = 'true', false) as human_error
-      from deviations d
-      join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
-      left join latest_sections c on c.deviation_id = d.id and c.kind = 'classification'
-      left join latest_sections i on i.deviation_id = d.id and i.kind = 'investigation'
+      from cand join deviations d on d.id = cand.id
+      cross join lateral (select s.id, s.data from sections s where s.deviation_id = d.id and s.kind = 'report' order by s.version desc limit 1) r
+      left join lateral (select s.data from sections s where s.deviation_id = d.id and s.kind = 'classification' order by s.version desc limit 1) c on true
+      left join lateral (select s.data from sections s where s.deviation_id = d.id and s.kind = 'investigation' order by s.version desc limit 1) i on true
       where d.id <> ${id} and d.step <> 'rejected'
-    ) x
-    where same_area or same_type or same_equipment or same_product or same_batch
-    order by id desc limit 300`;
+    )
+    select * from rows where same_area or same_type or same_equipment or same_product or same_batch
+    order by id desc`;
 
   const near = (c: Candidate) => Math.abs(days(c.reported_at.getTime() - me.reported_at.getTime())) <= WINDOW_DAYS;
   const ref = (c: Candidate) => ({ id: c.id, number: c.number, title: c.title });
@@ -120,7 +132,7 @@ export async function computeSignals(sql: Sql, id: number): Promise<Signals | nu
 }
 
 export function signalRoutes(app: FastifyInstance, sql: Sql) {
-  // Same readers as the deviation page.
+  // User and QA, who investigate and classify; Admin never acts on deviations (D-20).
   app.get<{ Params: { id: string } }>('/api/deviations/:id/signals', { preHandler: requireRole('user', 'qa') }, async (req, reply) => {
     const id = parseId(req.params.id);
     if (id === null) return reply.code(400).send({ error: 'invalid_request' });
