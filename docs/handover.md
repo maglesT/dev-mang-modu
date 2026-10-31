@@ -14,9 +14,21 @@ State on 2026-10-31, for the next working session.
 | S4 CAPA register, closure, reopen | #6 | merged |
 | S5 batch lookup page, trend view, PDF per deviation and per CAPA | #7 | merged |
 | S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | #8 | merged |
+| Fix: audit trail 500 on text object ids (found on the server) | #9 | merged |
+| Compose defaults: localhost port, project name (D-25) | #10 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
 Decisions D-01 to D-24: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+
+## Deployment (server report of 31 Oct 2026)
+
+- `https://deviations.187-126-126-5.sslip.io`, Caddy TLS, `/opt/deviations`, compose project `deviations`,
+  app on `127.0.0.1:3002` (server-local override, not in git), no database port on the host.
+- It holds **demo data** (42 deviations, 21 CAPAs, 11 demo users, site "Demo Pharma Ltd"). The app cannot delete
+  records, so this database is a demo/training copy. Real use needs a fresh, empty database (owner decision pending).
+- **No backups yet** (skipped at the owner's request). The daily `ops/backup.sh` with `OFFSITE_DIR` and one
+  `ops/restore-check.sh` run are needed before real use (DV-22).
+- The server's deploy key has write access to the repo; read-only is enough for `git pull`.
 
 ## Owner's working rules (from the brief and the owner)
 

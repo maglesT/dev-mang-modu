@@ -16,7 +16,8 @@ the trend view and PDF copies support reviews and inspections.
    `docker compose -f ops/docker-compose.yml up -d --build`. Migrations run on start.
 2. Create the first Admin (prints a temporary password, valid 24 h):
    `docker compose -f ops/docker-compose.yml exec app node dist/db/create-admin.js admin "Full Name"`
-3. Put a TLS reverse proxy in front of port 3000 (cookies are `Secure`).
+3. Put a TLS reverse proxy on the same host in front of `127.0.0.1:3000` (cookies are `Secure`).
+   The app port is published on localhost only and the database port not at all.
 4. As Admin: set the site name and target days, add areas and deviation types, create users
    (User, QA; Admin is never combined with another role).
 5. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
