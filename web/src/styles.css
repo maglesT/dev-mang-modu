@@ -194,11 +194,12 @@ table.audit td { font-size: 0.92rem; }
 .audit-lines { margin: 0; padding-left: 18px; }
 .audit-lines li { margin: 1px 0; }
 /* Login */
-.login { padding-top: 10vh; }
+/* Logo, title and intro centred on the page; the form keeps left-aligned labels. */
+.login { padding-top: 10vh; text-align: center; }
 .login h1 { margin-bottom: 4px; }
-.login > .muted { margin: 0 0 18px; }
-.login-logo { display: block; width: 260px; max-width: 70%; height: auto; margin: 0 0 18px; }
-.login .card { border-top: 4px solid var(--brand); }
+.login > .muted { margin: 0 auto 18px; max-width: 420px; }
+.login-logo { display: block; width: 260px; max-width: 70%; height: auto; margin: 0 auto 18px; }
+.login .card { border-top: 4px solid var(--brand); text-align: left; }
 
 /* S10: voice notes */
 .voice { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 8px; }
