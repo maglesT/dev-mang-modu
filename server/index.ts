@@ -8,7 +8,7 @@ const sql = connect(config.DATABASE_URL, { role: config.DB_APP_ROLE });
 const app = await buildApp({ sql, logger: true, cookieSecure: config.COOKIE_SECURE });
 
 await app.listen({ port: config.PORT, host: config.HOST });
-const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg));
+const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {

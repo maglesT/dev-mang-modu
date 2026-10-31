@@ -71,6 +71,18 @@ describe('integrity check', () => {
     expect(row!.action).toBe('integrity.failed');
   });
 
+  it('DV-22: finds a deleted signature and a rewritten hash through the audit trail, and raises an alert', async () => {
+    const [g] = await t.owner<{ id: number }[]>`select id::int from signatures where meaning = 'closed' and object_type = 'section'`;
+    await t.owner`update signatures set content_hash = ${'0'.repeat(64)} where meaning = 'investigation_complete'`;
+    await t.owner`delete from signatures where id = ${g!.id}`;
+    const r = await runIntegrityCheck(t.sql);
+    expect(r.problems.some((p) => p.includes('in the audit trail but missing'))).toBe(true);
+    expect(r.problems.some((p) => p.includes('differs from the one in the audit trail'))).toBe(true);
+    expect(r.problems.some((p) => p.includes('closed without a signed closure'))).toBe(true);
+    const [alert] = await t.owner`select kind from alerts order by id desc limit 1`;
+    expect(alert!.kind).toBe('integrity_failed');
+  });
+
   it('DV-22: QA and Admin can run the check and see the last result; plain users cannot', async () => {
     expect((await call(t.app, c.us1!, 'POST', '/api/integrity/run', {})).statusCode).toBe(403);
     expect((await call(t.app, c.admin1!, 'POST', '/api/integrity/run', {})).statusCode).toBe(200);

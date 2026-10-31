@@ -18,7 +18,10 @@ scratch="deviations_restore_check_$(date -u +%Y%m%d%H%M%S)"
 scratch_url="${base%/*}/$scratch$query"
 
 psql -q "$ADMIN_URL" -c "create database $scratch"
-trap 'psql -q "$ADMIN_URL" -c "drop database if exists $scratch with (force)"' EXIT
+cleanup() { psql -q "$ADMIN_URL" -c "drop database if exists $scratch with (force)"; }
+trap cleanup EXIT
+# dash does not run the EXIT trap on signals: exit explicitly so the scratch database is dropped.
+trap 'exit 1' INT TERM
 pg_restore --no-owner --exit-on-error --dbname="$scratch_url" "$dump"
 cd "$here"
 if [ -f dist/db/migrate.js ]; then
