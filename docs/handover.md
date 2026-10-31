@@ -26,6 +26,8 @@ State on 2026-10-31, for the next working session.
 | S14 investigation tools II: barriers, FMEA, KT, fault tree, CAPA strength, Pareto (D-36) | #19 | merged |
 | S15 Logbook read-only views + demo seed (Logbook PRs #17, #18) | Logbook | merged |
 | S17 data collection from Batchwright and the Logbook, DV-23 (D-37) | #20 | merged |
+| S16 Batchwright report views (ebmr PR #81) | ebmr | merged |
+| S18 reads Batchwright's IPC results, actuals, equipment use, exception details (D-38) | #21 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
 Decisions D-01 to D-38: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
