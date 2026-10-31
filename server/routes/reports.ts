@@ -210,7 +210,9 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       if (!versions.length) continue;
       content.push(heading({ report: 'Report', classification: 'Classification', investigation_draft: 'Investigation drafts (saved while investigating, not signed)', investigation: 'Investigation', closure: 'Closure', target_date: 'Target date changes' }[kind]!));
       for (const v of [...versions].reverse()) {
-        content.push(t(`Version ${v.version}${latestIds.has(v.id) ? ' (current)' : ' (superseded by a correction)'} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        // A draft is never current or superseded: it is a saved working copy (D-35).
+        const state = kind === 'investigation_draft' ? ' (draft, not signed)' : latestIds.has(v.id) ? ' (current)' : ' (superseded by a correction)';
+        content.push(t(`${kind === 'investigation_draft' ? 'Draft' : 'Version'} ${v.version}${state} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(fields(dataRows(v.data as Row, names)));
         for (const g of d.signatures.filter((x) => x.sectionId === v.id)) {
           content.push(t(`Signed: ${MEANING[String(g.meaning)] ?? g.meaning} · ${val(g.printedName)} · ${plant(g.signedAt as string)}${latestIds.has(v.id) ? '' : ' (superseded)'}`, { fontSize: 8, margin: [0, 2, 0, 0] }));

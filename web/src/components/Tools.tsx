@@ -39,7 +39,7 @@ export interface Why { answer: string; evidence: string }
 export interface FiveWhys { problem: string; whys: Why[] }
 export const emptyFiveWhys = (v?: unknown): FiveWhys => {
   const x = v as Partial<FiveWhys> | undefined;
-  const whys = (x?.whys ?? []).map((w) => ({ answer: String(w?.answer ?? ''), evidence: String(w?.evidence ?? '') }));
+  const whys = (Array.isArray(x?.whys) ? x.whys : []).map((w) => ({ answer: String(w?.answer ?? ''), evidence: String(w?.evidence ?? '') }));
   while (whys.length < 3) whys.push({ answer: '', evidence: '' });
   return { problem: String(x?.problem ?? ''), whys };
 };

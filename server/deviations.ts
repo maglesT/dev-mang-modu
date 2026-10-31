@@ -127,9 +127,13 @@ export const sixMData = z.object({
   { message: '6M: at least one M must be ruled in (the root cause sits there).' });
 export const fiveWhysData = z.object({
   problem: req('5 Whys: problem statement', 1000),
-  whys: z.array(z.object({ answer: req('5 Whys: answer', 1000), evidence: req('5 Whys: evidence', 1000) }))
+  whys: z.array(z.object({ answer: z.string().trim().max(1000), evidence: z.string().trim().max(1000) }))
     .min(3, '5 Whys: at least 3 whys, each with evidence.').max(7, '5 Whys: at most 7 whys.'),
-}, { required_error: '5 Whys: required.' });
+}, { required_error: '5 Whys: required.' }).superRefine((w, ctx) => w.whys.forEach((x, i) => {
+  // Each missing piece names its why, as on the screen.
+  if (!x.answer) ctx.addIssue({ code: 'custom', path: ['whys', i, 'answer'], message: `5 Whys, why ${i + 1}: answer required.` });
+  if (!x.evidence) ctx.addIssue({ code: 'custom', path: ['whys', i, 'evidence'], message: `5 Whys, why ${i + 1}: evidence required.` });
+}));
 
 // DV-04 to DV-07: the investigation, signed by the investigator.
 export const investigationData = z
@@ -155,7 +159,18 @@ export const investigationData = z
     if (d.otherBatches.length === 0 && !d.noOtherReason) ctx.addIssue({ code: 'custom', path: ['otherBatches'], message: 'List the other batches or products checked, or say why none could be affected.' });
   });
 // A draft is the form as it stands: any shape, kept small. It is never signed and never counts for the step.
-export const investigationDraft = z.record(z.unknown()).refine((d) => JSON.stringify(d).length <= 200_000, 'The draft is too large.');
+// The known parts must have their shape (objects, lists, text), so a draft can always be shown and printed.
+const loose = z.record(z.unknown());
+export const investigationDraft = z.object({
+  isIsNot: z.record(z.object({ is: z.string(), isNot: z.string(), tells: z.string() }).partial()).optional(),
+  sixM: z.record(z.object({ checked: z.string(), evidence: z.string(), verdict: z.string() }).partial()).optional(),
+  fiveWhys: z.object({ problem: z.string(), whys: z.array(z.object({ answer: z.string(), evidence: z.string() }).partial()) }).partial().optional(),
+  otherBatches: z.array(z.object({ product: z.string(), batch: z.string(), outcome: z.string() }).partial()).optional(),
+  rootCause: z.string().optional(), rootCauseCategory: z.string().optional(), conclusion: z.string().optional(),
+  noOtherReason: z.string().optional(), humanErrorJustification: z.string().optional(),
+  mostLikely: z.boolean().optional(), humanError: z.boolean().optional(),
+  fishbone: loose.optional(), barriers: z.array(loose).optional(), fmea: loose.optional(), kt: loose.optional(), faultTree: loose.optional(),
+}).strict('A draft holds only the investigation form.').refine((d) => JSON.stringify(d).length <= 200_000, 'The draft is too large.');
 export type InvestigationData = z.infer<typeof investigationData>;
 
 export const latestId = async (tx: Tx | Sql, id: number, kind: string) =>

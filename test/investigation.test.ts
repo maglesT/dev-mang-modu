@@ -99,6 +99,7 @@ describe('investigation', () => {
     const allOut = Object.fromEntries(Object.entries(TOOLS.sixM).map(([k, v]) => [k, { ...v, verdict: 'ruled_out' }]));
     expect(await problemsFor({ sixM: allOut })).toContain('6M: at least one M must be ruled in (the root cause sits there).');
     expect(await problemsFor({ fiveWhys: { problem: 'x', whys: TOOLS.fiveWhys.whys.slice(0, 2) } })).toContain('5 Whys: at least 3 whys, each with evidence.');
+    expect(await problemsFor({ fiveWhys: { problem: 'x', whys: [TOOLS.fiveWhys.whys[0], { answer: 'B', evidence: '' }, TOOLS.fiveWhys.whys[2]] } })).toContain('5 Whys, why 2: evidence required.');
     expect(await problemsFor({ rootCauseCategory: '' })).toContain('Choose the root-cause category.');
     // The check lists the same problems and writes nothing.
     const check = await call(t.app, c.us2!, 'POST', '/api/investigation/check', { data: investigation({ rootCauseCategory: undefined }) });
@@ -113,6 +114,10 @@ describe('investigation', () => {
     expect((await draft('us2', { rootCause: 'Thinking: feeder?' })).json()).toEqual({ version: 1 });
     expect((await draft('us2', { rootCause: 'Feeder speed', sixM: { machine: { checked: 'speed log' } } })).json()).toEqual({ version: 2 });
     expect((await draft('us3', { rootCause: 'x' })).statusCode).toBe(403);
+    // A draft keeps the form's shape, so it can always be shown and printed.
+    for (const bad of [{ fiveWhys: { whys: 'x' } }, { isIsNot: { what: null } }, { otherBatches: {} }, { something: 1 }]) {
+      expect((await draft('us2', bad)).statusCode).toBe(400);
+    }
     const d = await get(id);
     expect(d.step).toBe('investigation');
     const drafts = d.sections.filter((x: { kind: string }) => x.kind === 'investigation_draft');

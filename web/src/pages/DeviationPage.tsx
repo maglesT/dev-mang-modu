@@ -414,18 +414,27 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   const [isIsNot, setIsIsNot] = useState(emptyIsIsNot(start?.isIsNot));
   const [sixM, setSixM] = useState(emptySixM(start?.sixM));
   const [fiveWhys, setFiveWhys] = useState(emptyFiveWhys(start?.fiveWhys));
-  const [rows, setRows] = useState<OtherRow[]>((start?.otherBatches as OtherRow[] | undefined) ?? []);
+  const [rows, setRows] = useState<OtherRow[]>(Array.isArray(start?.otherBatches) ? (start.otherBatches as OtherRow[]) : []);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
+  const [missing, setMissing] = useState(false);
   const [saved, setSaved] = useState('');
+  // An investigation signed before the tools were required (D-33) is corrected by completing them.
+  const beforeTools = !!initial && !initial.sixM;
   const [signing, setSigning] = useState(false);
   const title = str((latestOf(d, 'report')?.data as Record<string, unknown> | undefined)?.title);
+  // Only blank rows at the end are dropped, so the whys keep the numbers shown on screen.
+  const whys = [...fiveWhys.whys];
+  while (whys.length > 3 && !whys[whys.length - 1]!.answer.trim() && !whys[whys.length - 1]!.evidence.trim()) whys.pop();
   const data = () => ({
-    ...f, isIsNot, sixM, fiveWhys: { ...fiveWhys, whys: fiveWhys.whys.filter((w) => w.answer.trim() || w.evidence.trim()) },
+    ...f, isIsNot, sixM, fiveWhys: { ...fiveWhys, whys },
+    // The S7 fishbone text of an older investigation is kept in a correction.
+    ...(start?.fishbone ? { fishbone: start.fishbone } : {}),
     otherBatches: rows.filter((r) => r.product.trim() || r.batch.trim()),
   });
   const saveDraft = async () => {
     setProblems([]);
+    setMissing(false);
     try {
       const r = await api<{ version: number }>('POST', `/api/deviations/${d.id}/investigation/draft`, { data: data() });
       setSaved(`Draft ${r.version} saved at ${plantTime(new Date().toISOString())}.`);
@@ -436,6 +445,7 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setProblems([]);
+    setMissing(false);
     try {
       if (correct) {
         await correct(data(), reason);
@@ -444,7 +454,7 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
       }
       // Lists everything still missing before the signature is asked for.
       const check = await api<{ problems: string[] }>('POST', '/api/investigation/check', { data: data() });
-      if (check.problems.length) return setProblems(check.problems);
+      if (check.problems.length) { setMissing(true); return setProblems(check.problems); }
       setSigning(true);
     } catch (err) {
       setProblems(problemsOf(err, !reason.trim() ? 'Give the reason for the correction.' : 'Please fill in every field.'));
@@ -455,6 +465,7 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
     <>
     <form className="form" onSubmit={submit}>
       {draft && !initial && <p className="muted small">Continuing from draft {latestOf(d, 'investigation_draft')!.version}.</p>}
+      {beforeTools && <p className="chip-warn small">This investigation was signed before the tools below were required. A correction completes them (Is / Is Not, 6M, 5 Whys, category).</p>}
       <details className="tool" open>
         <summary>1. Is / Is Not: narrow the scope *</summary>
         <p className="muted small">For each line: where the problem is, where it is not, and what that tells you.</p>
@@ -500,7 +511,7 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
       </div>
       <label>Conclusion *<textarea rows={3} value={f.conclusion} onChange={(e) => setF({ ...f, conclusion: e.target.value })} /></label>
       {correct && <ReasonField value={reason} onChange={setReason} />}
-      {problems.length > 0 && <div className="error" role="alert"><p><b>Still missing:</b></p>{problems.map((p) => <p key={p}>{p}</p>)}</div>}
+      {problems.length > 0 && <div className="error" role="alert">{missing && <p><b>Still missing:</b></p>}{problems.map((p) => <p key={p}>{p}</p>)}</div>}
       {saved && !problems.length && <p className="muted small" role="status">{saved}</p>}
       <div className="actions">
         {correct && <button type="button" onClick={onCancel}>Cancel</button>}
