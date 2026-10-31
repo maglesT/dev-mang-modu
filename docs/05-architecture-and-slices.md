@@ -77,7 +77,8 @@ that repo is attached; I'll ask when a slice needs it.
 | S6 | Integrity check, backup with checksum and off-host copy, restore check, traceability, handover | DV-22, CP-01 support | S | Restore check and traceability list |
 | S7 | Fishbone in the investigation (owner request, D-26) | DV-04 | S | Fill in a fishbone, sign, see it on the page and PDF |
 | S8 | Rule-based flags and similar past deviations (D-27) | — | S | See repeats and earlier root causes on a deviation |
-| S9 | AI-suggested possible causes, Gemini (D-27) | — | M | Ask for suggestions while investigating |
+| S9 | AI-suggested possible causes, Gemini (D-27, D-29) | — | M | Ask for suggestions while investigating |
+| S10 | Unusual months on the trend: c-chart limit (D-30) | DV-12 support | S | See a month marked ▲ with its usual level |
 
 **Estimate:** about 8–9 working sessions (one more for the CAPA register). The logbook copy makes S0, S1 and S5 small. I'll start
 a fresh session after S3 with a handover note.

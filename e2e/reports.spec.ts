@@ -24,6 +24,8 @@ test('DV-12: the trend shows counts per month as a chart and a table', async ({ 
   await page.getByRole('button', { name: 'Show' }).click();
   await expect(page.getByRole('img', { name: 'Deviations reported per month' })).toBeVisible();
   await expect(page.locator('table.trend tr.total')).toContainText('All deviations');
+  // S10: the unusual-months box explains its rule in plain words.
+  await expect(page.getByRole('region', { name: 'Unusual months' })).toContainText('a reason to look, not a conclusion');
 });
 
 test('DV-21: the deviation page offers a PDF copy', async ({ page }) => {

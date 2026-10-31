@@ -286,3 +286,7 @@ table.list td:first-child { white-space: nowrap; }
 .ai-help .row { margin: 4px 0; align-items: center; }
 .ai-result ol { padding-left: 1.2em; display: grid; gap: 8px; }
 .ai-result li p { margin: 2px 0; }
+
+/* S10: months above their usual level (D-30). */
+.trend td.spike { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
+.spikes ul { margin: 4px 0; padding-left: 1.1em; }
