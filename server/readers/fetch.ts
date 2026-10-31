@@ -41,7 +41,8 @@ export function plainError(e: unknown): string {
 }
 
 type Outcome = { source: 'logbook' | 'batchwright'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
-const count = (d: Record<string, unknown>) => Object.values(d).reduce<number>((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
+// Rows read from the other system (not the bookkeeping lists).
+const count = (d: Record<string, unknown>) => Object.entries(d).reduce<number>((n, [k, v]) => n + (Array.isArray(v) && !['viewsRead', 'equipmentUsed', 'findings'].includes(k) ? v.length : 0), 0);
 
 export async function fetchRelated(sql: Sql, sources: Sources, deviationId: number, userId: number, log: (msg: string) => void = () => {}) {
   const q = await buildQuery(sql, deviationId);
@@ -54,7 +55,7 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
     try {
       const d = await readBatchwright(sources.batchwright, q);
       usedEquipment = d.equipmentUsed;
-      outcomes.push({ source: 'batchwright', status: 'ok', data: { ...d, findings: batchwrightFindings(d) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: BATCHWRIGHT_VIEWS });
+      outcomes.push({ source: 'batchwright', status: 'ok', data: { ...d, findings: batchwrightFindings(d) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: d.viewsRead });
     } catch (e) {
       log(`Batchwright read failed: ${e instanceof Error ? e.message : String(e)}`);
       outcomes.push({ source: 'batchwright', status: 'failed', data: {}, rows: 0, error: plainError(e), views: BATCHWRIGHT_VIEWS });

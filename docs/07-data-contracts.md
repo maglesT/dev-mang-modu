@@ -25,6 +25,18 @@ New in S16:
 | `report.reference_document_v1` | `kind text` (e.g. SOP), `code text`, `version text`, `title text`, `effective_from date`, `read_at`, `data_as_of` |
 | `report.batch_reference_v1` | `batch_number text`, `kind text`, `code text`, `version text`, `title text` (documents the batch's master record cites), `read_at`, `data_as_of` |
 
+Added in S16 after the server session checked the hosted demo (the existing views have no in-process check
+results or process actuals, `step_use_v1.equipment_code` is empty there, and `exception_v1` has no step or text):
+
+| View | Columns |
+|------|---------|
+| `report.equipment_use_v1` | `batch_number`, `equipment_code`, `equipment_type`, `room_code`, `step`, `started_at`, `ended_at`, `read_at`, `data_as_of` |
+| `report.ipc_result_v1` | `batch_number`, `step`, `step_title`, `check_kind`, `item`, `instrument_code`, `reading` (null for an aggregate), `value_text`, `unit`, `lower_text`, `upper_text`, `aggregate` (e.g. mean), `alert_lower_text`, `alert_upper_text`, `result` (PASS / FAIL), `recorded_at`, `read_at`, `data_as_of` |
+| `report.process_actual_v1` | `batch_number`, `step`, `tag`, `value_text`, `unit`, `lower_text`, `upper_text`, `within_limits`, `recorded_at`, `read_at`, `data_as_of` |
+| `report.exception_detail_v1` | `batch_number`, `exception_id`, `exception_type`, `category`, `severity`, `step`, `step_title`, `description`, `status`, `disposition`, `disposed_by`, `disposed_at`, `raised_at`, `read_at`, `data_as_of` |
+
+The reader checks which of the S16 views exist (`to_regclass`) and reads only those; each fetch records the views read.
+
 Not read: `report.deviation_fact_v1` and every `site.deviation*` / `site.capa*` table (owner: read the batch data
 directly, not Batchwright's deviation module).
 
@@ -35,13 +47,15 @@ directly, not Batchwright's deviation module).
 - Rooms `GRAN-1` (granulation: RMG-01, FBD-01, MILL-01) and `COMP-1` (compression: PRESS-01, BAL-COMP-01, HT-01, FRB-01).
 - Batchwright (hosted demo, created by the server session): drying step TB-05 records `dryer.inlet_temp_C`
   (50.0–70.0 °C) and LOD (2.0–3.5 %); RAB26004 has 51.0 °C and 3.4 %, inside but at the edge (RAB26002: 60.0 °C, 2.8 %).
-  Compression step TB-13 "Thickness and breaking force of the cores" on HT-01, in N, individual limits 60–140 N;
-  RAB26004 has 2 of 10 below 60 N (48, 52): the check failed, an exception was raised, the batch is on hold.
+  Compression on PRESS-01 (COMP-1); step p-ipc-phys@ (TB-13) "Thickness and breaking force of the cores" on HT-01:
+  3 tablets, 48 / 95 / 52 N against individual limits 60–140 N, mean 65 N (action min 60, alert min 70), result
+  FAIL; exception EX-21 IPC_CHECK_FAILED / OUT_OF_LIMIT / ACTION, open; the batch is on hold at compression.
   SOPs come from the master and route level (`batch_reference_v1`), not per step.
 - Logbook (demo seed, Logbook PR #18), event 31 Oct 2026 22:00 IST: FBD-01 use and cleaning for both batches;
   PRESS-01 use for RAB26002, cleaning, use for RAB26004 (19:00–23:30 IST); last preventive maintenance of PRESS-01
   40 days before, none since; a PRESS-01 breakdown two days before ("Upper punch sticking", repaired); HT-01
   calibration with next due 30 Oct 2026 (overdue at the event); SOP-ENG-010 on PRESS-01 and in the settings.
-- Expected findings of "Fetch related data" for RAB26004: breaking force check failed (48 N, 52 N below 60);
+- Expected findings of "Fetch related data" for RAB26004: hardness check FAILED on HT-01 (48, 52 N outside 60–140;
+  mean 65 N below the alert limit 70); exception EX-21 open;
   dryer inlet 51.0 °C close to its lower limit; the exception; HT-01 calibration overdue at the event; PRESS-01 last
   preventive maintenance 40 days before; the PRESS-01 breakdown two days before.

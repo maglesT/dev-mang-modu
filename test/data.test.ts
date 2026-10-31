@@ -38,6 +38,12 @@ async function standIns(o: TestApp['owner']) {
     create table ${BW}.alarm_v1 (alarm_id uuid, source text, alarm_code text, gmp_critical boolean, subject_kind text, subject_code text, raised_at timestamptz, received_at timestamptz,
       acked_at timestamptz, batch_count int, batch_numbers text[], read_at timestamptz default now(), data_as_of timestamptz default now());
     create table ${BW}.batch_reference_v1 (batch_number text, kind text, code text, version text, title text, read_at timestamptz default now(), data_as_of timestamptz default now());
+    create table ${BW}.equipment_use_v1 (batch_number text, equipment_code text, equipment_type text, room_code text, step text, started_at timestamptz, ended_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+    create table ${BW}.ipc_result_v1 (batch_number text, step text, step_title text, check_kind text, item text, instrument_code text, reading int, value_text text, unit text, lower_text text, upper_text text,
+      aggregate text, alert_lower_text text, alert_upper_text text, result text, recorded_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+    create table ${BW}.process_actual_v1 (batch_number text, step text, tag text, value_text text, unit text, lower_text text, upper_text text, within_limits boolean, recorded_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+    create table ${BW}.exception_detail_v1 (batch_number text, exception_id text, exception_type text, category text, severity text, step text, step_title text, description text, status text,
+      disposition text, disposed_by text, disposed_at timestamptz, raised_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
   `);
   await o.unsafe(`
     insert into ${LB}.equipment_v1 (id, code, name, kind, location, active, needs_calibration, sop_refs) values
@@ -63,6 +69,18 @@ async function standIns(o: TestApp['owner']) {
       ('RAB26004', 'PARAMETER', 'breaking_force', 'TB-13@', 3, 'IPC', '95', 'N', '60', '140', 'ACTION', false, '${at(0)}');
     insert into ${BW}.exception_v1 (batch_number, exception_id, exception_type, category, severity, raised_at) values ('RAB26004', 'EX-4', 'IPC_FAILURE', 'IPC', 'CRITICAL', '${at(0)}');
     insert into ${BW}.batch_reference_v1 (batch_number, kind, code, version, title) values ('RAB26004', 'SOP', 'SOP-RTW-PROC', '3', 'Route W processing');
+    insert into ${BW}.equipment_use_v1 (batch_number, equipment_code, equipment_type, room_code, step, started_at, ended_at) values
+      ('RAB26004', 'PRESS-01', 'EQC-PRESS', 'COMP-1', 'p-compress@', '${at(-3)}', null);
+    insert into ${BW}.ipc_result_v1 (batch_number, step, step_title, check_kind, item, instrument_code, reading, value_text, unit, lower_text, upper_text, aggregate, alert_lower_text, alert_upper_text, result, recorded_at) values
+      ('RAB26004', 'p-ipc-phys@', 'Thickness and breaking force of the cores', 'PHYSICAL_CHECK', 'hardness', 'HT-01', 1, '48', 'N', '60', '140', null, null, null, 'FAIL', '${at(0)}'),
+      ('RAB26004', 'p-ipc-phys@', 'Thickness and breaking force of the cores', 'PHYSICAL_CHECK', 'hardness', 'HT-01', 2, '95', 'N', '60', '140', null, null, null, 'FAIL', '${at(0)}'),
+      ('RAB26004', 'p-ipc-phys@', 'Thickness and breaking force of the cores', 'PHYSICAL_CHECK', 'hardness', 'HT-01', 3, '52', 'N', '60', '140', null, null, null, 'FAIL', '${at(0)}'),
+      ('RAB26004', 'p-ipc-phys@', 'Thickness and breaking force of the cores', 'PHYSICAL_CHECK', 'hardness', 'HT-01', null, '65', 'N', '60', null, 'mean', '70', null, 'FAIL', '${at(0)}'),
+      ('RAB26004', 'p-ipc-phys@', 'Thickness and breaking force of the cores', 'PHYSICAL_CHECK', 'thickness', 'HT-01', 1, '4.1', 'mm', '3.9', '4.3', null, null, null, 'PASS', '${at(0)}');
+    insert into ${BW}.process_actual_v1 (batch_number, step, tag, value_text, unit, lower_text, upper_text, within_limits, recorded_at) values
+      ('RAB26004', 'p-dry@', 'dryer.inlet_temp_C', '51.0', 'degC', '50.0', '70.0', true, '${at(-11)}');
+    insert into ${BW}.exception_detail_v1 (batch_number, exception_id, exception_type, category, severity, step, step_title, description, status, disposition, raised_at) values
+      ('RAB26004', 'EX-21', 'IPC_CHECK_FAILED', 'OUT_OF_LIMIT', 'ACTION', 'p-ipc-phys@', 'Thickness and breaking force of the cores', 'Breaking force below the individual limit', 'OPEN', null, '${at(0)}');
   `);
 }
 
@@ -106,6 +124,38 @@ describe('data collection (S17)', () => {
     // The batch's equipment (FBD-01, HT-01) was looked up in the Logbook although the report named none.
     expect(lb.params.equipment).toEqual(expect.arrayContaining(['FBD-01', 'HT-01']));
     expect(lb.data.findings.join('\n')).toMatch(/HT-01: calibration was overdue at the event/);
+  });
+
+  it('DV-23: in-process checks, process actuals and exception details (Batchwright S16 views) are read and explained', async () => {
+    const id = (await report()).json().id as number;
+    await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/fetch`, {});
+    const f = (await call(t.app, c.us1!, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; views: string[]; params: { equipment: string[] }; data: { findings: string[] } }[];
+    const bw = f.find((x) => x.source === 'batchwright')!;
+    expect(bw.views).toEqual(expect.arrayContaining(['ipc_result_v1', 'process_actual_v1', 'exception_detail_v1', 'equipment_use_v1']));
+    const text = bw.data.findings.join('\n');
+    expect(text).toContain('RAB26004: hardness check at Thickness and breaking force of the cores on HT-01 FAILED: 2 of 3 reading(s) outside 60–140 N: 48, 52 N; mean 65 N (below or above the alert limit).');
+    expect(text).toContain('RAB26004: dryer.inlet_temp_C at step p-dry@: 51.0 degC inside the limits but close to one (limits 50 to 70 degC).');
+    expect(text).toContain('RAB26004: exception EX-21 (ipc check failed, action) at Thickness and breaking force of the cores: Breaking force below the individual limit; status open.');
+    expect(text).not.toMatch(/thickness check/);
+    // The press comes from the equipment-use view and is looked up in the Logbook.
+    expect(f.find((x) => x.source === 'logbook')!.params.equipment).toContain('PRESS-01');
+  });
+
+  it('DV-23: a Batchwright without the newer views is still read; the record says which views were read', async () => {
+    const OLD = `${BW}_old`;
+    await t.owner.unsafe(`create schema ${OLD}; ${['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1'].map((v) => `create table ${OLD}.${v} as table ${BW}.${v}`).join('; ')}`);
+    const older = await buildApp({ sql: t.sql, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: OLD } } });
+    try {
+      const ck = (await login(older, 'us1')).cookie;
+      const id = (await report()).json().id as number;
+      await call(older, ck, 'POST', `/api/deviations/${id}/fetch`, {});
+      const bw = ((await call(older, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; status: string; views: string[] }[]).find((x) => x.source === 'batchwright')!;
+      expect(bw.status).toBe('ok');
+      expect(bw.views).toEqual(['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1']);
+    } finally {
+      await older.close();
+      await t.owner.unsafe(`drop schema ${OLD} cascade`);
+    }
   });
 
   it('DV-23: the equipment named in the report is looked up too: PM age and a breakdown before the event', async () => {
