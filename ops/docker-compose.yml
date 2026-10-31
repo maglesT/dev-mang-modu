@@ -1,4 +1,6 @@
 # Local or single-site installation: app + PostgreSQL 16.
+# Fixed project name, so containers and the volume are deviations-* whatever the folder is called.
+name: deviations
 services:
   db:
     image: postgres:16
@@ -17,7 +19,8 @@ services:
       DATABASE_URL: postgres://dev_owner:${DB_PASSWORD:-change-me}@db:5432/deviations
       # Single-box setup: the owner login switches to the restricted role for all app queries.
       DB_APP_ROLE: dev_app
-    ports: ["3000:3000"]
+    # Localhost only: Docker bypasses host firewalls, so the TLS reverse proxy on this host is the only way in.
+    ports: ["127.0.0.1:3000:3000"]
     depends_on: { db: { condition: service_healthy } }
 volumes:
   dbdata:
