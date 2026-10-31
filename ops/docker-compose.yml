@@ -1,0 +1,23 @@
+# Local or single-site installation: app + PostgreSQL 16.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dev_owner
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+      POSTGRES_DB: deviations
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_owner -d deviations"]
+      interval: 5s
+      retries: 10
+  app:
+    build: { context: .., dockerfile: ops/Dockerfile }
+    environment:
+      DATABASE_URL: postgres://dev_owner:${DB_PASSWORD:-change-me}@db:5432/deviations
+      # Single-box setup: the owner login switches to the restricted role for all app queries.
+      DB_APP_ROLE: dev_app
+    ports: ["3000:3000"]
+    depends_on: { db: { condition: service_healthy } }
+volumes:
+  dbdata:
