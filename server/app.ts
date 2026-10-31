@@ -10,6 +10,8 @@ import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { alertRoutes } from './routes/alerts.js';
 import { auditRoutes } from './routes/audit.js';
+import { listRoutes } from './routes/lists.js';
+import { deviationRoutes } from './routes/deviations.js';
 
 export const VERSION = '0.1.0';
 
@@ -50,6 +52,8 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
   userRoutes(app, sql);
   alertRoutes(app, sql);
   auditRoutes(app, sql);
+  listRoutes(app, sql);
+  deviationRoutes(app, sql);
 
   // In production the built web UI is served from the same process.
   const root = webRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../web');

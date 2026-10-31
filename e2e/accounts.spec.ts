@@ -21,12 +21,12 @@ test('DV-18: a new user logs in with the temporary password and must change it f
   await page.getByLabel(/^New password/).fill('Fresh-Spring-42');
   await page.getByLabel('Repeat new password').fill('Fresh-Spring-42');
   await page.getByRole('button', { name: 'Save password' }).click();
-  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Deviations' })).toBeVisible();
   await expect(page.locator('.who')).toContainText('Neha New');
 
   await logOut(page);
   await logIn(page, username, 'Fresh-Spring-42');
-  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Deviations' })).toBeVisible();
 });
 
 test('DV-18: five failed logins lock the account and alert Admin and QA on screen', async ({ page }) => {
