@@ -69,7 +69,7 @@ describe('trends', () => {
   });
 
   it('DV-12, DV-09: CAPA counts by source, status and effectiveness outcome', async () => {
-    const { id } = (await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'audit', sourceRef: 'IA-1', type: 'preventive', description: 'x', ownerId: ids.us1, dueDate: inDays(5) })).json();
+    const { id } = (await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'audit', sourceRef: 'IA-1', type: 'preventive', strength: 'medium', description: 'x', ownerId: ids.us1, dueDate: inDays(5) })).json();
     await call(t.app, c.us1!, 'POST', `/api/capas/${id}/done`, { note: 'done' });
     const k = (await call(t.app, c.qa1!, 'GET', `/api/capas/${id}`)).json();
     await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: 'low risk' }, versionId: k.versions.at(-1).id, signature: sig('qa1') });
@@ -97,7 +97,7 @@ describe('PDF copies', () => {
   });
 
   it('DV-21: a CAPA prints as a PDF; unknown ids give 404', async () => {
-    const { id } = (await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'other', sourceRef: 'X', type: 'corrective', description: 'x', ownerId: ids.us1, dueDate: inDays(5) })).json();
+    const { id } = (await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'other', sourceRef: 'X', type: 'corrective', strength: 'medium', description: 'x', ownerId: ids.us1, dueDate: inDays(5) })).json();
     const res = await t.app.inject({ method: 'GET', url: `/api/capas/${id}/pdf`, headers: { cookie: c.us1! } });
     expect(res.statusCode).toBe(200);
     expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
@@ -114,7 +114,7 @@ describe('review fixes (S5)', () => {
     const d = await report('Granulation', 'Lisinopril 10', 'LS-1');
     await t.owner`update deviations set reported_at = now() - interval '200 days' where id = ${d.id}`;
     await classify(d.id);
-    await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: d.id, type: 'corrective', description: 'x', ownerId: ids.us1, dueDate: inDays(5) });
+    await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: d.id, type: 'corrective', strength: 'medium', description: 'x', ownerId: ids.us1, dueDate: inDays(5) });
     const res = (await call(t.app, c.qa1!, 'GET', `/api/trends?from=${thisMonth}&to=${thisMonth}&product=lisinopril`)).json();
     expect(res.capas.reduce((s: number, x: { n: number }) => s + x.n, 0)).toBe(1);
   });

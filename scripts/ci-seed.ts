@@ -43,7 +43,7 @@ await call(user, 'POST', `/api/deviations/${id}/investigate`, { data: { ...TOOLS
 await call(user, 'POST', `/api/deviations/${id}/attachments`, { filename: 'seed.pdf', mime: 'application/pdf', dataBase64: Buffer.from('%PDF-1.4 seed').toString('base64') });
 await call(qa2, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Seed', noCapaReason: 'Seed' }, signature: sig('seedqa2') });
 const due = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-const capa = (await call(qa, 'POST', '/api/capas', { source: 'deviation', deviationId: id, type: 'corrective', description: 'x', ownerId: userId, dueDate: due })).id;
+const capa = (await call(qa, 'POST', '/api/capas', { source: 'deviation', deviationId: id, type: 'corrective', strength: 'medium', description: 'x', ownerId: userId, dueDate: due })).id;
 await call(user, 'POST', `/api/capas/${capa}/done`, { note: 'x' });
 const k = await call(qa, 'GET', `/api/capas/${capa}`);
 await call(qa, 'POST', `/api/capas/${capa}/verify`, { effectiveness: { mode: 'trend', reason: 'x' }, versionId: k.versions.at(-1).id, signature: sig('seedqa') });

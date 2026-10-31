@@ -58,6 +58,13 @@ function List({ title, path }: { title: string; path: string }) {
       setError(err instanceof ApiError && err.code === 'name_taken' ? 'That name exists already.' : 'Could not add it.');
     }
   };
+  // S14 (D-36): a lab / OOS type makes its investigations use the KT checklist.
+  const toggleLab = async (i: NamedItem & { labOos?: boolean }) => {
+    const reason = ask(`${i.labOos ? 'unmarking' : 'marking'} ${i.name} as a lab / OOS type`);
+    if (!reason) return;
+    await api('PATCH', `/api/deviation-types/${i.id}/lab`, { labOos: !i.labOos, reason });
+    await load();
+  };
   const toggle = async (i: NamedItem) => {
     const reason = ask(`${i.active ? 'deactivating' : 'reactivating'} ${i.name}`);
     if (!reason) return;
@@ -76,6 +83,10 @@ function List({ title, path }: { title: string; path: string }) {
         {items.map((i) => (
           <li key={i.id}>
             {i.active ? i.name : <s>{i.name}</s>} <button className="link" onClick={() => toggle(i)}>{i.active ? 'Deactivate' : 'Reactivate'}</button>
+            {path === 'deviation-types' && <>
+              {(i as NamedItem & { labOos?: boolean }).labOos && <span className="chip chip-info">lab / OOS: KT checklist</span>}
+              <button className="link" onClick={() => toggleLab(i)}>{(i as NamedItem & { labOos?: boolean }).labOos ? 'Not a lab type' : 'Mark as lab / OOS'}</button>
+            </>}
           </li>
         ))}
       </ul>

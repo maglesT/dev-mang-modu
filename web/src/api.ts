@@ -144,6 +144,8 @@ export interface SectionVersion {
 }
 
 export interface Deviation {
+  // S14: the type is a lab / OOS type, so the investigation needs the KT checklist.
+  labOos: boolean;
   id: number;
   number: string;
   planned: boolean;
@@ -197,6 +199,8 @@ export interface CapaItem {
   owner: string;
   type: 'corrective' | 'preventive';
   description: string;
+  // S14: strong / medium / weak; CAPAs raised before S14 have none.
+  strength: string | null;
   waitingForMe: boolean;
 }
 

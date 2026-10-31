@@ -182,7 +182,15 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         and (${product === ''} or c.deviation_id in (select r.deviation_id from latest_sections r join batches b on b.section_id = r.id
                                                        where r.kind = 'report' and b.product ilike ${like}))
       group by 1, 2, 3`;
-    return { from, to, by, counts, products, capas, spikes };
+    // S14 (D-36): Pareto of root-cause categories in the period, and repeats: the same category 3 or more
+    // times in the 6 months up to "to" (a system failure that needs a systemic CAPA).
+    const byCategory = (f: string, t: string) => sql<{ category: string; n: number }[]>`
+      select i.data->>'rootCauseCategory' as category, count(*)::int as n
+      from (${devsIn(f, t)}) x join latest_sections i on i.deviation_id = x.id and i.kind = 'investigation'
+      where i.data ? 'rootCauseCategory' group by 1 order by 2 desc, 1`;
+    const pareto = await byCategory(from, to);
+    const repeats = (await byCategory(addMonths(to, -5), to)).filter((r) => r.n >= 3);
+    return { from, to, by, counts, products, capas, spikes, pareto, repeats };
   });
 
   // DV-21: one PDF per deviation: every section with all versions, signatures, CAPAs, attachments and history.

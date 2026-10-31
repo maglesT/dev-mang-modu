@@ -6,7 +6,7 @@ import { audit } from '../audit.js';
 import { parseId, requireRole, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, classificationData, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
+  addSection, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -24,6 +24,8 @@ const closureData = z.object({
   summary: z.string().trim().min(1).max(5000),
   disposition: z.string().trim().max(2000).default(''),
   noCapaReason: z.string().trim().max(2000).default(''),
+  // S14 (D-33): a critical deviation whose CAPAs are all weak closes only with QA's reason.
+  weakCapaJustification: z.string().trim().max(2000).default(''),
 });
 const closeBody = z.object({ data: z.unknown(), signature: credentials });
 const reopenBody = z.object({ reason: z.string().trim().min(1).max(2000), signature: credentials });
@@ -60,6 +62,9 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         if (d.step !== 'investigation') return reply.code(409).send({ error: 'wrong_step' });
         if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
         if (await latestId(tx, id, 'investigation')) return reply.code(409).send({ error: 'already_investigated' });
+        // D-33: the KT checklist for lab / OOS types and the fault tree for critical deviations.
+        const missing = contextProblems(data.data, await investigationContext(tx, id));
+        if (missing.length) return reply.code(400).send({ error: 'invalid_request', problems: missing });
         const section = await addSection(tx, id, 'investigation', data.data, user.id);
         await writeBatches(tx, id, section.id, otherRows(data.data));
         // The signer submitted this content in the same request, so the hash shown is the hash of what was sent.
@@ -75,11 +80,14 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
   });
 
   // S13: lists what is still missing, so the investigator sees it before being asked to sign. Writes nothing.
-  app.post('/api/investigation/check', actor, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/investigation/check', actor, async (req, reply) => {
+    const id = parseId(req.params.id);
     const body = z.object({ data: z.unknown() }).safeParse(req.body);
-    if (!body.success) return reply.code(400).send({ error: 'invalid_request' });
+    if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
     const data = investigationData.safeParse(body.data.data);
-    return { problems: data.success ? [] : [...new Set(problems(data.error))] };
+    const found = data.success ? [] : problems(data.error);
+    found.push(...contextProblems((body.data.data ?? {}) as { kt?: unknown; faultTree?: unknown }, await investigationContext(sql, id)));
+    return { problems: [...new Set(found)] };
   });
 
   // S13 (D-35): save the investigation form as a draft while investigating. A draft is a section version
@@ -149,6 +157,11 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         : kind === 'classification' ? isQa && d.reporter_id !== user.id
         : d.investigator_id === user.id || isQa;
       if (!allowed) return { status: 403, error: 'forbidden' };
+      if (kind === 'investigation') {
+        // D-33: the same tools as at signing (KT for lab / OOS types, fault tree when critical).
+        const missing = contextProblems(data.data as InvestigationData, await investigationContext(tx, id));
+        if (missing.length) return { status: 400, error: 'invalid_request', problems: missing };
+      }
       if (kind === 'report' && (data.data as ReportData).planned !== d.planned) return { status: 400, error: 'invalid_request', problems: ['Planned or unplanned cannot be changed.'] };
 
       if (kind === 'report') {
@@ -211,7 +224,14 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         if (n === 0 && !data.data.noCapaReason) {
           return reply.code(400).send({ error: 'invalid_request', problems: ['Raise a CAPA, or say why the immediate action was enough.'] });
         }
-        const content = { ...data.data, noCapaReason: n === 0 ? data.data.noCapaReason : '' };
+        const [w] = await tx<{ weak: boolean }[]>`
+          select coalesce(bool_and(coalesce(v.data->>'strength', 'weak') = 'weak'), false) as weak
+          from capas c join latest_capa_versions v on v.capa_id = c.id where c.deviation_id = ${id}`;
+        const allWeak = d.classification === 'critical' && n > 0 && w!.weak;
+        if (allWeak && !data.data.weakCapaJustification) {
+          return reply.code(409).send({ error: 'weak_capas', problems: ['A critical deviation needs a strong or medium CAPA (mistake-proofing, interlock, automation, alarm), or QA must say why weak CAPAs (training, SOP revision) are enough.'] });
+        }
+        const content = { ...data.data, noCapaReason: n === 0 ? data.data.noCapaReason : '', weakCapaJustification: allWeak ? data.data.weakCapaJustification : '' };
         const section = await addSection(tx, id, 'closure', content, user.id, (await latestId(tx, id, 'closure')) ? 'closed again after reopening' : null);
         await sign(tx, { signer, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'closed', content });
         await tx`update deviations set step = 'closed' where id = ${id}`;

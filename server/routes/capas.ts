@@ -17,6 +17,9 @@ const credentials = signBody.omit({ contentHash: true });
 const capaFields = z.object({
   type: z.enum(['corrective', 'preventive']),
   description: text(5000),
+  // S14 (D-36): CAPA strength (owner method): strong = mistake-proofing / interlock, medium = automation /
+  // alarm / checklist, weak = training / SOP revision / awareness.
+  strength: z.enum(['strong', 'medium', 'weak'], { errorMap: () => ({ message: 'Choose the CAPA strength (strong, medium or weak).' }) }),
   ownerId: z.number().int().positive(),
   dueDate: isoDate,
   product: z.string().trim().max(200).default(''),
@@ -119,7 +122,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
       select c.id::int, c.number, c.source, c.deviation_id::int as "deviationId", d.number as "deviationNumber", c.source_ref as "sourceRef",
         c.step, to_char(c.due_date, 'YYYY-MM-DD') as "dueDate", to_char(c.check_due, 'YYYY-MM-DD') as "checkDue",
         ${capaOverdueSql(sql)} as overdue, o.full_name as owner, v.data->>'type' as type, v.data->>'description' as description,
-        ${mine} as "waitingForMe"
+        v.data->>'strength' as strength, ${mine} as "waitingForMe"
       from capas c join users o on o.id = c.owner_id join latest_capa_versions v on v.capa_id = c.id
       left join deviations d on d.id = c.deviation_id
       where ${f.source ? sql`c.source = ${f.source}` : sql`true`}

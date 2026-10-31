@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { FISHBONE, Fishbone, SixMDiagram, emptyFishbone, emptySixM, hasFishbone } from '../components/Fishbone.js';
-import { FiveWhysEdit, IsIsNotTable, ROOT_CAUSE_CATEGORY, emptyFiveWhys, emptyIsIsNot } from '../components/Tools.js';
+import {
+  BarriersEdit, FaultTreeEdit, FiveWhysEdit, FmeaEdit, IsIsNotTable, KtEdit, ROOT_CAUSE_CATEGORY,
+  emptyBarriers, emptyFaultTree, emptyFiveWhys, emptyFmea, emptyIsIsNot, emptyKt,
+} from '../components/Tools.js';
 import { Signals } from '../components/Signals.js';
 import { AiSuggest } from '../components/AiSuggest.js';
 import { DmaicBar, PhaseHead } from '../components/DmaicBar.js';
@@ -180,6 +183,10 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
             ? <SixMDiagram value={emptySixM(investigation.data.sixM)} effect={str(report.title)} />
             : hasFishbone(investigation.data.fishbone) && <Fishbone value={emptyFishbone(investigation.data.fishbone)} effect={str(report.title)} />}
           {investigation.data.fiveWhys ? <details className="tool"><summary>5 Whys</summary><FiveWhysEdit value={emptyFiveWhys(investigation.data.fiveWhys)} /></details> : null}
+          {investigation.data.kt ? <details className="tool"><summary>KT checklist</summary><KtEdit value={emptyKt(investigation.data.kt)} /></details> : null}
+          {investigation.data.faultTree ? <details className="tool"><summary>Fault tree</summary><FaultTreeEdit value={emptyFaultTree(investigation.data.faultTree)} /></details> : null}
+          {investigation.data.barriers ? <details className="tool"><summary>Barrier analysis</summary><BarriersEdit value={emptyBarriers(investigation.data.barriers)} /></details> : null}
+          {investigation.data.fmea ? <details className="tool"><summary>FMEA</summary><FmeaEdit value={emptyFmea(investigation.data.fmea)} /></details> : null}
           <Fields rows={[
             ...(investigation.data.rootCauseCategory ? [['Root-cause category', ROOT_CAUSE_CATEGORY[String(investigation.data.rootCauseCategory)] ?? str(investigation.data.rootCauseCategory)] as [string, ReactNode]] : []),
             ['Root cause', <>{str(investigation.data.rootCause)}{investigation.data.mostLikely ? <span className="chip chip-warn">most likely cause; not confirmed</span> : null}</>],
@@ -238,7 +245,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
 function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpenCapa: (id: number) => void; onChange: () => Promise<void> }) {
   const [capas, setCapas] = useState<CapaItem[]>([]);
   const [raising, setRaising] = useState(false);
-  const [f, setF] = useState({ summary: '', disposition: '', noCapaReason: '' });
+  const [f, setF] = useState({ summary: '', disposition: '', noCapaReason: '', weakCapaJustification: '' });
   const [signing, setSigning] = useState<'closed' | 'reopened' | null>(null);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
@@ -249,12 +256,15 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
   const closure = latestOf(d, 'closure');
   const canRaise = isQa && ['investigation', 'closure', 'closed'].includes(d.step);
   const noCapaAllowed = capas.length === 0 && d.classification === 'minor';
+  // S14 (D-33): a critical deviation with only weak CAPAs needs QA's reason to close.
+  const allWeak = d.classification === 'critical' && capas.length > 0 && capas.every((c) => (c.strength ?? 'weak') === 'weak');
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setProblems([]);
     if (!f.summary.trim()) return setProblems(['Write the closure summary.']);
     if (capas.length === 0 && d.classification !== 'minor') return setProblems(['A major or critical deviation needs at least one CAPA before closure.']);
     if (noCapaAllowed && !f.noCapaReason.trim()) return setProblems(['Raise a CAPA, or say why the immediate action was enough.']);
+    if (allWeak && !f.weakCapaJustification.trim()) return setProblems(['Every CAPA is weak. Raise a strong or medium CAPA, or say why weak CAPAs are enough.']);
     setSigning('closed');
   };
   const closedCapas = capas.filter((c) => c.step === 'closed').length;
@@ -277,6 +287,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
           ['Closure summary', str(closure.data.summary)],
           ['Batch disposition', str(closure.data.disposition)],
           ...(closure.data.noCapaReason ? [['No CAPA because', str(closure.data.noCapaReason)] as [string, ReactNode]] : []),
+          ...(closure.data.weakCapaJustification ? [['Weak CAPAs accepted because', str(closure.data.weakCapaJustification)] as [string, ReactNode]] : []),
           ['Open CAPAs', d.openCapas ? `${d.openCapas} still open (followed in the CAPA list)` : 'None'],
         ]} />
       )}
@@ -287,6 +298,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
           <p className="muted small">Review the whole record and its history below before closing.</p>
           <label>Closure summary *<textarea rows={3} value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></label>
           <label>Batch disposition notes<input value={f.disposition} onChange={(e) => setF({ ...f, disposition: e.target.value })} placeholder="e.g. Batch B123 may be released; see QA decision" /></label>
+          {allWeak && <label>Every CAPA is weak (training, SOP, awareness): why is that enough for a critical deviation? *<textarea rows={2} value={f.weakCapaJustification} onChange={(e) => setF({ ...f, weakCapaJustification: e.target.value })} /></label>}
           {noCapaAllowed && <label>No CAPA: why the immediate action was enough *<input value={f.noCapaReason} onChange={(e) => setF({ ...f, noCapaReason: e.target.value })} /></label>}
           {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
           <div className="actions"><button className="primary" type="submit">Sign closed</button></div>
@@ -414,6 +426,11 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   const [isIsNot, setIsIsNot] = useState(emptyIsIsNot(start?.isIsNot));
   const [sixM, setSixM] = useState(emptySixM(start?.sixM));
   const [fiveWhys, setFiveWhys] = useState(emptyFiveWhys(start?.fiveWhys));
+  const [barriers, setBarriers] = useState(emptyBarriers(start?.barriers));
+  const [fmea, setFmea] = useState(emptyFmea(start?.fmea));
+  const [kt, setKt] = useState(emptyKt(start?.kt));
+  const [faultTree, setFaultTree] = useState(emptyFaultTree(start?.faultTree));
+  const critical = d.classification === 'critical';
   const [rows, setRows] = useState<OtherRow[]>(Array.isArray(start?.otherBatches) ? (start.otherBatches as OtherRow[]) : []);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
@@ -427,7 +444,8 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   const whys = [...fiveWhys.whys];
   while (whys.length > 3 && !whys[whys.length - 1]!.answer.trim() && !whys[whys.length - 1]!.evidence.trim()) whys.pop();
   const data = () => ({
-    ...f, isIsNot, sixM, fiveWhys: { ...fiveWhys, whys },
+    ...f, isIsNot, sixM, fiveWhys: { ...fiveWhys, whys }, barriers, fmea,
+    ...(d.labOos ? { kt } : {}), ...(critical ? { faultTree } : {}),
     // The S7 fishbone text of an older investigation is kept in a correction.
     ...(start?.fishbone ? { fishbone: start.fishbone } : {}),
     otherBatches: rows.filter((r) => r.product.trim() || r.batch.trim()),
@@ -453,7 +471,7 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
         return;
       }
       // Lists everything still missing before the signature is asked for.
-      const check = await api<{ problems: string[] }>('POST', '/api/investigation/check', { data: data() });
+      const check = await api<{ problems: string[] }>('POST', `/api/deviations/${d.id}/investigation/check`, { data: data() });
       if (check.problems.length) { setMissing(true); return setProblems(check.problems); }
       setSigning(true);
     } catch (err) {
@@ -481,6 +499,24 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
       <details className="tool" open>
         <summary>3. 5 Whys to the system cause *</summary>
         <FiveWhysEdit value={fiveWhys} onChange={setFiveWhys} />
+      </details>
+      {d.labOos && <details className="tool" open>
+        <summary>4. KT checklist (lab / OOS deviation) *</summary>
+        <KtEdit value={kt} onChange={setKt} />
+      </details>}
+      {critical && <details className="tool" open>
+        <summary>{d.labOos ? 5 : 4}. Fault tree (critical deviation) *</summary>
+        <p className="muted small">Start from the failure. Add the possible causes as branches (OR: any one is enough; AND: all are needed) and test each with evidence.</p>
+        <FaultTreeEdit value={faultTree} onChange={setFaultTree} />
+      </details>}
+      <details className="tool" open>
+        <summary>Barrier analysis *</summary>
+        <p className="muted small">Which checks should have stopped this (self-check, supervisor, IPQA, interlock)? Did each work, and if not, why?</p>
+        <BarriersEdit value={barriers} onChange={setBarriers} />
+      </details>
+      <details className="tool" open>
+        <summary>FMEA: risk if the CAPA is not done *</summary>
+        <FmeaEdit value={fmea} onChange={setFmea} />
       </details>
       <label>Root cause *<textarea rows={3} value={f.rootCause} onChange={(e) => setF({ ...f, rootCause: e.target.value })} /></label>
       <label>Root-cause category *

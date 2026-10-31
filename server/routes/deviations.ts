@@ -7,6 +7,7 @@ import { authenticateSigner, contentHash, sign, signBody, SignError, type Meanin
 import {
   PLANT_TZ, addSection, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
+  investigationContext,
 } from '../deviations.js';
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
@@ -166,8 +167,11 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
         w.reason as "withdrawnReason", w.withdrawn_at as "withdrawnAt"
       from attachments a join users u on u.id = a.uploaded_by left join attachment_withdrawals w on w.attachment_id = a.id
       where a.deviation_id = ${id} order by a.id`;
+    // S14: which context tools the investigation needs (KT for lab / OOS types, fault tree when critical).
+    const tools = await investigationContext(sql, id);
     return {
       ...d,
+      labOos: tools.labOos,
       sections,
       signatures,
       batches,

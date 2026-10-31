@@ -102,9 +102,9 @@ describe('investigation', () => {
     expect(await problemsFor({ fiveWhys: { problem: 'x', whys: [TOOLS.fiveWhys.whys[0], { answer: 'B', evidence: '' }, TOOLS.fiveWhys.whys[2]] } })).toContain('5 Whys, why 2: evidence required.');
     expect(await problemsFor({ rootCauseCategory: '' })).toContain('Choose the root-cause category.');
     // The check lists the same problems and writes nothing.
-    const check = await call(t.app, c.us2!, 'POST', '/api/investigation/check', { data: investigation({ rootCauseCategory: undefined }) });
+    const check = await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigation/check`, { data: investigation({ rootCauseCategory: undefined }) });
     expect(check.json().problems).toEqual(['Choose the root-cause category.']);
-    expect((await call(t.app, c.us2!, 'POST', '/api/investigation/check', { data: investigation() })).json().problems).toEqual([]);
+    expect((await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigation/check`, { data: investigation() })).json().problems).toEqual([]);
     expect((await get(id)).step).toBe('investigation');
   });
 

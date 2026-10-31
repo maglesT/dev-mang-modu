@@ -51,6 +51,7 @@ test('main flow: QA raises a CAPA, closes the deviation with the CAPA still open
   await page.getByLabel('What must be done').fill('Remove rev 3 leaflets from stores.');
   await page.getByLabel('Owner').selectOption({ label: 'US1 (us1)' });
   await page.getByLabel('Due date').fill(inDays(14));
+  await page.getByLabel('Strength').selectOption('medium');
   await page.getByRole('button', { name: 'Raise CAPA' }).click();
   await expect(page.getByRole('row', { name: /CAPA-/ })).toContainText('Open');
 
@@ -89,6 +90,7 @@ test('DV-08: QA enters a CAPA directly for an internal audit finding', async ({ 
   await page.getByLabel('What must be done').fill('Add leaflet revision check to line clearance checklist.');
   await page.getByLabel('Owner').selectOption({ label: 'US1 (us1)' });
   await page.getByLabel('Due date').fill(inDays(30));
+  await page.getByLabel('Strength').selectOption('medium');
   await page.getByRole('button', { name: 'Raise CAPA' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Preventive action');
   await expect(page.getByText('Internal audit: IA-2026-07 finding 3')).toBeVisible();
