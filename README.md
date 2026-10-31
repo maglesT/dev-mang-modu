@@ -1,13 +1,38 @@
 # Deviations & CAPA
 
-Deviation management and CAPA register for one pharmaceutical plant (US FDA, EU GMP,
-Revised Schedule M). Plan and compliance register: `docs/`.
+Deviation management and CAPA register for one pharmaceutical plant that exports
+(US FDA, EU GMP, India Revised Schedule M). Plan, compliance register and decisions: `docs/`.
 
-## Run locally
+**What it does:** anyone reports a deviation; QA classifies it (minor / major / critical, an
+independent check of product and batch); the investigator finds the root cause, checks other
+batches and signs; QA raises CAPAs and closes the deviation with an e-signature. CAPAs from
+internal audits, complaints and other sources use the same register. Lists show what is waiting
+for you, what is open and what is overdue; the batch check shows every deviation naming a batch;
+the trend view and PDF copies support reviews and inspections.
+
+## Install (one site, Docker)
+
+1. Copy `ops/docker-compose.yml`, set `DB_PASSWORD` in `ops/.env`, then
+   `docker compose -f ops/docker-compose.yml up -d --build`. Migrations run on start.
+2. Create the first Admin (prints a temporary password, valid 24 h):
+   `docker compose -f ops/docker-compose.yml exec app node dist/db/create-admin.js admin "Full Name"`
+3. Put a TLS reverse proxy in front of port 3000 (cookies are `Secure`).
+4. As Admin: set the site name and target days, add areas and deviation types, create users
+   (User, QA; Admin is never combined with another role).
+5. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
+   `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
+   Run `ops/restore-check.sh <dump>` periodically and record the result (CP-03).
+
+The integrity check runs nightly inside the server; its last result and a "Run now" button are on
+the Audit trail page. The site's own procedures (validation, training, SOPs, change control,
+business continuity) are listed as CP-01 to CP-11 in `docs/03-compliance-register.md`.
+
+## Develop
+
 ```
 npm ci
 export TEST_DATABASE_URL=postgres://dev_owner:dev@localhost:5432/dev_test
-npm test            # Vitest on real PostgreSQL, one schema per test file
-npm run test:e2e    # Playwright browser tests
-docker compose -f ops/docker-compose.yml up --build
+npm test                 # Vitest on real PostgreSQL, one schema per test file
+npm run test:e2e         # Playwright browser tests of the main flows
+npm run traceability     # regenerate docs/traceability.md (rule → tests)
 ```

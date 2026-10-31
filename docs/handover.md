@@ -12,11 +12,11 @@ State on 2026-10-31, for the next working session.
 | S2 report, classify, planned approval, home lists | #4 | merged |
 | S3 investigation, corrections, attachments | #5 | merged |
 | S4 CAPA register, closure, reopen | #6 | merged |
-| S5 batch lookup page, trend view, PDF per deviation and per CAPA | #7 | open |
-| S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | — | after S5 |
+| S5 batch lookup page, trend view, PDF per deviation and per CAPA | #7 | merged |
+| S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | #8 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-22: `docs/decisions.md`.
+Decisions D-01 to D-24: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Owner's working rules (from the brief and the owner)
 
@@ -50,11 +50,7 @@ Decisions D-01 to D-22: `docs/decisions.md`.
 
 ## Next steps
 
-1. S4: apply the review findings, merge, email the owner.
-2. S5: "affects batch X" page (DV-11), trend view by month split by area / type / classification plus
-   CAPA counts by source, status and effectiveness outcome, with the product-spelling list (DV-12);
-   one PDF per deviation and per CAPA with all versions, signatures and history (DV-21; pdfmake + the
-   logbook's Noto fonts).
-3. S6: nightly integrity check (re-hash signatures), backup script writing SHA-256 + off-host copy and a
-   restore check that verifies it (DV-22), traceability list generated from test names with a CI check (CP-01),
-   README install steps.
+All planned slices are built. Possible follow-ups, none required by a binding clause:
+- a light lookup from Batchwright or the logbook to the batch check (owner said "later");
+- integration with the audit-checklist product for audit CAPAs (free-text reference in v1).
+Keep the Simplicity review rules: anything new needs a binding clause or a core user need.

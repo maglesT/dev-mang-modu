@@ -64,7 +64,7 @@ that repo is attached; I'll ask when a slice needs it.
 - Playwright: report → classify → investigate → raise CAPA → QA close deviation → CAPA done, verified, effectiveness checked, closed; a CAPA entered directly from an audit; overdue shown; a deviation affecting a batch appears in that batch's lookup; planned deviation blocked until approved.
 - CI on every PR; merge when green after one review pass; squash-merge with an explicit title and message.
 
-## 6. Slice plan
+## 6. Slice plan (all built and merged by 31 Oct 2026; see `handover.md`)
 
 | # | Slice | Rules | Size | What you can try |
 |---|-------|-------|------|------------------|

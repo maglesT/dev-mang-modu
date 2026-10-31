@@ -28,12 +28,28 @@ export function AuditTrail() {
     if (f.to) q.set('to', new Date(new Date(`${f.to}T00:00:00+05:30`).getTime() + 86400_000).toISOString());
     setRows(await api<AuditRow[]>('GET', `/api/audit?${q}`));
   };
+  const [integrity, setIntegrity] = useState<{ at: string; action: string; result: { problems: string[]; problemCount: number; signatures: number } } | null>(null);
+  const loadIntegrity = async () => setIntegrity(await api('GET', '/api/integrity'));
   useEffect(() => {
     void load();
+    void loadIntegrity();
   }, []);
+  const runCheck = async () => {
+    await api('POST', '/api/integrity/run');
+    await loadIntegrity();
+  };
   return (
     <>
       <h1>Audit trail</h1>
+      {/* DV-22: the nightly integrity check, its last result and a manual run. */}
+      <div className={`statusbar ${integrity && integrity.action === 'integrity.passed' ? 'fit' : 'blocked'}`}>
+        <span>
+          <b>Integrity check:</b>{' '}
+          {integrity ? `${integrity.action === 'integrity.passed' ? 'passed' : `FAILED (${integrity.result.problemCount} problems)`} · ${plantTime(integrity.at)}` : 'not run yet'}
+        </span>
+        <button onClick={runCheck}>Run now</button>
+        {integrity && integrity.action !== 'integrity.passed' && <ul>{integrity.result.problems.slice(0, 10).map((p) => <li key={p}>{p}</li>)}</ul>}
+      </div>
       <form className="card row" onSubmit={(e) => { e.preventDefault(); void load(); }}>
         <input placeholder="User ID (optional)" value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} />
         <label>From <input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></label>
