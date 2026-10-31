@@ -13,6 +13,46 @@ const trendQuery = z.object({
   by: z.enum(['area', 'type', 'classification']).default('area'),
   product: z.string().trim().max(200).default(''),
 });
+// S10 (D-30): one simple statistical flag. A month is marked when its count is above its own usual level:
+// the average of the 12 months before it plus 3 times the square root of that average (a c-chart upper limit,
+// as for counts of events). At least 6 earlier months are needed, and a month needs at least 3 deviations.
+const BASELINE_MONTHS = 12;
+const MIN_HISTORY = 6;
+const MIN_COUNT = 3;
+export const addMonths = (m: string, k: number) => {
+  const i = Number(m.slice(0, 4)) * 12 + Number(m.slice(5)) - 1 + k;
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+};
+export interface Spike { key: string | null; month: string; n: number; mean: number; limit: number }
+export function spikeFlags(rows: { key: string; month: string; n: number }[], from: string, to: string, firstMonth: string): Spike[] {
+  // Series: each key, and null for all deviations together. Months before the first deviation on record do not count as history.
+  const series = new Map<string | null, Map<string, number>>([[null, new Map()]]);
+  for (const r of rows) {
+    if (!series.has(r.key)) series.set(r.key, new Map());
+    series.get(r.key)!.set(r.month, (series.get(r.key)!.get(r.month) ?? 0) + r.n);
+    series.get(null)!.set(r.month, (series.get(null)!.get(r.month) ?? 0) + r.n);
+  }
+  const start = firstMonth;
+  const out: Spike[] = [];
+  for (const [key, byMonth] of series) {
+    for (let m = from; m <= to; m = addMonths(m, 1)) {
+      const n = byMonth.get(m) ?? 0;
+      if (n < MIN_COUNT) continue;
+      const history: number[] = [];
+      for (let k = 1; k <= BASELINE_MONTHS; k++) {
+        const h = addMonths(m, -k);
+        if (h >= start) history.push(byMonth.get(h) ?? 0);
+      }
+      if (history.length < MIN_HISTORY) continue;
+      const mean = history.reduce((a, b) => a + b, 0) / history.length;
+      const limit = mean + 3 * Math.sqrt(mean);
+      // The limit is shown rounded down, so a marked count is always visibly above it.
+      if (n > limit) out.push({ key, month: m, n, mean: Math.round(mean * 10) / 10, limit: Math.floor(limit * 10) / 10 });
+    }
+  }
+  return out;
+}
+
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
 const STEP: Record<string, string> = {
   classification: 'Awaiting classification', approval: 'Awaiting approval', investigation: 'Investigation',
@@ -82,7 +122,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     const { from, to, by, product } = q.data;
     const like = '%' + likeEscape(product) + '%';
     // Deviations reported in the period (plant months), optionally for a product (free text, D-12).
-    const devs = sql`
+    const devsIn = (from: string, to: string) => sql`
       select d.id, d.classification, to_char(d.reported_at at time zone ${PLANT_TZ}, 'YYYY-MM') as month,
         a.name as area, ty.name as type
       from deviations d
@@ -93,8 +133,14 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       where to_char(d.reported_at at time zone ${PLANT_TZ}, 'YYYY-MM') between ${from} and ${to}
         and (${product === ''} or exists (select 1 from batches b where b.section_id = r.id and b.product ilike ${like}))`;
     const key = by === 'area' ? sql`coalesce(area, '—')` : by === 'type' ? sql`coalesce(type, 'Not classified')` : sql`coalesce(classification, 'not classified')`;
-    const counts = await sql<{ key: string; month: string; n: number }[]>`
-      select ${key} as key, month, count(*)::int as n from (${devs}) x group by 1, 2 order by 1, 2`;
+    const countsIn = (f: string, t: string) => sql<{ key: string; month: string; n: number }[]>`
+      select ${key} as key, month, count(*)::int as n from (${devsIn(f, t)}) x group by 1, 2 order by 1, 2`;
+    // S10 (D-30): counted from 12 months before the period, so the first months have a baseline; the table shows the period.
+    const all = await countsIn(addMonths(from, -BASELINE_MONTHS), to);
+    const counts = all.filter((r) => r.month >= from);
+    // Months before the site's first deviation are not history; quiet months after it count as 0.
+    const [first] = await sql<{ m: string | null }[]>`select to_char(min(reported_at) at time zone ${PLANT_TZ}, 'YYYY-MM') as m from deviations`;
+    const spikes = spikeFlags(all, from, to, first?.m ?? to);
     // Every spelling of the product that matched, so variants are seen and not silently missed (DV-12).
     const products = product === '' ? [] : (await sql<{ product: string; n: number }[]>`
       select b.product, count(distinct d.id)::int as n
@@ -116,7 +162,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         and (${product === ''} or c.deviation_id in (select r.deviation_id from latest_sections r join batches b on b.section_id = r.id
                                                        where r.kind = 'report' and b.product ilike ${like}))
       group by 1, 2, 3`;
-    return { from, to, by, counts, products, capas };
+    return { from, to, by, counts, products, capas, spikes };
   });
 
   // DV-21: one PDF per deviation: every section with all versions, signatures, CAPAs, attachments and history.

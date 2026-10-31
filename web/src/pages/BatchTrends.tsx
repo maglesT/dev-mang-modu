@@ -10,6 +10,8 @@ interface Trends {
   counts: { key: string; month: string; n: number }[];
   products: { product: string; n: number }[];
   capas: { source: string; step: string; outcome: string; n: number }[];
+  // S10 (D-30): months above their own usual level (key null = all deviations).
+  spikes: { key: string | null; month: string; n: number; mean: number; limit: number }[];
 }
 
 const monthNow = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 7);
@@ -103,6 +105,11 @@ function TrendView() {
   const cell = (key: string, m: string) => data?.counts.find((c) => c.key === key && c.month === m)?.n ?? 0;
   const totals = months.map((m) => data?.counts.filter((c) => c.month === m).reduce((s, c) => s + c.n, 0) ?? 0);
   const keyLabel = (k: string) => (data?.by === 'classification' ? CLASS_LABEL[k] ?? k : k);
+  const spike = (key: string | null, m: string) => data?.spikes.find((x) => x.key === key && x.month === m);
+  const td = (key: string | null, m: string, n: number) => {
+    const x = spike(key, m);
+    return <td key={m} className={x ? 'spike' : undefined} title={x ? `Above the usual level: about ${x.mean} a month, limit ${x.limit}` : undefined}>{n || ''}{x ? ' ▲' : ''}</td>;
+  };
   const sum = (pick: (c: Trends['capas'][number]) => string) =>
     Object.entries((data?.capas ?? []).reduce<Record<string, number>>((acc, c) => ({ ...acc, [pick(c)]: (acc[pick(c)] ?? 0) + c.n }), {}));
 
@@ -130,11 +137,20 @@ function TrendView() {
             <thead><tr><th>{data.by === 'area' ? 'Area' : data.by === 'type' ? 'Type' : 'Classification'}</th>{months.map((m) => <th key={m}>{monthLabel(m)}</th>)}<th>Total</th></tr></thead>
             <tbody>
               {keys.map((k) => (
-                <tr key={k}><td>{keyLabel(k)}</td>{months.map((m) => <td key={m}>{cell(k, m) || ''}</td>)}<td><b>{months.reduce((s, m) => s + cell(k, m), 0)}</b></td></tr>
+                <tr key={k}><td>{keyLabel(k)}</td>{months.map((m) => td(k, m, cell(k, m)))}<td><b>{months.reduce((s, m) => s + cell(k, m), 0)}</b></td></tr>
               ))}
-              <tr className="total"><td>All deviations</td>{totals.map((n, i) => <td key={months[i]}>{n || ''}</td>)}<td><b>{totals.reduce((s, n) => s + n, 0)}</b></td></tr>
+              <tr className="total"><td>All deviations</td>{totals.map((n, i) => td(null, months[i]!, n))}<td><b>{totals.reduce((s, n) => s + n, 0)}</b></td></tr>
             </tbody>
           </table></div>
+          <div className="spikes" role="region" aria-label="Unusual months">
+            <h3>Unusual months</h3>
+            {data.spikes.length === 0 ? <p className="muted small">No month is above its usual level.</p> : (
+              <ul>{data.spikes.map((x) => (
+                <li key={`${x.key}-${x.month}`}><b>{x.key === null ? 'All deviations' : keyLabel(x.key)}, {monthLabel(x.month)}:</b> {x.n} deviations; usually about {x.mean} a month. Worth a look: what changed that month?</li>
+              ))}</ul>
+            )}
+            <p className="muted small">How it works: a month is marked ▲ when its count is above the average of the 12 months before it plus 3 × the square root of that average (a c-chart limit). It needs at least 6 earlier months and at least 3 deviations. A mark is a reason to look, not a conclusion.</p>
+          </div>
           <h3>CAPAs raised in the period</h3>
           <div className="grid3">
             <table><thead><tr><th>Source</th><th>Count</th></tr></thead><tbody>{sum((c) => SOURCE_LABEL[c.source] ?? c.source).map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody></table>
