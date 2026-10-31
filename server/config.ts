@@ -12,6 +12,9 @@ const schema = z.object({
   HOST: z.string().default('0.0.0.0'),
   // Plant-local display time zone (DV-16); storage is always UTC.
   DISPLAY_TZ: z.string().default('Asia/Kolkata'),
+  // S9 (D-29): AI-suggested causes through Google Gemini. Without a key the feature is off.
+  GEMINI_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  GEMINI_MODEL: z.string().trim().min(1).default('gemini-4-argon'),
 });
 
 export type Config = z.infer<typeof schema>;

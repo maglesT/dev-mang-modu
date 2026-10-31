@@ -93,3 +93,22 @@ test('S8: a deviation naming a batch from another deviation shows the hint, with
   await hints.getByRole('button', { name: first }).first().click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText(first);
 });
+
+test('S9: the investigator asks the AI, reads simple suggestions and adds one to the fishbone', async ({ page }) => {
+  const number = await inInvestigation(`AI-${Date.now().toString(36)}`);
+  // The AI service is replaced in the browser, so the test never calls Google.
+  await page.route('**/api/ai/status', (r) => r.fulfill({ json: { enabled: true, model: 'gemini-test' } }));
+  await page.route('**/api/deviations/*/ai-suggest', (r) => r.fulfill({ json: {
+    model: 'gemini-test', summary: 'Tablets were too heavy. Start with the press settings.',
+    causes: [{ category: 'machine', cause: 'Feeder speed changed', why: 'It started after maintenance.', howToCheck: 'Read the maintenance log.' }],
+    questions: ['Who changed the setting?'], otherBatches: 'Batches made on the same press since maintenance.',
+  } }));
+  await logIn(page, 'us2');
+  await page.getByRole('button', { name: number }).click();
+  const help = page.getByRole('region', { name: 'AI help' });
+  await help.getByRole('button', { name: 'Ask AI for possible causes' }).click();
+  await expect(help).toContainText('How to check: Read the maintenance log.');
+  await expect(help).toContainText('you check and decide');
+  await help.getByRole('button', { name: 'Add to fishbone' }).click();
+  await expect(page.getByLabel('Fishbone: Machine / equipment')).toHaveValue('Feeder speed changed');
+});

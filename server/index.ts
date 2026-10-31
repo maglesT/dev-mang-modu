@@ -5,7 +5,8 @@ import { scheduleIntegrityCheck } from './integrity.js';
 
 const config = loadConfig();
 const sql = connect(config.DATABASE_URL, { role: config.DB_APP_ROLE });
-const app = await buildApp({ sql, logger: true, cookieSecure: config.COOKIE_SECURE });
+const ai = config.GEMINI_API_KEY ? { apiKey: config.GEMINI_API_KEY, model: config.GEMINI_MODEL } : undefined;
+const app = await buildApp({ sql, logger: true, cookieSecure: config.COOKIE_SECURE, ai });
 
 await app.listen({ port: config.PORT, host: config.HOST });
 const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));

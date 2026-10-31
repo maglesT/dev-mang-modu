@@ -65,12 +65,12 @@ Machine-checked clause/phrase pairs for every rule: `compliance/register-checks.
 
 | ID | Rule | Binding clauses | Product support |
 |----|------|-----------------|-----------------|
-| CP-01 | Validate the system for its intended use. | P11 11.10(a); A11 1, 4; SchM 20.1–20.3 | Rule-to-test traceability list from test names, plus the CI test report. |
+| CP-01 | Validate the system for its intended use. | P11 11.10(a); A11 1, 4; SchM 20.1–20.3 | Rule-to-test traceability list from test names, plus the CI test report. If the AI suggestions are switched on (D-29), validate them as advice only: they never write to a record, and each request is audited. |
 | CP-02 | Qualified, trained people with defined responsibilities, including those who investigate and approve deviations. | 211.25(a); P11 11.10(i); A11 2 | — |
 | CP-03 | Policies: signature accountability, identity check before issuing accounts, certification to FDA, periodic access review, temporary passwords handed directly to the user (Admins never log in as another user), who acknowledges misuse alerts, periodic restore test. | P11 11.10(j), 11.100(b), (c), 11.300(b); A11 7.2 | Signature declaration text; access-list report; restore check script. |
 | CP-04 | A written, approved deviation and CAPA procedure: classification criteria ("significant" = major and critical), when QC is involved, who investigates, target times. | 211.100(a), 211.22(d); C4 4.29; C5 5.15; SchM 18.2.2 | Target-date settings and lists match the SOP. |
 | CP-05 | The batch release decision takes the batch's deviations into account, and the batch record references any investigation. | 211.188(b)(12), 211.192; C1 1.9(vi); C4 4.27; SchM 11.3.9(e), (f), 19.3(f) | "Affects batch X" lookup (DV-11) and the deviation PDF. |
-| CP-06 | Supplier agreement and assessment. | A11 3 | Supplier documentation pack. |
+| CP-06 | Supplier agreement and assessment. | A11 3 | Supplier documentation pack. With the AI suggestions on, Google (Gemini API) is a supplier too: its terms and data use need the site's assessment. |
 | CP-07 | Change control, incident management and periodic evaluation of the system, including **configuration changes** (target-date settings, area and type lists). Written procedures for operating and maintaining the system. | A11 10, 11, 13; P11 11.10(k); SchM 20.5, 20.7, 20.8 | Release notes per version; an audit row for every software version change and every settings or list change. |
 | CP-08 | Business continuity: controlled paper deviation forms when the system is down, then entered with the paper form number. | A11 16 | The event time is entered separately from the report time (DV-13). |
 | CP-09 | Management and product quality reviews that use deviation and CAPA data, including CAPA effectiveness. | 211.180(e); C1 1.6, 1.10, 1.11; SchM 1.6, 2.3 | Trend view and filtered list (DV-12). |

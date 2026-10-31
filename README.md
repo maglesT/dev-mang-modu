@@ -22,7 +22,9 @@ the trend view and PDF copies support reviews and inspections.
    another project name (e.g. `ops`) keeps that name with `-p <old name>`, or its volume is not found.
 4. As Admin: set the site name and target days, add areas and deviation types, create users
    (User, QA; Admin is never combined with another role).
-5. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
+5. Optional, AI help in investigations (D-29): put `GEMINI_API_KEY=...` (and, to change the model,
+   `GEMINI_MODEL=...`) in `ops/.env` and restart. Deviation facts, without names, are then sent to Google.
+6. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
    Run `ops/restore-check.sh <dump>` periodically and record the result (CP-03).
 
