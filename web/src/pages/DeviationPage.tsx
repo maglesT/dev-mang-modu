@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { FISHBONE, Fishbone, emptyFishbone, hasFishbone } from '../components/Fishbone.js';
+import { Signals } from '../components/Signals.js';
 import {
   api, ApiError, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
   type Deviation, type Me, type NamedItem, type SectionVersion,
@@ -75,7 +76,7 @@ function Signatures({ d, kind }: { d: Deviation; kind: Kind }) {
   );
 }
 
-export function DeviationPage({ me, id, onBack, onOpenCapa }: { me: Me; id: number; onBack: () => void; onOpenCapa: (id: number) => void }) {
+export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: { me: Me; id: number; onBack: () => void; onOpenCapa: (id: number) => void; onOpenDeviation: (id: number) => void }) {
   const [d, setD] = useState<Deviation | null>(null);
   const [signing, setSigning] = useState<SignKind | null>(null);
   const [correcting, setCorrecting] = useState<Kind | null>(null);
@@ -155,6 +156,8 @@ export function DeviationPage({ me, id, onBack, onOpenCapa }: { me: Me; id: numb
           </div>
         )}
       </section>
+
+      {d.step !== 'rejected' && <Signals id={d.id} onOpen={onOpenDeviation} />}
 
       <section className="card">
         <div className="section-head"><h2>3. Investigation</h2>{correctButton('investigation')}</div>
