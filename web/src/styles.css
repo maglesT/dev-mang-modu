@@ -290,3 +290,15 @@ table.list td:first-child { white-space: nowrap; }
 /* S10: months above their usual level (D-30). */
 .trend td.spike { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
 .spikes ul { margin: 4px 0; padding-left: 1.1em; }
+
+/* S11 DMAIC progress (D-31). */
+.dmaic { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.dmaic .phase { padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.dmaic .phase a { display: flex; gap: 8px; align-items: flex-start; color: inherit; text-decoration: none; }
+.dmaic .letter, .phase-head .letter { flex: none; width: 1.8em; height: 1.8em; border-radius: 50%; display: grid; place-items: center; font-weight: 700; border: 2px solid var(--line); }
+.dmaic .done .letter { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.dmaic .current { border-color: var(--info); }
+.dmaic .current .letter { background: var(--info-soft); color: var(--info); border-color: var(--info); }
+.dmaic .todo { opacity: 0.7; }
+.phase-head { display: flex; align-items: center; gap: 8px; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--line); scroll-margin-top: 12px; }
+.phase-head .letter { width: 1.6em; height: 1.6em; }

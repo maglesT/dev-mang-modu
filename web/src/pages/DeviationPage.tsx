@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { FISHBONE, Fishbone, emptyFishbone, hasFishbone } from '../components/Fishbone.js';
 import { Signals } from '../components/Signals.js';
 import { AiSuggest } from '../components/AiSuggest.js';
+import { DmaicBar, PhaseHead } from '../components/DmaicBar.js';
 import {
   api, ApiError, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
   type Deviation, type Me, type NamedItem, type SectionVersion,
@@ -118,9 +119,11 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         <span>Target date: <b>{plantDate(d.targetDate)}</b>{d.overdue && <span className="chip chip-bad">Overdue</span>}</span>
         <span className="next">Next: {nextAction(d)}</span>
       </div>
+      <DmaicBar d={d} noCapaReason={String((latestOf(d, 'closure')?.data as Record<string, unknown> | undefined)?.noCapaReason ?? '')} />
 
+      <PhaseHead k="D" />
       <section className="card">
-        <div className="section-head"><h2>1. Report{d.planned ? ' (planned deviation)' : ''}</h2>{correctButton('report')}</div>
+        <div className="section-head"><h2>Report{d.planned ? ' (planned deviation)' : ''}</h2>{correctButton('report')}</div>
         {correcting === 'report' ? (
           <ReportForm initial={report as unknown as ReportValues} correct={correct('report')} onDone={() => {}} onCancel={() => setCorrecting(null)} />
         ) : (
@@ -139,7 +142,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       </section>
 
       <section className="card">
-        <div className="section-head"><h2>2. Classification</h2>{correctButton('classification')}</div>
+        <div className="section-head"><h2>Classification</h2>{correctButton('classification')}</div>
         {classification && correcting !== 'classification' ? (
           <Classified d={d} c={classification} />
         ) : (classification && correcting === 'classification') || (d.step === 'classification' && isQa && d.reporterId !== me.id) ? (
@@ -158,10 +161,14 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         )}
       </section>
 
-      {d.step !== 'rejected' && <Signals id={d.id} onOpen={onOpenDeviation} />}
+      {d.step !== 'rejected' && <>
+        <PhaseHead k="M" />
+        <Signals id={d.id} onOpen={onOpenDeviation} />
+      </>}
 
+      <PhaseHead k="A" />
       <section className="card">
-        <div className="section-head"><h2>3. Investigation</h2>{correctButton('investigation')}</div>
+        <div className="section-head"><h2>Investigation</h2>{correctButton('investigation')}</div>
         {investigation && correcting !== 'investigation' ? (
           <>
           {hasFishbone(investigation.data.fishbone) && <Fishbone value={emptyFishbone(investigation.data.fishbone)} effect={str(report.title)} />}
@@ -241,12 +248,21 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
     if (noCapaAllowed && !f.noCapaReason.trim()) return setProblems(['Raise a CAPA, or say why the immediate action was enough.']);
     setSigning('closed');
   };
+  const closedCapas = capas.filter((c) => c.step === 'closed').length;
+  const checksDue = capas.filter((c) => c.step === 'check').length;
   return (
+    <>
+    <PhaseHead k="I" />
     <section className="card">
-      <h2>4. CAPAs and closure</h2>
+      <h2>CAPAs</h2>
       <CapaTable rows={capas} onOpen={onOpenCapa} showSource={false} />
       {canRaise && !raising && <div><button onClick={() => setRaising(true)}>Raise a CAPA</button></div>}
       {raising && <RaiseForm deviationId={d.id} onCancel={() => setRaising(false)} onDone={async () => { setRaising(false); setCapas(await api<CapaItem[]>('GET', `/api/capas?deviationId=${d.id}&status=all`)); }} />}
+    </section>
+    <PhaseHead k="C" />
+    <section className="card">
+      <h2>Closure and effectiveness</h2>
+      {capas.length > 0 && <p>CAPAs closed: <b>{closedCapas} of {capas.length}</b>{checksDue > 0 && <> · effectiveness checks due: <b>{checksDue}</b></>}</p>}
       {d.step === 'closed' && closure && (
         <Fields rows={[
           ['Closure summary', str(closure.data.summary)],
@@ -288,6 +304,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
         </SignDialog>
       )}
     </section>
+    </>
   );
 }
 
