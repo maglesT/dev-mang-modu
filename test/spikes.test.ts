@@ -44,7 +44,7 @@ describe('trend API (S10)', () => {
     for (let i = 0; i < 14; i++) {
       ids.push((await call(t.app, us1, 'POST', '/api/deviations', {
         planned: false, title: `Label issue ${i}`, description: 'x', areaId, eventAt: new Date(Date.now() - 600_000).toISOString(),
-        products: [], noBatch: true, immediateAction: 'x',
+        products: [], noBatch: true, initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
       })).json().id);
     }
     // Spread the first 8 over the 8 months before this one (1 a month); 6 stay in this month. Test set-up only.

@@ -24,7 +24,7 @@ afterAll(() => t.close());
 async function awaitingClosure(classification = 'major') {
   const id = (await call(t.app, c.us1!, 'POST', '/api/deviations', {
     planned: false, title: 'Wrong leaflet version', description: 'Leaflet rev 3 found in line; rev 4 is current.', areaId,
-    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Amlodipine 5', batch: 'AML-9' }], immediateAction: 'Line stopped.',
+    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Amlodipine 5', batch: 'AML-9' }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Line stopped.',
   })).json().id as number;
   await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, { classification, typeId, impact: 'AML-9.', investigatorId: ids.us2, productBatchChecked: true });
   await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, {
@@ -143,7 +143,7 @@ describe('deviation closure', () => {
 
   it('DV-19: closure is refused before the investigation is signed', async () => {
     const id = (await call(t.app, c.us1!, 'POST', '/api/deviations', {
-      planned: false, title: 'x', description: 'x', areaId, eventAt: new Date().toISOString(), products: [], noBatch: true, immediateAction: 'x',
+      planned: false, title: 'x', description: 'x', areaId, eventAt: new Date().toISOString(), products: [], noBatch: true, initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
     })).json().id;
     expect((await close(id)).statusCode).toBe(409);
   });
@@ -161,7 +161,7 @@ describe('deviation closure', () => {
 
   it('a CAPA cannot be raised from a deviation that is not yet classified', async () => {
     const id = (await call(t.app, c.us1!, 'POST', '/api/deviations', {
-      planned: false, title: 'x', description: 'x', areaId, eventAt: new Date().toISOString(), products: [], noBatch: true, immediateAction: 'x',
+      planned: false, title: 'x', description: 'x', areaId, eventAt: new Date().toISOString(), products: [], noBatch: true, initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
     })).json().id;
     expect((await raise(capa({ source: 'deviation', deviationId: id }))).statusCode).toBe(409);
   });

@@ -21,7 +21,7 @@ afterAll(() => t.close());
 const report = (over: object = {}) => ({
   planned: false, title: 'Punch damage found', description: 'Upper punch 7 chipped at line clearance.', areaId,
   eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Metformin 500', batch: 'MET-11' }],
-  immediateAction: 'Tablets since last IPC segregated.', ...over,
+  initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Tablets since last IPC segregated.', ...over,
 });
 const investigation = (over: object = {}) => ({
   rootCause: 'Punch used beyond its life; counter not reset after tooling change.',

@@ -8,7 +8,7 @@ import {
   type Deviation, type Me, type NamedItem, type SectionVersion,
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
-import { ReportForm, type ReportValues } from './ReportForm.js';
+import { ANSWER_LABEL, ReportForm, type ReportValues } from './ReportForm.js';
 import { CapaTable, RaiseForm } from './Capas.js';
 import type { CapaItem } from '../api.js';
 
@@ -134,7 +134,8 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
             ['Equipment', str(report.equipment)],
             [d.planned ? 'Planned for' : 'When it happened', plantTime(str(report.eventAt))],
             ['Product / batch', own.length ? own.map((b) => `${b.product} / ${b.batch}`).join('; ') : 'None concerned'],
-            ['Immediate action', str(report.immediateAction)],
+            ...(report.initialImpact ? [['Initial impact', <ImpactView v={report.initialImpact as Record<string, string>} />] as [string, ReactNode]] : []),
+            ['Action taken', <>{str(report.immediateAction)}{report.actionTakenAt ? <span className="muted small"> · {plantTime(str(report.actionTakenAt))}</span> : null}</>],
             ['Reported by', `${d.reporter} · ${plantTime(d.reportedAt)}`],
           ]} />
         )}
@@ -530,5 +531,16 @@ function ApproveDialog({ d, meaning, onCancel, onDone }: { d: Deviation; meaning
     >
       {meaning === 'rejected' && <label>Reason<textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} /></label>}
     </SignDialog>
+  );
+}
+
+// S12: the reporter's initial impact assessment (D-34).
+function ImpactView({ v }: { v: Record<string, string> }) {
+  const chip = (a: string) => <span className={`chip ${a === 'yes' ? 'chip-bad' : a === 'no' ? 'chip-ok' : 'chip-warn'}`}>{ANSWER_LABEL[a] ?? a}</span>;
+  return (
+    <div className="impact-view">
+      <div>Product quality {chip(v.productQuality!)} Patient safety {chip(v.patientSafety!)} Other batches {chip(v.otherBatches!)}</div>
+      <div>{v.notes}</div>
+    </div>
   );
 }

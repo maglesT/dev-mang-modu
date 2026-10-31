@@ -21,7 +21,7 @@ beforeAll(async () => {
   const typeId = (await call(t.app, c.admin1!, 'POST', '/api/deviation-types', { name: 'Process' })).json().id;
   const report = (reason: string) => ({
     planned: true, plannedReason: reason, title: 'Hold time extension', description: 'x', areaId,
-    eventAt: new Date(Date.now() - 60_000).toISOString(), products: [{ product: 'Ondansetron inj', batch: 'OND-5' }], immediateAction: 'x',
+    eventAt: new Date(Date.now() - 60_000).toISOString(), products: [{ product: 'Ondansetron inj', batch: 'OND-5' }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'x',
   });
   dev = (await call(t.app, c.us1!, 'POST', '/api/deviations', report('Filter delivery late'))).json().id;
   await call(t.app, c.qa1!, 'POST', `/api/deviations/${dev}/classify`, { classification: 'minor', typeId, impact: 'x', investigatorId: ids.us2, productBatchChecked: true });

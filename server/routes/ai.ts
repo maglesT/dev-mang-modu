@@ -89,7 +89,7 @@ export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
     // other users' names are not sent; free text is sent as written (D-29).
     const facts = {
       title: d.report.title, whatHappened: d.report.description, area: d.area, equipment: d.report.equipment || null,
-      whenItHappened: d.report.eventAt, productsAndBatches: d.report.products, immediateAction: d.report.immediateAction,
+      whenItHappened: d.report.eventAt, productsAndBatches: d.report.products, immediateAction: d.report.immediateAction, reportersInitialImpact: d.report.initialImpact ?? null,
       planned: d.report.planned, classification: d.cls?.classification ?? null, type: d.type, impactAssessment: d.cls?.impact ?? null,
       hintsFromRules: signals?.flags.map((f) => f.text) ?? [],
       similarEarlierCases: signals?.similar.map((s) => ({ title: s.title, rootCause: s.rootCause, causes: s.causes, capas: s.capas.map((c) => c.description) })) ?? [],

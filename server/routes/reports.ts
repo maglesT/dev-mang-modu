@@ -82,6 +82,12 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     if (k === 'fishbone' && v && typeof v === 'object') {
       return FISHBONE.filter(([key]) => (v as Row)[key]).map(([key, label]) => [`fishbone: ${label}`, val((v as Row)[key])]);
     }
+    // The initial impact assessment prints as readable answers (D-34).
+    if (k === 'initialImpact' && v && typeof v === 'object') {
+      const a = v as Row;
+      const word = (x: unknown) => ({ yes: 'yes', no: 'no', unknown: 'not known' } as Record<string, string>)[String(x)] ?? val(x);
+      return [['initial impact', `product quality ${word(a.productQuality)}; patient safety ${word(a.patientSafety)}; other batches ${word(a.otherBatches)}. ${val(a.notes)}`]];
+    }
     const n = NAMED[k];
     return [n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [k, val(v)]];
   });

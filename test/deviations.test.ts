@@ -26,7 +26,7 @@ const report = (over: object = {}) => ({
   equipment: 'RMG-01',
   eventAt: new Date(Date.now() - 3600_000).toISOString(),
   products: [{ product: 'Paracetamol 500 mg', batch: 'PCM-2401' }],
-  immediateAction: 'Restarted after QA informed.',
+  initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Restarted after QA informed.',
   ...over,
 });
 const classify = (over: object = {}) => ({
@@ -47,6 +47,19 @@ describe('report', () => {
     expect(a.number).toMatch(new RegExp(`^DEV-${year}-\\d{4}$`));
     expect(Number(b.number.slice(-4))).toBe(Number(a.number.slice(-4)) + 1);
     expect((await get(a.id)).step).toBe('classification');
+  });
+
+  it('DV-01: the reporter gives an initial impact assessment (three answers and a note); the action time cannot be in the future', async () => {
+    const missing = await call(t.app, c.us1!, 'POST', '/api/deviations', report({ initialImpact: undefined }));
+    expect(missing.statusCode).toBe(400);
+    const partial = await call(t.app, c.us1!, 'POST', '/api/deviations', report({ initialImpact: { productQuality: 'yes', patientSafety: 'maybe', otherBatches: 'no', notes: '' } }));
+    expect(partial.json().problems).toEqual(expect.arrayContaining([expect.stringMatching(/patient safety/), expect.stringMatching(/short assessment/)]));
+    const future = await call(t.app, c.us1!, 'POST', '/api/deviations', report({ actionTakenAt: new Date(Date.now() + 3_600_000).toISOString() }));
+    expect(future.json().problems).toEqual([expect.stringMatching(/action was taken cannot be in the future/)]);
+    const ok = await call(t.app, c.us1!, 'POST', '/api/deviations', report({ actionTakenAt: new Date(Date.now() - 300_000).toISOString() }));
+    expect(ok.statusCode, ok.body).toBe(201);
+    const d = (await call(t.app, c.us1!, 'GET', `/api/deviations/${ok.json().id}`)).json();
+    expect(d.sections[0].data.initialImpact).toMatchObject({ productQuality: 'unknown', patientSafety: 'no' });
   });
 
   it('DV-01: required fields, and product/batch or an explicit "none"', async () => {
