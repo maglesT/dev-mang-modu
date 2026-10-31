@@ -155,7 +155,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
       <h1>{c.number} · {data.type === 'corrective' ? 'Corrective' : 'Preventive'} action</h1>
       <div className={`statusbar ${c.overdue ? 'blocked' : 'fit'}`}>
         <span className={`chip ${CAPA_STEP_CHIP[c.step]}`}>{CAPA_STEP_LABEL[c.step]}</span>
-        <span>Due: <b>{plantDate(c.dueDate)}</b>{c.overdue && <span className="chip chip-bad">Overdue</span>}</span>
+        <span>{c.step === 'check' ? 'Check due' : 'Due'}: <b>{plantDate(c.step === 'check' ? c.checkDue : c.dueDate)}</b>{c.overdue && <span className="chip chip-bad">Overdue</span>}</span>
         <span className="next">Next: {nextStep(c)}</span>
       </div>
       <section className="card">
@@ -227,8 +227,9 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         <SignDialog meaning={signing === 'verify' ? 'verified' : 'closed'} what={`${c.number}: ${signing === 'verify' ? 'the action was done as described; effectiveness as chosen.' : `effectiveness ${check.effective ? 'confirmed' : 'NOT confirmed'}; the CAPA is closed.`}`}
           onCancel={() => setSigning(null)}
           onSign={async (cred) => {
-            if (signing === 'verify') await api('POST', `/api/capas/${id}/verify`, { effectiveness: effBody(), signature: cred });
-            else await api('POST', `/api/capas/${id}/check`, { ...check, signature: cred });
+            const versionId = c.versions[c.versions.length - 1]!.id;
+            if (signing === 'verify') await api('POST', `/api/capas/${id}/verify`, { effectiveness: effBody(), versionId, signature: cred });
+            else await api('POST', `/api/capas/${id}/check`, { ...check, versionId, signature: cred });
             setSigning(null);
             await load();
           }} />

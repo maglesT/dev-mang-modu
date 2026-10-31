@@ -36,6 +36,7 @@ async function awaitingClosure(classification = 'major') {
 const capa = (over: object = {}) => ({ type: 'corrective', description: 'Remove rev 3 leaflets from stores.', ownerId: ids.us3, dueDate: inDays(14), ...over });
 const raise = (body: object) => call(t.app, c.qa1!, 'POST', '/api/capas', body);
 const getCapa = async (id: number) => (await call(t.app, c.qa1!, 'GET', `/api/capas/${id}`)).json();
+const latestVersion = async (id: number) => { const k = await getCapa(id); return k.versions[k.versions.length - 1].id as number; };
 const getDev = async (id: number) => (await call(t.app, c.qa1!, 'GET', `/api/deviations/${id}`)).json();
 const close = (id: number, data: object = { summary: 'Batch repacked; CAPA raised.' }, user = 'qa1') =>
   call(t.app, c[user]!, 'POST', `/api/deviations/${id}/close`, { data, signature: sig(user) });
@@ -66,13 +67,13 @@ describe('CAPA register', () => {
 
   it('DV-08, DV-09, DV-19: done → verified with a dedicated effectiveness check → check result closes it', async () => {
     const { id } = (await raise(capa({ source: 'complaint', sourceRef: 'Complaint MC-118' }))).json();
-    const verifyBody = { effectiveness: { mode: 'check', checkDue: inDays(60), how: 'No leaflet mix-up in the next 10 batches.' }, signature: sig('qa1') };
-    expect((await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, verifyBody)).statusCode).toBe(409);
+    const verifyBody = { effectiveness: { mode: 'check', checkDue: inDays(60), how: 'No leaflet mix-up in the next 10 batches.' }, versionId: 0, signature: sig('qa1') };
+    expect((await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { ...verifyBody, versionId: await latestVersion(id) })).statusCode).toBe(409);
     expect((await call(t.app, c.us2!, 'POST', `/api/capas/${id}/done`, { note: 'x' })).statusCode).toBe(403);
     expect((await call(t.app, c.us3!, 'POST', `/api/capas/${id}/done`, { note: 'Rev 3 stock destroyed, record DR-55.' })).statusCode).toBe(200);
-    const v = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, verifyBody);
+    const v = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { ...verifyBody, versionId: await latestVersion(id) });
     expect(v.json().step).toBe('check');
-    const r = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/check`, { effective: true, note: '10 batches without mix-up.', signature: sig('qa1') });
+    const r = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/check`, { effective: true, note: '10 batches without mix-up.', versionId: await latestVersion(id), signature: sig('qa1') });
     expect(r.statusCode, r.body).toBe(200);
     const k = await getCapa(id);
     expect(k.step).toBe('closed');
@@ -82,8 +83,8 @@ describe('CAPA register', () => {
   it('DV-09: "monitored through the trend and review" needs a reason and closes the CAPA at verification', async () => {
     const { id } = (await raise(capa({ source: 'other', sourceRef: 'Management review action 4' }))).json();
     await call(t.app, c.us3!, 'POST', `/api/capas/${id}/done`, { note: 'Done.' });
-    expect((await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: '' }, signature: sig('qa1') })).statusCode).toBe(400);
-    const v = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: 'Low risk; recurrence seen in the yearly review.' }, signature: sig('qa1') });
+    expect((await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: '' }, versionId: await latestVersion(id), signature: sig('qa1') })).statusCode).toBe(400);
+    const v = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: 'Low risk; recurrence seen in the yearly review.' }, versionId: await latestVersion(id), signature: sig('qa1') });
     expect(v.json().step).toBe('closed');
   });
 
@@ -163,5 +164,29 @@ describe('deviation closure', () => {
       planned: false, title: 'x', description: 'x', areaId, eventAt: new Date().toISOString(), products: [], noBatch: true, immediateAction: 'x',
     })).json().id;
     expect((await raise(capa({ source: 'deviation', deviationId: id }))).statusCode).toBe(409);
+  });
+});
+
+describe('review fixes (S4)', () => {
+  it('DV-16: verifying is refused when the CAPA changed after the page was loaded', async () => {
+    const { id } = (await raise(capa({ source: 'other', sourceRef: 'Stale example' }))).json();
+    await call(t.app, c.us3!, 'POST', `/api/capas/${id}/done`, { note: 'Done.' });
+    const shown = await latestVersion(id);
+    await call(t.app, c.qa2!, 'POST', `/api/capas/${id}/correct`, { ...capa({ description: 'Changed meanwhile' }), reason: 'Scope' });
+    const res = await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: 'x' }, versionId: shown, signature: sig('qa1') });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('content_changed');
+  });
+
+  it('a CAPA correction cannot set a past due date', async () => {
+    const { id } = (await raise(capa({ source: 'other', sourceRef: 'Past example' }))).json();
+    expect((await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/correct`, { ...capa({ dueDate: inDays(-3) }), reason: 'x' })).statusCode).toBe(400);
+  });
+
+  it('DV-15: CAPA signatures appear in that CAPA\'s own history', async () => {
+    const { id } = (await raise(capa({ source: 'other', sourceRef: 'History example' }))).json();
+    await call(t.app, c.us3!, 'POST', `/api/capas/${id}/done`, { note: 'Done.' });
+    await call(t.app, c.qa1!, 'POST', `/api/capas/${id}/verify`, { effectiveness: { mode: 'trend', reason: 'Low risk' }, versionId: await latestVersion(id), signature: sig('qa1') });
+    expect((await getCapa(id)).history.map((h: { action: string }) => h.action)).toContain('signed.verified');
   });
 });

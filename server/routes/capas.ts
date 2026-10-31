@@ -35,8 +35,10 @@ const effectiveness = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('check'), checkDue: isoDate, how: text(2000) }),
   z.object({ mode: z.literal('trend'), reason: text(2000) }),
 ]);
-const verifyBody = z.object({ effectiveness, signature: credentials });
-const checkBody = z.object({ effective: z.boolean(), note: text(2000), signature: credentials });
+// versionId: the CAPA version the signer was shown; signing is refused if the CAPA changed since (DV-16).
+const versionId = z.number().int().positive();
+const verifyBody = z.object({ effectiveness, versionId, signature: credentials });
+const checkBody = z.object({ effective: z.boolean(), note: text(2000), versionId, signature: credentials });
 const doneBody = z.object({ note: text(5000) });
 const correctBody = capaFields.extend({ reason: text(2000) });
 const dueBody = z.object({ dueDate: isoDate, reason: text(500) });
@@ -147,7 +149,9 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
       from signatures g where g.object_type = 'capa' and g.object_id in (select id from capa_versions where capa_id = ${id}) order by g.signed_at`;
     const history = await sql`
       select a.id::int, a.at, u.full_name as actor, a.action, a.reason from audit_log a left join users u on u.id = a.actor_id
-      where a.object_type = 'capa' and a.object_id = ${String(id)} order by a.at, a.id`;
+      where (a.object_type = 'capa' and a.object_id = ${String(id)})
+         or (a.object_type = 'capa_version' and a.object_id in (select id::text from capa_versions where capa_id = ${id}))
+      order by a.at, a.id`;
     return { ...c, versions, signatures, history };
   });
 
@@ -187,6 +191,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
         const e = body.data.effectiveness;
         if (e.mode === 'check' && (await pastDate(tx, e.checkDue))) return reply.code(400).send({ error: 'invalid_request', problems: ['The check date cannot be in the past.'] });
         const prev = await latestData(tx, id);
+        if (prev.id !== body.data.versionId) return reply.code(409).send({ error: 'content_changed' });
         const data = { ...prev.data, effectiveness: e };
         const versionId = await addVersion(tx, id, 'verified', data, user.id);
         await sign(tx, { signer, shownHash: contentHash('capa', versionId, data), objectType: 'capa', objectId: versionId, meaning: 'verified', content: data });
@@ -214,6 +219,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
         if (!c) return reply.code(404).send({ error: 'not_found' });
         if (c.step !== 'check') return reply.code(409).send({ error: 'wrong_step' });
         const prev = await latestData(tx, id);
+        if (prev.id !== body.data.versionId) return reply.code(409).send({ error: 'content_changed' });
         const data = { ...prev.data, checkResult: { effective: body.data.effective, note: body.data.note } };
         const versionId = await addVersion(tx, id, 'checked', data, user.id);
         await sign(tx, { signer, shownHash: contentHash('capa', versionId, data), objectType: 'capa', objectId: versionId, meaning: 'closed', content: data });
@@ -237,13 +243,15 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
       if (!c) return 404;
       if (c.step !== 'open' && c.step !== 'done') return 409;
       if (!(await okOwner(tx, fields.ownerId))) return 400;
+      if (await pastDate(tx, fields.dueDate)) return 400;
       const prev = await latestData(tx, id);
       await addVersion(tx, id, 'corrected', { ...prev.data, ...fields }, req.user!.id, reason);
       await tx`update capas set owner_id = ${fields.ownerId}, due_date = ${fields.dueDate}::date where id = ${id}`;
       await audit(tx, { actorId: req.user!.id, action: 'capa.corrected', objectType: 'capa', objectId: id, old: prev.data, new: fields, reason });
       return 200;
     });
-    if (out !== 200) return reply.code(out).send({ error: out === 404 ? 'not_found' : out === 400 ? 'invalid_request' : 'wrong_step' });
+    if (out === 400) return reply.code(400).send({ error: 'invalid_request', problems: ['Choose an active owner and a due date that is not in the past.'] });
+    if (out !== 200) return reply.code(out).send({ error: out === 404 ? 'not_found' : 'wrong_step' });
     return { ok: true };
   });
 
