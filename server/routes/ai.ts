@@ -12,16 +12,20 @@ import { computeSignals } from './signals.js';
 export interface AiOptions { apiKey: string; model: string; fetch?: typeof fetch; timeoutMs?: number }
 
 const CATEGORIES = FISHBONE.map(([k]) => k) as [string, ...string[]];
+// Over-long text is shortened rather than rejected, so one long sentence does not lose the whole answer.
+const cut = (n: number) => z.string().transform((v) => v.slice(0, n));
+// Fits a fishbone box (2000 characters, server/deviations.ts) with room to spare.
+export const CAUSE_MAX = 300;
 export const suggestionSchema = z.object({
-  summary: z.string().max(2000),
+  summary: cut(2000),
   causes: z.array(z.object({
     category: z.enum(CATEGORIES),
-    cause: z.string().max(500),
-    why: z.string().max(1000),
-    howToCheck: z.string().max(1000),
-  })).max(15),
-  questions: z.array(z.string().max(500)).max(10),
-  otherBatches: z.string().max(1000),
+    cause: cut(CAUSE_MAX),
+    why: cut(1000),
+    howToCheck: cut(1000),
+  })).transform((v) => v.slice(0, 10)),
+  questions: z.array(cut(500)).transform((v) => v.slice(0, 8)),
+  otherBatches: cut(1000),
 });
 export type Suggestion = z.infer<typeof suggestionSchema>;
 
@@ -50,6 +54,9 @@ Give 3 to 8 causes, the most likely first. Use the earlier similar cases if they
 "otherBatches": one or two sentences on which other batches or products could also be affected and why.
 Only use the facts given. If something important is missing, say what to find out.`;
 
+// A paid call: at most this many requests per person per hour, counted from the audit trail.
+const PER_HOUR = 10;
+
 export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
   const actor = { preHandler: requireRole('user', 'qa') };
 
@@ -73,8 +80,13 @@ export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
     if (d.step !== 'investigation') return reply.code(409).send({ error: 'wrong_step' });
     if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
 
+    const [used] = await sql<{ n: number }[]>`
+      select count(*)::int as n from audit_log where action = 'ai.suggested' and actor_id = ${user.id} and at > now() - interval '1 hour'`;
+    if (used!.n >= PER_HOUR) return reply.code(429).send({ error: 'too_many', message: `You can ask the AI ${PER_HOUR} times an hour. Please try again later.` });
+
     const signals = await computeSignals(sql, id);
-    // What is sent: the facts of this deviation and the rule-based hints. No names of people.
+    // What is sent: the facts of this deviation and the rule-based hints. The reporter's, investigator's and
+    // other users' names are not sent; free text is sent as written (D-29).
     const facts = {
       title: d.report.title, whatHappened: d.report.description, area: d.area, equipment: d.report.equipment || null,
       whenItHappened: d.report.eventAt, productsAndBatches: d.report.products, immediateAction: d.report.immediateAction,
@@ -95,12 +107,20 @@ export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': ai.apiKey },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(ai.timeoutMs ?? 90_000),
+        // Below the usual 60 s reverse-proxy limit, so the browser sees the real outcome.
+        signal: AbortSignal.timeout(ai.timeoutMs ?? 55_000),
       });
-      const json = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[]; error?: { message?: string } };
+      const json = (await res.json().catch(() => ({}))) as {
+        candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+        promptFeedback?: { blockReason?: string }; error?: { message?: string };
+      };
       if (!res.ok) throw new Error(`AI service answered ${res.status}: ${json.error?.message ?? 'no detail'}`);
-      const text = (json.candidates?.[0]?.content?.parts ?? []).filter((p) => !p.thought && p.text).map((p) => p.text).join('');
-      const parsed = suggestionSchema.safeParse(JSON.parse(text));
+      const first = json.candidates?.[0];
+      if (!first) throw new Error(`No answer from the AI service${json.promptFeedback?.blockReason ? ` (blocked: ${json.promptFeedback.blockReason})` : ''}.`);
+      const text = (first.content?.parts ?? []).filter((p) => !p.thought && p.text).map((p) => p.text).join('');
+      let raw: unknown;
+      try { raw = JSON.parse(text); } catch { throw new Error(`The AI answer was not complete JSON (finish reason: ${first.finishReason ?? 'none'}).`); }
+      const parsed = suggestionSchema.safeParse(raw);
       if (!parsed.success) throw new Error('The AI answer was not in the expected form.');
       suggestion = parsed.data;
     } catch (e) {

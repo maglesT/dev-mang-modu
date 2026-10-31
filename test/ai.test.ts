@@ -25,7 +25,7 @@ beforeAll(async () => {
     return answer();
   }) as unknown as typeof fetch;
   t = await freshApp({ ai: { apiKey: 'test-key', model: 'gemini-test', fetch: fakeFetch } });
-  for (const [u, roles] of [['admin1', ['admin']], ['qa1', ['qa', 'user']], ['us1', ['user']], ['us2', ['user']], ['us3', ['user']]] as const) {
+  for (const [u, roles] of [['admin1', ['admin']], ['qa1', ['qa', 'user']], ['qa2', ['qa', 'user']], ['us1', ['user']], ['us2', ['user']], ['us3', ['user']]] as const) {
     ids[u] = await seedUser(t.owner, u, [...roles]);
     c[u] = (await login(t.app, u)).cookie;
   }
@@ -79,6 +79,24 @@ describe('AI suggestions (S9)', () => {
     const d = (await call(t.app, c.qa1!, 'GET', `/api/deviations/${id}`)).json();
     expect(d.step).toBe('investigation');
     expect(d.sections.filter((s: { kind: string }) => s.kind === 'investigation')).toHaveLength(0);
+  });
+
+  it('S9: over-long AI text is shortened, not rejected; a blocked answer is audited with its reason; 10 requests an hour', async () => {
+    const id = await inInvestigation();
+    answer = () => gemini({ ...good, summary: 'x'.repeat(5000) });
+    const res = await suggest(id, 'qa2');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().summary).toHaveLength(2000);
+    answer = () => new Response(JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } }), { status: 200 });
+    expect((await suggest(id, 'qa2')).statusCode).toBe(502);
+    const [row] = await t.owner`select new_value->>'failure' as f from audit_log where action = 'ai.suggested' order by id desc limit 1`;
+    expect(row!.f).toMatch(/blocked: SAFETY/);
+    answer = () => gemini(good);
+    // qa2 has asked twice; the 11th request within the hour is refused.
+    for (let i = 2; i < 10; i++) expect((await suggest(id, 'qa2')).statusCode).toBe(200);
+    const over = await suggest(id, 'qa2');
+    expect(over.statusCode).toBe(429);
+    expect(over.json().message).toMatch(/10 times an hour/);
   });
 
   it('S9: only the investigator or QA asks, and only during the investigation; Admin never', async () => {

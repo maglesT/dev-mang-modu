@@ -29,7 +29,7 @@ export function AiSuggest({ deviationId, onAdd }: { deviationId: number; onAdd: 
     <div className="ai-help" role="region" aria-label="AI help">
       <div className="row">
         <button type="button" onClick={ask} disabled={busy}>{busy ? 'Thinking… (up to a minute)' : s ? 'Ask AI again' : 'Ask AI for possible causes'}</button>
-        <span className="muted small">The AI reads this deviation and similar earlier ones. No names are sent. It only suggests: you check and decide.</span>
+        <span className="muted small">The AI reads this deviation and similar earlier ones (sent to Google; user names are not sent, but text is sent as written). It only suggests: you check and decide.</span>
       </div>
       {error && <div className="error"><p>{error}</p></div>}
       {s && (
@@ -42,7 +42,7 @@ export function AiSuggest({ deviationId, onAdd }: { deviationId: number; onAdd: 
                 <p><span className="muted">Why it could fit:</span> {c.why}</p>
                 <p><span className="muted">How to check:</span> {c.howToCheck}</p>
                 <button type="button" className="link small" disabled={added.has(i)}
-                  onClick={() => { onAdd(c.category, c.cause); setAdded(new Set(added).add(i)); }}>
+                  onClick={() => { onAdd(c.category, c.cause); setAdded((a) => new Set(a).add(i)); }}>
                   {added.has(i) ? 'Added to fishbone' : 'Add to fishbone'}
                 </button>
               </li>
