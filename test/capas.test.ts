@@ -34,7 +34,7 @@ async function awaitingClosure(classification = 'major') {
   });
   return id;
 }
-const capa = (over: object = {}) => ({ type: 'corrective', description: 'Remove rev 3 leaflets from stores.', ownerId: ids.us3, dueDate: inDays(14), ...over });
+const capa = (over: object = {}) => ({ type: 'corrective', strength: 'medium', description: 'Remove rev 3 leaflets from stores.', ownerId: ids.us3, dueDate: inDays(14), ...over });
 const raise = (body: object) => call(t.app, c.qa1!, 'POST', '/api/capas', body);
 const getCapa = async (id: number) => (await call(t.app, c.qa1!, 'GET', `/api/capas/${id}`)).json();
 const latestVersion = async (id: number) => { const k = await getCapa(id); return k.versions[k.versions.length - 1].id as number; };

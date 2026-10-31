@@ -89,7 +89,7 @@ describe('investigation hints (S8)', () => {
     const old = await report(a, { equipment: 'Press 7', title: 'Weight variation on press 7' });
     await classify(old);
     await investigate(old, { sixM: { ...TOOLS.sixM, machine: { checked: 'Feeder worn', evidence: 'PM log', verdict: 'ruled_in' } } });
-    const capa = await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: old, type: 'corrective', description: 'Replace feeder', ownerId: ids.us2, dueDate: '2030-01-01' });
+    const capa = await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: old, type: 'corrective', strength: 'medium', description: 'Replace feeder', ownerId: ids.us2, dueDate: '2030-01-01' });
     expect(capa.statusCode, capa.body).toBe(201);
     const unrelated = await report(await newArea(), { title: 'Label torn' });
     await classify(unrelated, otherTypeId);

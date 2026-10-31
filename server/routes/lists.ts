@@ -20,8 +20,23 @@ export function listRoutes(app: FastifyInstance, sql: Sql) {
   const anyone = { preHandler: requireRole() };
   const admin = { preHandler: requireRole('admin') };
 
+  // S14 (D-36): Admin marks a deviation type as lab / OOS; its investigations then need the KT checklist.
+  app.patch<{ Params: { id: string } }>('/api/deviation-types/:id/lab', admin, async (req, reply) => {
+    const id = parseId(req.params.id);
+    const body = z.object({ labOos: z.boolean(), reason: z.string().trim().min(1).max(500) }).safeParse(req.body);
+    if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Give the reason for the change.'] });
+    return sql.begin(async (tx) => {
+      const [before] = await tx<{ lab_oos: boolean }[]>`select lab_oos from deviation_types where id = ${id} for update`;
+      if (!before) return reply.code(404).send({ error: 'not_found' });
+      await tx`update deviation_types set lab_oos = ${body.data.labOos} where id = ${id}`;
+      await audit(tx, { actorId: req.user!.id, action: 'deviation_type.lab_changed', objectType: 'deviation_type', objectId: id, old: { labOos: before.lab_oos }, new: { labOos: body.data.labOos }, reason: body.data.reason });
+      return { id, labOos: body.data.labOos };
+    });
+  });
+
   for (const [path, table, objectType] of [['areas', 'areas', 'area'], ['deviation-types', 'deviation_types', 'deviation_type']] as const) {
-    app.get(`/api/${path}`, anyone, async () => sql`select id::int, name, active from ${sql(table)} order by name`);
+    app.get(`/api/${path}`, anyone, async () =>
+      sql`select id::int, name, active ${table === 'deviation_types' ? sql`, lab_oos as "labOos"` : sql``} from ${sql(table)} order by name`);
 
     app.post(`/api/${path}`, admin, async (req, reply) => {
       const body = nameBody.safeParse(req.body);

@@ -38,6 +38,15 @@ async function fillTools(page: Page) {
     await page.getByLabel(`Why ${i}: evidence`).fill(`Evidence ${i}`);
   }
   await page.getByLabel('Root-cause category *').selectOption({ label: 'Equipment' });
+  // S14: barrier analysis and FMEA.
+  await page.getByLabel('Barrier 1', { exact: true }).fill('Supervisor check');
+  await page.getByLabel('Barrier 1: did it work').selectOption('no');
+  await page.getByLabel('Barrier 1: why it failed').fill('Supervisor not present');
+  await page.getByLabel('FMEA: Severity').selectOption('6');
+  await page.getByLabel('FMEA: Occurrence').selectOption('4');
+  await page.getByLabel('FMEA: Detection').selectOption('5');
+  await expect(page.getByText('Risk priority number: 120')).toBeVisible();
+  await page.getByLabel('FMEA: risk to the patient').fill('Soft tablets could break.');
 }
 
 async function sign(page: Page, username: string) {

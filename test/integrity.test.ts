@@ -38,7 +38,7 @@ beforeAll(async () => {
   const close = await call(t.app, c.qa2!, 'POST', `/api/deviations/${dev}/close`, { data: { summary: 'ok', noCapaReason: 'Immediate action enough.' }, signature: sig('qa2') });
   expect(close.statusCode, close.body).toBe(200);
   const due = new Date(Date.now() + 9 * 86400_000).toISOString().slice(0, 10);
-  capa = (await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'other', sourceRef: 'x', type: 'corrective', description: 'x', ownerId: ids.us1, dueDate: due })).json().id;
+  capa = (await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'other', sourceRef: 'x', type: 'corrective', strength: 'medium', description: 'x', ownerId: ids.us1, dueDate: due })).json().id;
   await call(t.app, c.us1!, 'POST', `/api/capas/${capa}/done`, { note: 'done' });
   const k = (await call(t.app, c.qa1!, 'GET', `/api/capas/${capa}`)).json();
   await call(t.app, c.qa1!, 'POST', `/api/capas/${capa}/verify`, { effectiveness: { mode: 'trend', reason: 'low risk' }, versionId: k.versions.at(-1).id, signature: sig('qa1') });

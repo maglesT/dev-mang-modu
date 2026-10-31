@@ -323,3 +323,6 @@ fieldset.mcheck legend { font-weight: 700; padding: 0; }
 .tool table.isnot input { width: 100%; }
 .whys { display: grid; gap: 8px; padding-left: 0; list-style: none; }
 .whys li { display: grid; grid-template-columns: 4.5em 1fr 1fr auto; gap: 6px; align-items: start; }
+ul.tree { list-style: none; padding-left: 0; margin: 4px 0; display: grid; gap: 4px; }
+ul.tree .row { margin: 2px 0; }
+.pareto .pbar { height: 12px; background: var(--info); border-radius: 3px; }

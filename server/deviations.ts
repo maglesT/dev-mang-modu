@@ -135,6 +135,79 @@ export const fiveWhysData = z.object({
   if (!x.evidence) ctx.addIssue({ code: 'custom', path: ['whys', i, 'evidence'], message: `5 Whys, why ${i + 1}: evidence required.` });
 }));
 
+// S14 (D-36): barrier analysis, FMEA (every deviation); KT checklist (lab / OOS types); fault tree (critical).
+const yn = (label: string) => z.enum(['yes', 'no'], { errorMap: () => ({ message: `${label}: answer yes or no.` }) });
+const verdictOf = (label: string) => z.enum(['ruled_in', 'ruled_out'], { errorMap: () => ({ message: `${label}: ruled in or ruled out?` }) });
+export const barriersData = z.array(z.object({
+  barrier: req('Barrier analysis: barrier', 500),
+  worked: z.enum(['yes', 'no', 'not_present'], { errorMap: () => ({ message: 'Barrier analysis: did the barrier work (yes, no, not present)?' }) }),
+  whyFailed: z.string().trim().max(1000).default(''),
+}).refine((b) => b.worked === 'yes' || b.whyFailed.length > 0, { message: 'Barrier analysis: say why each failed or missing barrier did not stop it.' }),
+{ required_error: 'Barrier analysis: required.' }).min(1, 'Barrier analysis: list at least one barrier that should have prevented it.').max(20);
+const score = (label: string) => z.number({ required_error: `FMEA: ${label} (1 to 10).`, invalid_type_error: `FMEA: ${label} (1 to 10).` })
+  .int(`FMEA: ${label} (1 to 10).`).min(1, `FMEA: ${label} (1 to 10).`).max(10, `FMEA: ${label} (1 to 10).`);
+export const fmeaData = z.object({
+  severity: score('severity'), occurrence: score('occurrence'), detection: score('detection'),
+  patientRisk: req('FMEA: risk to the patient if the CAPA is not done', 2000),
+}, { required_error: 'FMEA: required.' });
+export const KT_CHECKS = [['solutionPrep', 'Solution preparation'], ['dilution', 'Dilution'], ['instrument', 'Instrument'], ['column', 'Column'],
+  ['calculation', 'Calculation'], ['glassware', 'Glassware'], ['labelling', 'Labelling']] as const;
+export const ktData = z.object({
+  analystInterview: req('KT 1A: analyst interview'),
+  checklist: z.object(Object.fromEntries(KT_CHECKS.map(([k, l]) => [k, z.enum(['ok', 'error', 'na'], { errorMap: () => ({ message: `KT 1A checklist: ${l} (OK, error or not applicable).` }) })])) as Record<(typeof KT_CHECKS)[number][0], z.ZodEnum<['ok', 'error', 'na']>>,
+    { required_error: 'KT 1A: checklist required.' }),
+  sameSampleReproduces: yn('KT: can the OOS be reproduced with the same sample'),
+  freshPrepReproduces: yn('KT: with a fresh sample preparation'),
+  instrumentMalfunctionLogged: yn('KT: any instrument malfunction log'),
+  secondAnalystSame: yn('KT: does a second analyst get the same result'),
+  hypothesisTesting: req('KT 1A: hypothesis testing (re-injection, fresh preparation)'),
+  assignableLabCause: yn('KT 1A: assignable lab cause found with proof'),
+  phase1b: z.object({ manufacturingReview: z.string().trim().max(3000).default(''), retestPlan: z.string().trim().max(3000).default('') }).default({}),
+}, { required_error: 'KT: required for a lab / OOS deviation.' }).superRefine((k, ctx) => {
+  if (k.assignableLabCause === 'no' && (!k.phase1b.manufacturingReview || !k.phase1b.retestPlan)) {
+    ctx.addIssue({ code: 'custom', path: ['phase1b'], message: 'KT 1B: no lab cause was found, so write the manufacturing review and the retest plan.' });
+  }
+});
+export const faultTreeData = z.object({
+  topEvent: req('Fault tree: top event', 500),
+  topGate: z.enum(['OR', 'AND']).default('OR'),
+  branches: z.array(z.object({
+    id: z.string().min(1).max(20), parent: z.string().max(20).nullable(), gate: z.enum(['OR', 'AND']).default('OR'),
+    text: req('Fault tree: branch', 500), evidence: req('Fault tree: evidence for each branch', 1000), verdict: verdictOf('Fault tree: each branch'),
+  })).min(2, 'Fault tree: at least 2 branches, each tested with evidence.').max(40),
+}, { required_error: 'Fault tree: required for a critical deviation.' }).superRefine((t, ctx) => {
+  const ids = new Set(t.branches.map((b) => b.id));
+  const parent = new Map(t.branches.map((b) => [b.id, b.parent]));
+  // Every branch must lead up to the top event (no missing parents, no loops).
+  const reachesTop = (id: string) => { let cur: string | null | undefined = id; for (let i = 0; i <= t.branches.length; i++) { cur = parent.get(cur!); if (cur === null) return true; if (cur === undefined) return false; } return false; };
+  if (ids.size !== t.branches.length || t.branches.some((b) => !reachesTop(b.id))) {
+    ctx.addIssue({ code: 'custom', message: 'Fault tree: each branch hangs from the top event or another branch.' });
+  }
+});
+// Which context-dependent tools a deviation needs (D-33): KT for lab / OOS types, the fault tree when critical.
+// Returns the problems and the data to store: a tool that applies is stored as checked (trimmed, known fields
+// only); a tool that does not apply is kept only if it is valid (e.g. from before a reclassification), else dropped.
+export function applyContext<T extends { kt?: unknown; faultTree?: unknown }>(d: T, ctx: { labOos: boolean; critical: boolean }): { problems: string[]; data: T } {
+  const problems: string[] = [];
+  const data = { ...d };
+  for (const [key, schema, needed] of [['kt', ktData, ctx.labOos], ['faultTree', faultTreeData, ctx.critical]] as const) {
+    const r = (schema as z.ZodTypeAny).safeParse(d[key]);
+    if (r.success) data[key] = r.data;
+    else if (needed) problems.push(...r.error.issues.map((i) => i.message));
+    else delete data[key];
+  }
+  return { problems, data };
+}
+export const contextProblems = (d: { kt?: unknown; faultTree?: unknown }, ctx: { labOos: boolean; critical: boolean }) => applyContext(d, ctx).problems;
+export async function investigationContext(tx: Tx | Sql, deviationId: number) {
+  const [r] = await tx<{ lab_oos: boolean | null; classification: string | null }[]>`
+    select t.lab_oos, d.classification from deviations d
+    left join latest_sections c on c.deviation_id = d.id and c.kind = 'classification'
+    left join deviation_types t on t.id::text = c.data->>'typeId'
+    where d.id = ${deviationId}`;
+  return { labOos: !!r?.lab_oos, critical: r?.classification === 'critical' };
+}
+
 // DV-04 to DV-07: the investigation, signed by the investigator.
 export const investigationData = z
   .object({
@@ -142,6 +215,11 @@ export const investigationData = z
     sixM: sixMData,
     fiveWhys: fiveWhysData,
     rootCauseCategory: z.enum(ROOT_CAUSE_CATEGORIES, { errorMap: () => ({ message: 'Choose the root-cause category.' }) }),
+    barriers: barriersData,
+    fmea: fmeaData,
+    // Checked against the deviation by contextProblems (lab / OOS type, critical).
+    kt: z.unknown().optional(),
+    faultTree: z.unknown().optional(),
     // S7 fishbone text of investigations signed before S13; new investigations use sixM.
     fishbone: fishboneData.optional(),
     rootCause: text(5000),

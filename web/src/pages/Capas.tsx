@@ -20,7 +20,8 @@ export function CapaTable({ rows, onOpen, showSource = true }: { rows: CapaItem[
         {rows.map((c) => (
           <tr key={c.id} className="click" onClick={() => onOpen(c.id)}>
             <td><button className="link">{c.number}</button></td>
-            <td><span className="muted">{c.type === 'corrective' ? 'Corrective' : 'Preventive'} · </span>{c.description}</td>
+            <td><span className="muted">{c.type === 'corrective' ? 'Corrective' : 'Preventive'} · </span>{c.description}
+              {c.strength && <span className={`chip ${c.strength === 'weak' ? 'chip-warn' : 'chip-ok'}`}>{c.strength}</span>}</td>
             {showSource && <td>{c.source === 'deviation' ? c.deviationNumber : `${SOURCE_LABEL[c.source]}: ${c.sourceRef}`}</td>}
             <td>{c.owner}</td>
             <td><span className={`chip ${CAPA_STEP_CHIP[c.step]}`}>{CAPA_STEP_LABEL[c.step]}</span>{c.waitingForMe && <span className="chip chip-info">you</span>}</td>
@@ -62,6 +63,13 @@ export function CapaList({ me, onOpen }: { me: Me; onOpen: (id: number) => void 
   );
 }
 
+// S14 (D-36): CAPA strength, strongest first.
+export const STRENGTH_LABEL: Record<string, string> = {
+  strong: 'Strong: mistake-proofing, interlock, barcode check',
+  medium: 'Medium: automation, alarm, checklist',
+  weak: 'Weak: training, SOP revision, awareness',
+};
+
 // DV-08: QA raises a CAPA, from a deviation (deviationId given) or directly with a source reference.
 export function RaiseForm({ deviationId, onDone, onCancel, initial }: {
   deviationId?: number; onDone: (id: number) => void; onCancel: () => void; initial?: { source: string; sourceRef: string; description?: string };
@@ -69,7 +77,7 @@ export function RaiseForm({ deviationId, onDone, onCancel, initial }: {
   const [people, setPeople] = useState<Person[]>([]);
   const [f, setF] = useState({
     source: deviationId ? 'deviation' : initial?.source ?? 'audit', sourceRef: initial?.sourceRef ?? '', type: 'corrective',
-    description: initial?.description ?? '', ownerId: 0, dueDate: '', product: '', batch: '',
+    description: initial?.description ?? '', ownerId: 0, dueDate: '', product: '', batch: '', strength: '',
   });
   const [problems, setProblems] = useState<string[]>([]);
   useEffect(() => {
@@ -100,6 +108,11 @@ export function RaiseForm({ deviationId, onDone, onCancel, initial }: {
         <label className="check"><input type="radio" checked={f.type === 'preventive'} onChange={() => setF({ ...f, type: 'preventive' })} /> Preventive</label>
       </fieldset>
       <label>What must be done<textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+      <label>Strength<select value={f.strength} onChange={(e) => setF({ ...f, strength: e.target.value })}>
+        <option value="">Choose…</option>
+        {Object.entries(STRENGTH_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </select></label>
+      <p className="muted small">Strongest first: a system that will not allow the wrong action. Training or an SOP change alone is weak and is not enough for a critical deviation.</p>
       <div className="grid2">
         <label>Owner<select value={f.ownerId} onChange={(e) => setF({ ...f, ownerId: Number(e.target.value) })}>
           <option value={0}>Choose…</option>{people.map((p) => <option key={p.id} value={p.id}>{p.fullName} ({p.username})</option>)}
@@ -162,6 +175,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         <dl className="fields">
           <div><dt>Source</dt><dd>{c.source === 'deviation' ? <button className="link" onClick={() => onOpenDeviation(c.deviationId!)}>{c.deviationNumber}</button> : `${SOURCE_LABEL[c.source]}: ${c.sourceRef}`}</dd></div>
           <div><dt>What must be done</dt><dd>{String(data.description)}</dd></div>
+          <div><dt>Strength</dt><dd>{data.strength ? STRENGTH_LABEL[String(data.strength)] : 'Not set (raised before strengths were recorded)'}</dd></div>
           <div><dt>Owner</dt><dd>{c.owner}</dd></div>
           <div><dt>Raised by</dt><dd>{c.raisedBy} · {plantTime(c.raisedAt)}</dd></div>
           {typeof data.doneNote === 'string' && <div><dt>What was done</dt><dd>{data.doneNote}</dd></div>}

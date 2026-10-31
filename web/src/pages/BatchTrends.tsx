@@ -12,7 +12,11 @@ interface Trends {
   capas: { source: string; step: string; outcome: string; n: number }[];
   // S10 (D-30): months above their own usual level (key null = all deviations).
   spikes: { key: string | null; month: string; n: number; mean: number; limit: number }[];
+  // S14 (D-36): root-cause categories, most frequent first; repeats in the last 6 months.
+  pareto: { category: string; n: number }[];
+  repeats: { category: string; n: number }[];
 }
+const CATEGORY: Record<string, string> = { system: 'System', process: 'Process', human: 'Human', equipment: 'Equipment', material: 'Material', environment: 'Environment' };
 
 const monthNow = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 7);
 const monthsBetween = (from: string, to: string) => {
@@ -150,6 +154,27 @@ function TrendView() {
               ))}</ul>
             )}
             <p className="muted small">How it works: a month is marked ▲ when its count is above the average of the 12 months before it plus 3 × the square root of that average (a c-chart limit). It needs at least 6 earlier months and at least 3 deviations. A mark is a reason to look, not a conclusion.</p>
+          </div>
+          <div className="pareto" role="region" aria-label="Root causes (Pareto)">
+            <h3>Root causes (Pareto)</h3>
+            {data.pareto.length === 0 ? <p className="muted small">No signed investigations with a root-cause category in this period.</p> : (() => {
+              const total = data.pareto.reduce((a, r) => a + r.n, 0);
+              let cum = 0;
+              return (
+                <table className="trend"><thead><tr><th>Category</th><th>Deviations</th><th /><th>Cumulative</th></tr></thead><tbody>
+                  {data.pareto.map((r) => {
+                    cum += r.n;
+                    return <tr key={r.category}><td>{CATEGORY[r.category] ?? r.category}</td><td>{r.n}</td>
+                      <td style={{ width: '40%' }}><div className="pbar" style={{ width: `${(100 * r.n) / data.pareto[0]!.n}%` }} /></td>
+                      <td>{Math.round((100 * cum) / total)}%</td></tr>;
+                  })}
+                </tbody></table>
+              );
+            })()}
+            {data.repeats.map((r) => (
+              <p key={r.category} className="error">Repeat: <b>{CATEGORY[r.category] ?? r.category}</b> was the root cause {r.n} times in the 6 months up to {monthLabel(data.to)}. This points to a system failure: it needs a systemic CAPA, not retraining.</p>
+            ))}
+            <p className="muted small">Fix the top one or two causes at the system level first.</p>
           </div>
           <h3>CAPAs raised in the period</h3>
           <div className="grid3">
