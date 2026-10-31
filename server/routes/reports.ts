@@ -33,7 +33,22 @@ const sendPdf = (reply: FastifyReply, name: string, pdf: Buffer) =>
 
 type Row = Record<string, unknown>;
 const val = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
-const dataRows = (data: Row): [string, unknown][] => Object.entries(data).map(([k, v]) => [k, val(v)]);
+type Names = { area: Map<number, string>; type: Map<number, string>; user: Map<number, string> };
+// Ids in stored data are printed with their names, so every version is readable on its own (DV-21).
+const NAMED: Record<string, [keyof Names, string]> = { areaId: ['area', 'area'], typeId: ['type', 'type'], investigatorId: ['user', 'investigator'], ownerId: ['user', 'owner'] };
+const dataRows = (data: Row, names: Names): [string, unknown][] =>
+  Object.entries(data).map(([k, v]) => {
+    const n = NAMED[k];
+    return n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [k, val(v)];
+  });
+async function loadNames(sql: Sql): Promise<Names> {
+  const rows = async (q: Promise<{ id: number; name: string }[]>) => new Map((await q).map((r) => [r.id, r.name]));
+  return {
+    area: await rows(sql`select id::int, name from areas`),
+    type: await rows(sql`select id::int, name from deviation_types`),
+    user: await rows(sql`select id::int, full_name || ' (' || username || ')' as name from users`),
+  };
+}
 
 export function reportRoutes(app: FastifyInstance, sql: Sql) {
   const reader = { preHandler: requireRole() };
@@ -57,7 +72,9 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
   // DV-12: counts by month split by area, type or classification, for a period and product; CAPA counts too.
   app.get<{ Querystring: Record<string, string> }>('/api/trends', reader, async (req, reply) => {
     const q = trendQuery.safeParse(req.query);
-    if (!q.success || q.data.from > q.data.to) return reply.code(400).send({ error: 'invalid_request' });
+    // At most 120 months, the span the screen shows.
+    const span = q.success ? (Number(q.data.to.slice(0, 4)) - Number(q.data.from.slice(0, 4))) * 12 + Number(q.data.to.slice(5)) - Number(q.data.from.slice(5)) : -1;
+    if (!q.success || span < 0 || span >= 120) return reply.code(400).send({ error: 'invalid_request', problems: ['Choose a period of at most 120 months, "from" before "to".'] });
     const { from, to, by, product } = q.data;
     const like = '%' + likeEscape(product) + '%';
     // Deviations reported in the period (plant months), optionally for a product (free text, D-12).
@@ -91,7 +108,9 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         count(*)::int as n
       from capas c join latest_capa_versions v on v.capa_id = c.id
       where to_char(c.raised_at at time zone ${PLANT_TZ}, 'YYYY-MM') between ${from} and ${to}
-        and (${product === ''} or c.deviation_id in (select id from (${devs}) y))
+        -- With a product filter: CAPAs of any deviation of that product, also one reported before the period.
+        and (${product === ''} or c.deviation_id in (select r.deviation_id from latest_sections r join batches b on b.section_id = r.id
+                                                       where r.kind = 'report' and b.product ilike ${like}))
       group by 1, 2, 3`;
     return { from, to, by, counts, products, capas };
   });
@@ -105,6 +124,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     const { body: capas } = await asUser<Row[]>(app, req, `/api/capas?deviationId=${id}&status=all`);
     const [s] = await sql<{ site_name: string }[]>`select site_name from settings`;
     const latestIds = new Set(d.sections.filter((x) => x.latest).map((x) => x.id));
+    const names = await loadNames(sql);
     const content: Content[] = [
       t(`${d.number} · ${val((d.sections.find((x) => x.kind === 'report' && x.latest)?.data as Row)?.title)}`, { bold: true, fontSize: 14 }),
       fields([
@@ -121,7 +141,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       content.push(heading({ report: 'Report', classification: 'Classification', investigation: 'Investigation', closure: 'Closure', target_date: 'Target date changes' }[kind]!));
       for (const v of [...versions].reverse()) {
         content.push(t(`Version ${v.version}${latestIds.has(v.id) ? ' (current)' : ' (superseded by a correction)'} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
-        content.push(fields(dataRows(v.data as Row)));
+        content.push(fields(dataRows(v.data as Row, names)));
         for (const g of d.signatures.filter((x) => x.sectionId === v.id)) {
           content.push(t(`Signed: ${MEANING[String(g.meaning)] ?? g.meaning} · ${val(g.printedName)} · ${plant(g.signedAt as string)}${latestIds.has(v.id) ? '' : ' (superseded)'}`, { fontSize: 8, margin: [0, 2, 0, 0] }));
         }
@@ -149,14 +169,18 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       ]),
       heading('Versions'),
     ];
+    const names = await loadNames(sql);
+    const current = Math.max(...c.versions.map((v) => Number(v.version)));
     for (const v of [...c.versions].reverse()) {
-      content.push(t(`Version ${v.version} · ${v.action} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
-      content.push(fields(dataRows(v.data as Row)));
+      // Each version adds to the one before; the highest is in force, earlier ones are kept as history.
+      const isCurrent = Number(v.version) === current;
+      content.push(t(`Version ${v.version}${isCurrent ? ' (current)' : ' (superseded)'} · ${v.action} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+      content.push(fields(dataRows(v.data as Row, names)));
       for (const g of c.signatures.filter((x) => x.versionId === v.id)) {
         content.push(t(`Signed: ${MEANING[String(g.meaning)] ?? g.meaning} · ${val(g.printedName)} · ${plant(g.signedAt as string)}`, { fontSize: 8, margin: [0, 2, 0, 0] }));
       }
     }
-    content.push(heading('History (audit trail)'), table(['When', 'Who', 'What', 'Reason'], c.history.map((h) => [plant(h.at as string), h.actor ?? 'System', h.action, h.reason ?? '']), [80, 80, '*', 120]));
+    content.push(heading('History (audit trail)'), table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], c.history.map((h) => [plant(h.at as string), h.actor ?? 'System', h.action, val(h.oldValue), val(h.newValue), h.reason ?? '']), [60, 50, 60, '*', '*', 60]));
     return sendPdf(reply, String(c.number), await render(s!.site_name, `CAPA ${c.number}`, req.user!.fullName, content));
   });
 }

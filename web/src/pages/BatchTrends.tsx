@@ -16,7 +16,7 @@ const monthNow = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice
 const monthsBetween = (from: string, to: string) => {
   const out: string[] = [];
   let [y, m] = from.split('-').map(Number) as [number, number];
-  while (`${y}-${String(m).padStart(2, '0')}` <= to && out.length < 120) {
+  while (`${y}-${String(m).padStart(2, '0')}` <= to) {
     out.push(`${y}-${String(m).padStart(2, '0')}`);
     m += 1;
     if (m > 12) { m = 1; y += 1; }
@@ -88,9 +88,15 @@ function TrendView() {
   const yearAgo = `${Number(now.slice(0, 4)) - 1}-${now.slice(5)}`;
   const [f, setF] = useState({ from: yearAgo, to: now, by: 'area', product: '' });
   const [data, setData] = useState<Trends | null>(null);
+  const [error, setError] = useState('');
   const load = async (e?: FormEvent) => {
     e?.preventDefault();
-    setData(await api<Trends>('GET', `/api/trends?${new URLSearchParams(f)}`));
+    setError('');
+    try {
+      setData(await api<Trends>('GET', `/api/trends?${new URLSearchParams(f)}`));
+    } catch (err) {
+      setError(err instanceof ApiError && err.problems.length ? err.problems.join(' ') : 'Choose a valid period.');
+    }
   };
   const months = data ? monthsBetween(data.from, data.to) : [];
   const keys = data ? [...new Set(data.counts.map((c) => c.key))].sort() : [];
@@ -113,6 +119,7 @@ function TrendView() {
         <button className="primary" type="submit">Show</button>
         <button type="button" onClick={() => window.print()}>Print</button>
       </form>
+      {error && <p className="error">{error}</p>}
       {data && (
         <>
           {data.products.length > 0 && (

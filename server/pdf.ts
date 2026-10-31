@@ -65,7 +65,7 @@ export function render(siteName: string, title: string, by: string, content: Con
     defaultStyle: { font: 'Noto', fontSize: 9 },
     header: { text: runs(`${siteName} · ${title}`), margin: [28, 20, 28, 0], fontSize: 9, bold: true },
     footer: (page, pages) => ({
-      text: `Generated ${plant(new Date())} by ${by} · true copy of the electronic record · page ${page} of ${pages}`,
+      text: runs(`Generated ${plant(new Date())} by ${by} · true copy of the electronic record · page ${page} of ${pages}`),
       margin: [28, 10, 28, 0],
       fontSize: 7,
     }),

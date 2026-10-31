@@ -103,3 +103,18 @@ describe('PDF copies', () => {
     expect((await t.app.inject({ method: 'GET', url: '/api/capas/999999/pdf', headers: { cookie: c.us1! } })).statusCode).toBe(404);
   });
 });
+
+describe('review fixes (S5)', () => {
+  it('DV-12: a period over 120 months is refused', async () => {
+    expect((await call(t.app, c.qa1!, 'GET', '/api/trends?from=2000-01&to=2026-12')).statusCode).toBe(400);
+  });
+
+  it('DV-12: with a product filter, a CAPA raised now for a deviation reported earlier is still counted', async () => {
+    const d = await report('Granulation', 'Lisinopril 10', 'LS-1');
+    await t.owner`update deviations set reported_at = now() - interval '200 days' where id = ${d.id}`;
+    await classify(d.id);
+    await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: d.id, type: 'corrective', description: 'x', ownerId: ids.us1, dueDate: inDays(5) });
+    const res = (await call(t.app, c.qa1!, 'GET', `/api/trends?from=${thisMonth}&to=${thisMonth}&product=lisinopril`)).json();
+    expect(res.capas.reduce((s: number, x: { n: number }) => s + x.n, 0)).toBe(1);
+  });
+});
