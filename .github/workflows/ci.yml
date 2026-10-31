@@ -26,6 +26,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # CP-01: every product rule has tests, and the traceability list is current.
+      - run: npm run traceability -- --check
+      # DV-22: a backup of a migrated database is checksummed, copied off-host, restores and passes the integrity check.
+      - name: Backup and restore check
+        env:
+          PGPASSWORD: dev
+        run: |
+          sudo apt-get install -y -qq postgresql-client-16 >/dev/null 2>&1 || true
+          psql -q postgres://dev_owner:dev@localhost:5432/postgres -c "create database dev_ci"
+          export DATABASE_URL=postgres://dev_owner:dev@localhost:5432/dev_ci
+          MIGRATION_DATABASE_URL=$DATABASE_URL node dist/db/migrate.js
+          MIGRATION_DATABASE_URL=$DATABASE_URL node dist/db/create-admin.js admin "CI Admin" > /dev/null
+          BACKUP_DIR=./backups OFFSITE_DIR=./offsite ops/backup.sh
+          ADMIN_URL=postgres://dev_owner:dev@localhost:5432/postgres ops/restore-check.sh "$(ls ./offsite/*.dump | tail -1)"
   # Browser tests of the main flows (docs/05 section 5) against the built UI and the real server.
   browser:
     runs-on: ubuntu-latest
