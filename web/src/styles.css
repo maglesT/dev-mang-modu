@@ -221,3 +221,22 @@ table.audit td { font-size: 0.92rem; }
 /* The breakdown register uses the full screen width. */
 .page:has(table.register) { max-width: 1680px; }
 table.register { font-size: 0.86rem; }
+
+/* Deviations & CAPA (S2) */
+.home-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+button.big { font-size: 1.05rem; padding: 12px 22px; min-height: 52px; }
+.search { display: flex; gap: 8px; margin-left: auto; }
+.search input { min-width: 300px; }
+table.list tr.click { cursor: pointer; }
+table.list tr.click:hover td { background: var(--brand-soft); }
+.form { display: grid; gap: 14px; }
+.form label { display: grid; gap: 4px; }
+.form label.check { display: flex; gap: 8px; align-items: center; }
+.choice { border: 0; padding: 0; margin: 0; display: flex; gap: 18px; flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; }
+.statusbar .next { flex-basis: 100%; font-weight: 600; }
+.signature { color: var(--ok); font-weight: 600; margin: 4px 0; }
+.muted-card { opacity: 0.75; }
+ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }

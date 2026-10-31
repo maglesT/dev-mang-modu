@@ -16,6 +16,8 @@ await owner.end();
 const schemaOwner = connect(TEST_DATABASE_URL, { searchPath: E2E_SCHEMA });
 await migrate(schemaOwner);
 for (const [username, roles] of Object.entries(USERS)) await seedUser(schemaOwner, username, [...roles]);
+await schemaOwner`insert into areas (name) values ('Granulation'), ('Packing')`;
+await schemaOwner`insert into deviation_types (name) values ('Process'), ('Equipment')`;
 await schemaOwner.end();
 
 const sql = connect(TEST_DATABASE_URL, { role: APP_ROLE, searchPath: E2E_SCHEMA });

@@ -3,13 +3,18 @@ import { api, ApiError, type Me } from './api.js';
 import { Login, ChangePassword } from './pages/Login.js';
 import { Users } from './pages/Users.js';
 import { AuditTrail } from './pages/AuditTrail.js';
+import { Home } from './pages/Home.js';
+import { ReportForm } from './pages/ReportForm.js';
+import { DeviationPage } from './pages/DeviationPage.js';
+import { Admin } from './pages/Admin.js';
 import { Alerts } from './components/Alerts.js';
 
-type Page = 'home' | 'users' | 'audit' | 'password';
+type Page = 'home' | 'report' | 'deviation' | 'admin' | 'users' | 'audit' | 'password';
 
 export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [page, setPage] = useState<Page>('home');
+  const [openId, setOpenId] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -34,18 +39,24 @@ export function App() {
     setPage('home');
     setMe(null);
   };
+  const open = (id: number) => {
+    setOpenId(id);
+    setPage('deviation');
+  };
   const tab = (p: Page, label: string) => (
     <button className={page === p ? 'tab on' : 'tab'} onClick={() => setPage(p)}>{label}</button>
   );
+  const isAdmin = me.roles.includes('admin');
 
   return (
     <>
       <header className="bar">
         <span className="brand"><img src="/medhanta-mark.png" alt="Medhanta" /><span><b>Deviations &amp; CAPA</b><small>by Medhanta</small></span></span>
         <nav>
-          {tab('home', 'Home')}
+          {!isAdmin && tab('home', 'Deviations')}
           {me.roles.some((r) => r === 'qa' || r === 'admin') && tab('audit', 'Audit trail')}
-          {me.roles.includes('admin') && tab('users', 'Users')}
+          {isAdmin && tab('admin', 'Admin')}
+          {isAdmin && tab('users', 'Users')}
         </nav>
         <span className="who">
           {me.fullName}
@@ -55,12 +66,10 @@ export function App() {
       </header>
       <main className="page">
         <Alerts me={me} />
-        {page === 'home' && (
-          <>
-            <h1>Home</h1>
-            <p className="greeting">Hello, {me.fullName}. Deviations and CAPAs arrive with the next slices.</p>
-          </>
-        )}
+        {page === 'home' && (isAdmin ? <Admin /> : <Home me={me} onReport={() => setPage('report')} onOpen={open} />)}
+        {page === 'report' && <ReportForm onDone={open} onCancel={() => setPage('home')} />}
+        {page === 'deviation' && <DeviationPage me={me} id={openId} onBack={() => setPage('home')} />}
+        {page === 'admin' && <Admin />}
         {page === 'audit' && <AuditTrail />}
         {page === 'users' && <Users me={me} />}
         {page === 'password' && <ChangePassword me={me} onDone={() => setPage('home')} />}
