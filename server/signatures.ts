@@ -102,6 +102,7 @@ export async function sign(tx: Tx, req: SignRequest): Promise<{ id: number; sign
     insert into signatures (object_type, object_id, user_id, printed_name, meaning, content_hash)
     values (${objectType}, ${objectId}, ${user.id}, ${user.fullName}, ${meaning}, ${hash})
     returning id::int, signed_at`;
-  await audit(tx, { actorId: user.id, action: `signed.${meaning}`, objectType, objectId, new: { signatureId: sig!.id, contentHash: hash } });
+  // A CAPA signature is on a CAPA version; it is audited as such so it lands in that CAPA's history.
+  await audit(tx, { actorId: user.id, action: `signed.${meaning}`, objectType: objectType === 'capa' ? 'capa_version' : objectType, objectId, new: { signatureId: sig!.id, contentHash: hash } });
   return { id: sig!.id, signedAt: sig!.signed_at };
 }

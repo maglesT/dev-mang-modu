@@ -112,7 +112,8 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
         rep.full_name as reporter, inv.full_name as investigator,
         coalesce((select string_agg(b.product || ' / ' || b.batch, '; ' order by b.id) from batches b
                   where b.section_id = r.id and b.role = 'own'), '') as batches,
-        ${mine} as "waitingForMe"
+        ${mine} as "waitingForMe",
+        (select count(*)::int from capas c where c.deviation_id = d.id and c.step <> 'closed') as "openCapas"
       from deviations d
       join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
       left join areas a on a.id = (r.data->>'areaId')::bigint
@@ -130,7 +131,8 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     const [d] = await sql`
       select d.id::int, d.number, d.planned, d.step, d.classification, to_char(d.target_date, 'YYYY-MM-DD') as "targetDate",
         ${overdueSql(sql)} as overdue, d.reported_at as "reportedAt", d.reporter_id::int as "reporterId",
-        rep.full_name as reporter, d.investigator_id::int as "investigatorId", inv.full_name as investigator, a.name as area
+        rep.full_name as reporter, d.investigator_id::int as "investigatorId", inv.full_name as investigator, a.name as area,
+        (select count(*)::int from capas c where c.deviation_id = d.id and c.step <> 'closed') as "openCapas"
       from deviations d join users rep on rep.id = d.reporter_id left join users inv on inv.id = d.investigator_id
       join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
       left join areas a on a.id = (r.data->>'areaId')::bigint

@@ -5,9 +5,12 @@ import {
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
 import { ReportForm, type ReportValues } from './ReportForm.js';
+import { CapaTable, RaiseForm } from './Capas.js';
+import type { CapaItem } from '../api.js';
 
 interface Person { id: number; fullName: string; username: string }
 type Kind = 'report' | 'classification' | 'investigation';
+type SignKind = 'approved' | 'rejected' | 'resign' | 'closed' | 'reopened';
 
 const latestOf = (d: Deviation, kind: SectionVersion['kind']) => d.sections.find((s) => s.kind === kind && s.latest);
 const str = (v: unknown) => (v === undefined || v === null || v === '' ? '—' : String(v));
@@ -67,9 +70,9 @@ function Signatures({ d, kind }: { d: Deviation; kind: Kind }) {
   );
 }
 
-export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: () => void }) {
+export function DeviationPage({ me, id, onBack, onOpenCapa }: { me: Me; id: number; onBack: () => void; onOpenCapa: (id: number) => void }) {
   const [d, setD] = useState<Deviation | null>(null);
-  const [signing, setSigning] = useState<'approved' | 'rejected' | 'resign' | null>(null);
+  const [signing, setSigning] = useState<SignKind | null>(null);
   const [correcting, setCorrecting] = useState<Kind | null>(null);
   const load = async () => setD(await api<Deviation>('GET', `/api/deviations/${id}`));
   useEffect(() => {
@@ -172,10 +175,7 @@ export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: 
         )}
       </section>
 
-      <section className="card muted-card">
-        <h2>4. CAPAs and closure</h2>
-        <p className="muted">{d.step === 'closure' ? nextAction(d) : 'Follows the investigation.'}</p>
-      </section>
+      <Closure d={d} me={me} onOpenCapa={onOpenCapa} onChange={load} />
 
       <Attachments d={d} me={me} open={open} onChange={load} />
 
@@ -203,6 +203,79 @@ export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: 
           }} />
       )}
     </>
+  );
+}
+
+// DV-08, DV-10, D-14: CAPAs raised from the deviation, and QA's closure (open CAPAs do not block it).
+function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpenCapa: (id: number) => void; onChange: () => Promise<void> }) {
+  const [capas, setCapas] = useState<CapaItem[]>([]);
+  const [raising, setRaising] = useState(false);
+  const [f, setF] = useState({ summary: '', disposition: '', noCapaReason: '' });
+  const [signing, setSigning] = useState<'closed' | 'reopened' | null>(null);
+  const [reason, setReason] = useState('');
+  const [problems, setProblems] = useState<string[]>([]);
+  useEffect(() => {
+    void api<CapaItem[]>('GET', `/api/capas?deviationId=${d.id}&status=all`).then(setCapas);
+  }, [d]);
+  const isQa = me.roles.includes('qa');
+  const closure = latestOf(d, 'closure');
+  const canRaise = isQa && ['investigation', 'closure', 'closed'].includes(d.step);
+  const noCapaAllowed = capas.length === 0 && d.classification === 'minor';
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    setProblems([]);
+    if (!f.summary.trim()) return setProblems(['Write the closure summary.']);
+    if (capas.length === 0 && d.classification !== 'minor') return setProblems(['A major or critical deviation needs at least one CAPA before closure.']);
+    if (noCapaAllowed && !f.noCapaReason.trim()) return setProblems(['Raise a CAPA, or say why the immediate action was enough.']);
+    setSigning('closed');
+  };
+  return (
+    <section className="card">
+      <h2>4. CAPAs and closure</h2>
+      <CapaTable rows={capas} onOpen={onOpenCapa} showSource={false} />
+      {canRaise && !raising && <div><button onClick={() => setRaising(true)}>Raise a CAPA</button></div>}
+      {raising && <RaiseForm deviationId={d.id} onCancel={() => setRaising(false)} onDone={async () => { setRaising(false); setCapas(await api<CapaItem[]>('GET', `/api/capas?deviationId=${d.id}&status=all`)); }} />}
+      {d.step === 'closed' && closure && (
+        <Fields rows={[
+          ['Closure summary', str(closure.data.summary)],
+          ['Batch disposition', str(closure.data.disposition)],
+          ...(closure.data.noCapaReason ? [['No CAPA because', str(closure.data.noCapaReason)] as [string, ReactNode]] : []),
+          ['Open CAPAs', d.openCapas ? `${d.openCapas} still open (followed in the CAPA list)` : 'None'],
+        ]} />
+      )}
+      <Signatures d={d} kind={'closure' as Kind} />
+      {d.step === 'closure' && isQa && (
+        <form className="form" onSubmit={submit}>
+          <h3>Close the deviation</h3>
+          <p className="muted small">Review the whole record and its history below before closing.</p>
+          <label>Closure summary *<textarea rows={3} value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></label>
+          <label>Batch disposition notes<input value={f.disposition} onChange={(e) => setF({ ...f, disposition: e.target.value })} placeholder="e.g. Batch B123 may be released; see QA decision" /></label>
+          {noCapaAllowed && <label>No CAPA: why the immediate action was enough *<input value={f.noCapaReason} onChange={(e) => setF({ ...f, noCapaReason: e.target.value })} /></label>}
+          {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
+          <div className="actions"><button className="primary" type="submit">Sign closed</button></div>
+        </form>
+      )}
+      {d.step === 'closed' && isQa && <div className="actions"><button onClick={() => setSigning('reopened')}>Reopen</button></div>}
+      {signing === 'closed' && (
+        <SignDialog meaning="closed" what={`${d.number}: the deviation is reviewed and closed${d.openCapas || capas.some((c) => c.step !== 'closed') ? '; open CAPAs continue in the CAPA list' : ''}.`}
+          onCancel={() => setSigning(null)}
+          onSign={async (cred) => {
+            await api('POST', `/api/deviations/${d.id}/close`, { data: f, signature: cred });
+            setSigning(null);
+            await onChange();
+          }} />
+      )}
+      {signing === 'reopened' && (
+        <SignDialog meaning="reopened" what={`${d.number}: reopen the deviation so it can be corrected.`} onCancel={() => setSigning(null)}
+          onSign={async (cred) => {
+            await api('POST', `/api/deviations/${d.id}/reopen`, { reason, signature: cred });
+            setSigning(null);
+            await onChange();
+          }}>
+          <label>Reason<input value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        </SignDialog>
+      )}
+    </section>
   );
 }
 

@@ -129,6 +129,7 @@ export interface DeviationItem {
   investigator: string | null;
   batches: string;
   waitingForMe: boolean;
+  openCapas: number;
 }
 
 export interface SectionVersion {
@@ -162,6 +163,7 @@ export interface Deviation {
   history: { id: number; at: string; actor: string | null; action: string; oldValue: unknown; newValue: unknown; reason: string | null }[];
   approvalHash: string | null;
   investigationHash: string | null;
+  openCapas: number;
   attachments: { id: number; filename: string; mime: string; size: number; sha256: string; uploadedAt: string; uploadedBy: string; uploaderId: number; withdrawnReason: string | null; withdrawnAt: string | null }[];
 }
 
@@ -174,4 +176,35 @@ export function localInputValue(d: Date = new Date()): string {
 export function plantDate(d: string | null): string {
   if (!d) return '—';
   return new Date(`${d}T00:00:00+05:30`).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' });
+}
+
+export type CapaStep = 'open' | 'done' | 'check' | 'closed';
+export const CAPA_STEP_LABEL: Record<CapaStep, string> = { open: 'Open', done: 'Done · awaiting QA', check: 'Effectiveness check due', closed: 'Closed' };
+export const CAPA_STEP_CHIP: Record<CapaStep, string> = { open: 'chip-info', done: 'chip-warn', check: 'chip-warn', closed: 'chip-ok' };
+export const SOURCE_LABEL: Record<string, string> = { deviation: 'Deviation', audit: 'Internal audit', complaint: 'Complaint', other: 'Other' };
+
+export interface CapaItem {
+  id: number;
+  number: string;
+  source: string;
+  deviationId: number | null;
+  deviationNumber: string | null;
+  sourceRef: string;
+  step: CapaStep;
+  dueDate: string;
+  checkDue: string | null;
+  overdue: boolean;
+  owner: string;
+  type: 'corrective' | 'preventive';
+  description: string;
+  waitingForMe: boolean;
+}
+
+export interface Capa extends Omit<CapaItem, 'type' | 'description' | 'waitingForMe'> {
+  ownerId: number;
+  raisedBy: string;
+  raisedAt: string;
+  versions: { id: number; version: number; action: string; data: Record<string, unknown>; savedAt: string; savedBy: string; reason: string | null }[];
+  signatures: { id: number; versionId: number; printedName: string; meaning: string; signedAt: string }[];
+  history: { id: number; at: string; actor: string | null; action: string; reason: string | null }[];
 }

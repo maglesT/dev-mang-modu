@@ -246,3 +246,5 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .old-version { border-left: 3px solid var(--line-strong); padding: 6px 12px; margin: 8px 0; color: var(--muted); }
 .signature.superseded { color: var(--muted); text-decoration: line-through; }
 .upload { display: grid; gap: 6px; }
+.stat-link { text-align: left; cursor: pointer; font: inherit; }
+.filters label { display: flex; gap: 6px; align-items: center; }

@@ -19,6 +19,14 @@ const uploadBody = z.object({
   dataBase64: z.string().min(1).max(14_000_000),
 });
 const reasonBody = z.object({ reason: z.string().trim().min(1).max(2000) });
+// DV-10: QA's closure. "No CAPA" is allowed only for a minor deviation, with a reason pointing to the immediate action (DV-08).
+const closureData = z.object({
+  summary: z.string().trim().min(1).max(5000),
+  disposition: z.string().trim().max(2000).default(''),
+  noCapaReason: z.string().trim().max(2000).default(''),
+});
+const closeBody = z.object({ data: z.unknown(), signature: credentials });
+const reopenBody = z.object({ reason: z.string().trim().min(1).max(2000), signature: credentials });
 
 interface Header { id: number; planned: boolean; reporter_id: number; step: Step; classification: string | null; investigator_id: number | null }
 const lockHeader = async (tx: Tx, id: number) =>
@@ -151,6 +159,66 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     });
     if (out.status !== 200) return reply.code(out.status).send(out);
     return { step: out.step };
+  });
+
+  // DV-08, DV-10, D-14: QA closes once the investigation is signed and CAPAs are raised (owner and due date),
+  // or, for a minor deviation only, "no CAPA" is recorded with a reason. Open CAPAs do not block closure.
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/close', { preHandler: requireRole('qa') }, async (req, reply) => {
+    const id = parseId(req.params.id);
+    const body = closeBody.safeParse(req.body);
+    if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
+    const data = closureData.safeParse(body.data.data);
+    if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Write the closure summary.'] });
+    const user = req.user as SessionUser;
+    try {
+      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'deviation', objectId: id, meaning: 'closed' });
+      return await sql.begin(async (tx) => {
+        const d = await lockHeader(tx, id);
+        if (!d) return reply.code(404).send({ error: 'not_found' });
+        if (d.step !== 'closure') return reply.code(409).send({ error: 'wrong_step' });
+        const [count] = await tx<{ n: number }[]>`select count(*)::int as n from capas where deviation_id = ${id}`;
+        const n = count!.n;
+        if (n === 0 && d.classification !== 'minor') {
+          return reply.code(409).send({ error: 'capa_required', problems: ['A major or critical deviation needs at least one CAPA before closure.'] });
+        }
+        if (n === 0 && !data.data.noCapaReason) {
+          return reply.code(400).send({ error: 'invalid_request', problems: ['Raise a CAPA, or say why the immediate action was enough.'] });
+        }
+        const content = { ...data.data, noCapaReason: n === 0 ? data.data.noCapaReason : '' };
+        const section = await addSection(tx, id, 'closure', content, user.id, (await latestId(tx, id, 'closure')) ? 'closed again after reopening' : null);
+        await sign(tx, { signer, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'closed', content });
+        await tx`update deviations set step = 'closed' where id = ${id}`;
+        await audit(tx, { actorId: user.id, action: 'deviation.closed', objectType: 'section', objectId: section.id, new: { ...content, capas: n } });
+        return { step: 'closed' };
+      });
+    } catch (e) {
+      return signFail(reply, e);
+    }
+  });
+
+  // DV-10: QA reopens a closed deviation with a reason and an e-signature, so it can be corrected; it is never edited while closed.
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/reopen', { preHandler: requireRole('qa') }, async (req, reply) => {
+    const id = parseId(req.params.id);
+    const body = reopenBody.safeParse(req.body);
+    if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Give the reason for reopening.'] });
+    const user = req.user as SessionUser;
+    try {
+      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'deviation', objectId: id, meaning: 'reopened' });
+      return await sql.begin(async (tx) => {
+        const d = await lockHeader(tx, id);
+        if (!d) return reply.code(404).send({ error: 'not_found' });
+        if (d.step !== 'closed') return reply.code(409).send({ error: 'wrong_step' });
+        const content = { reopened: true, reason: body.data.reason };
+        const section = await addSection(tx, id, 'closure', content, user.id, body.data.reason);
+        await sign(tx, { signer, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'reopened', content });
+        const step = await recomputeStep(tx, { ...d, step: 'closure' });
+        await tx`update deviations set step = ${step} where id = ${id}`;
+        await audit(tx, { actorId: user.id, action: 'deviation.reopened', objectType: 'deviation', objectId: id, new: { step }, reason: body.data.reason });
+        return { step };
+      });
+    } catch (e) {
+      return signFail(reply, e);
+    }
   });
 
   // Attachments: PDF or image files up to 10 MB, kept in the database with their SHA-256 (DV-21, DV-22).

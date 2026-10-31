@@ -57,7 +57,7 @@ step, who must act next, and the due date** at the top.
 **Status shown on lists:** Awaiting classification · Awaiting approval (planned) ·
 Investigation · Awaiting closure · Closed · (Rejected, planned only). Open CAPAs are shown
 next to the status.
-A QA *Reopen* (with reason) moves a closed deviation back to Investigation.
+A QA *Reopen* (reason and e-signature) opens a closed deviation again for correction; it is closed again with a new signature.
 
 ## 3a. The CAPA record
 
