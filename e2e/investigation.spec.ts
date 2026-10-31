@@ -20,6 +20,26 @@ async function inInvestigation(batch: string) {
   return number as string;
 }
 
+// S13: fills every tool through the screen (Is / Is Not, 6M with evidence, 5 Whys, category).
+async function fillTools(page: Page) {
+  for (const q of ['What', 'Where', 'When', 'Who', 'Extent']) {
+    await page.getByLabel(`${q}: is`, { exact: true }).fill(`${q} is`);
+    await page.getByLabel(`${q}: is not`, { exact: true }).fill(`${q} is not`);
+    await page.getByLabel(`${q}: what it tells`).fill('Narrows it down');
+  }
+  for (const m of ['People', 'Machine / equipment', 'Method', 'Material', 'Measurement', 'Environment']) {
+    await page.getByLabel(`${m}: what was checked`).fill(m === 'Machine / equipment' ? 'Feeder speed changed during maintenance.' : `${m} checked`);
+    await page.getByLabel(`${m}: evidence`).fill('Record reviewed');
+    await page.getByRole('radiogroup', { name: `${m}: verdict` }).getByLabel(m === 'Machine / equipment' ? 'Ruled in' : 'Ruled out').check();
+  }
+  await page.getByLabel('5 Whys: problem statement').fill('Tablet weight high');
+  for (const i of [1, 2, 3]) {
+    await page.getByLabel(`Why ${i}: answer`).fill(`Because ${i}`);
+    await page.getByLabel(`Why ${i}: evidence`).fill(`Evidence ${i}`);
+  }
+  await page.getByLabel('Root-cause category *').selectOption({ label: 'Equipment' });
+}
+
 async function sign(page: Page, username: string) {
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('User ID').fill(username);
@@ -31,8 +51,13 @@ test('DV-04 to DV-07: the investigator writes the root cause, checks other batch
   const number = await inInvestigation(`WT-${Date.now().toString(36)}`);
   await logIn(page, 'us2');
   await page.getByRole('button', { name: number }).click();
-  await page.getByLabel('Fishbone: Machine / equipment').fill('Feeder speed changed during maintenance.');
+  // S13: signing first lists what is missing; a draft keeps the work.
+  await page.getByRole('button', { name: 'Sign investigation complete' }).click();
+  await expect(page.getByRole('alert')).toContainText('Is / Is Not, what: is: required.');
   await page.getByLabel('Root cause *').fill('Feeder speed changed after maintenance; not reset.');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByRole('status')).toContainText('Draft 1 saved');
+  await fillTools(page);
   await page.getByRole('button', { name: 'Add a batch checked' }).click();
   await page.getByLabel('Other product 1').fill('Paracetamol 500 mg');
   await page.getByLabel('Other batch 1').fill('PCM-OLD-1');
@@ -42,8 +67,9 @@ test('DV-04 to DV-07: the investigator writes the root cause, checks other batch
   await expect(page.locator('.statusbar')).toContainText('Awaiting closure');
   await expect(page.locator('.signature')).toContainText('Investigation complete · US2');
   await expect(page.getByText('PCM-OLD-1: not affected')).toBeVisible();
-  // The signed investigation shows the fishbone with the cause noted under its category.
+  // The signed investigation shows the 6M fishbone with the ruled-in cause under its category.
   await expect(page.getByRole('group', { name: 'Fishbone diagram' })).toContainText('Feeder speed changed during maintenance.');
+  await expect(page.getByRole('group', { name: 'Fishbone diagram' })).toContainText('Ruled in');
   // S11: the DMAIC view moves on: Define, Measure and Analyze are done; Improve (CAPAs) is next.
   const dmaic = page.getByRole('list', { name: 'DMAIC progress' });
   await expect(dmaic).toContainText('Analyze · done');
@@ -114,5 +140,5 @@ test('S9: the investigator asks the AI, reads simple suggestions and adds one to
   await expect(help).toContainText('How to check: Read the maintenance log.');
   await expect(help).toContainText('you check and decide');
   await help.getByRole('button', { name: 'Add to fishbone' }).click();
-  await expect(page.getByLabel('Fishbone: Machine / equipment')).toHaveValue('Feeder speed changed');
+  await expect(page.getByLabel('Machine / equipment: what was checked')).toHaveValue('Feeder speed changed');
 });

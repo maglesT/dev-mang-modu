@@ -6,7 +6,7 @@ import { audit } from '../audit.js';
 import { parseId, requireRole, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, classificationData, investigationData, latestId, recomputeStep, reportData, targetDate, writeBatches,
+  addSection, classificationData, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -72,6 +72,33 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     } catch (e) {
       return signFail(reply, e);
     }
+  });
+
+  // S13: lists what is still missing, so the investigator sees it before being asked to sign. Writes nothing.
+  app.post('/api/investigation/check', actor, async (req, reply) => {
+    const body = z.object({ data: z.unknown() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid_request' });
+    const data = investigationData.safeParse(body.data.data);
+    return { problems: data.success ? [] : [...new Set(problems(data.error))] };
+  });
+
+  // S13 (D-35): save the investigation form as a draft while investigating. A draft is a section version
+  // (insert-only, audited) but is never signed and never moves the step; signing stores the checked investigation.
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/investigation/draft', actor, async (req, reply) => {
+    const id = parseId(req.params.id);
+    const body = z.object({ data: investigationDraft }).safeParse(req.body);
+    if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: body.success ? [] : problems(body.error) });
+    const user = req.user as SessionUser;
+    return sql.begin(async (tx) => {
+      const d = await lockHeader(tx, id);
+      if (!d) return reply.code(404).send({ error: 'not_found' });
+      if (d.step !== 'investigation' || (await latestId(tx, id, 'investigation'))) return reply.code(409).send({ error: 'wrong_step' });
+      if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
+      const prev = await latestId(tx, id, 'investigation_draft');
+      const section = await addSection(tx, id, 'investigation_draft', body.data.data, user.id, prev ? 'Draft saved' : null);
+      await audit(tx, { actorId: user.id, action: 'investigation.draft_saved', objectType: 'section', objectId: section.id });
+      return { version: section.version };
+    });
   });
 
   // Signs the latest investigation version again after a correction (DV-14, DV-16).

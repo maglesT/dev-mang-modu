@@ -22,9 +22,10 @@ State on 2026-10-31, for the next working session.
 | S10 unusual months on the trend, c-chart (D-30) | #14 | merged |
 | S11 DMAIC view on each deviation (D-31) | #15 | merged |
 | S12 initial impact assessment and action taken (D-34); plan for S12–S17 (D-32, D-33) | #17 | merged |
+| S13 investigation tools I: Is / Is Not, 6M with evidence, 5 Whys, drafts (D-35) | #18 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-34: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-35: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 

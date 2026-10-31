@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
 const c: Record<string, string> = {};
@@ -28,7 +29,7 @@ async function awaitingClosure(classification = 'major') {
   })).json().id as number;
   await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, { classification, typeId, impact: 'AML-9.', investigatorId: ids.us2, productBatchChecked: true });
   await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, {
-    data: { rootCause: 'Old stock not removed after revision.', otherBatches: [], noOtherReason: 'Rev 3 issued only to this line.', conclusion: 'Repack AML-9.' },
+    data: { ...TOOLS, rootCause: 'Old stock not removed after revision.', otherBatches: [], noOtherReason: 'Rev 3 issued only to this line.', conclusion: 'Repack AML-9.' },
     signature: sig('us2'),
   });
   return id;

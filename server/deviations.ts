@@ -105,10 +105,45 @@ export const FISHBONE = [
 const cause = z.string().trim().max(2000).default('');
 export const fishboneData = z.object({ man: cause, machine: cause, method: cause, material: cause, measurement: cause, environment: cause });
 
+// S13 (D-33, D-35): investigation tools, required on every deviation (owner's house method).
+// Every text field names itself in its message, so the investigator sees exactly what is missing.
+const req = (label: string, max = 2000) =>
+  z.string({ required_error: `${label}: required.`, invalid_type_error: `${label}: required.` }).trim().min(1, `${label}: required.`).max(max, `${label}: too long.`);
+export const ROOT_CAUSE_CATEGORIES = ['system', 'process', 'human', 'equipment', 'material', 'environment'] as const;
+export const IS_IS_NOT = [['what', 'What'], ['where', 'Where'], ['when', 'When'], ['who', 'Who'], ['extent', 'Extent']] as const;
+const isRow = (q: string) => z.object({ is: req(`Is / Is Not, ${q}: is`, 1000), isNot: req(`Is / Is Not, ${q}: is not`, 1000), tells: req(`Is / Is Not, ${q}: what it tells`, 1000) },
+  { required_error: `Is / Is Not, ${q}: required.` });
+export const isIsNotData = z.object({ what: isRow('what'), where: isRow('where'), when: isRow('when'), who: isRow('who'), extent: isRow('extent') },
+  { required_error: 'Is / Is Not: required.' });
+const mCheck = (m: string) => z.object({
+  checked: req(`6M, ${m}: what was checked`),
+  evidence: req(`6M, ${m}: evidence`),
+  verdict: z.enum(['ruled_in', 'ruled_out'], { errorMap: () => ({ message: `6M, ${m}: ruled in or ruled out?` }) }),
+}, { required_error: `6M, ${m}: required.` });
+export const sixMData = z.object({
+  man: mCheck('People'), machine: mCheck('Machine / equipment'), method: mCheck('Method'),
+  material: mCheck('Material'), measurement: mCheck('Measurement'), environment: mCheck('Environment'),
+}, { required_error: '6M fishbone: required.' }).refine((m) => Object.values(m).some((x) => x.verdict === 'ruled_in'),
+  { message: '6M: at least one M must be ruled in (the root cause sits there).' });
+export const fiveWhysData = z.object({
+  problem: req('5 Whys: problem statement', 1000),
+  whys: z.array(z.object({ answer: z.string().trim().max(1000), evidence: z.string().trim().max(1000) }))
+    .min(3, '5 Whys: at least 3 whys, each with evidence.').max(7, '5 Whys: at most 7 whys.'),
+}, { required_error: '5 Whys: required.' }).superRefine((w, ctx) => w.whys.forEach((x, i) => {
+  // Each missing piece names its why, as on the screen.
+  if (!x.answer) ctx.addIssue({ code: 'custom', path: ['whys', i, 'answer'], message: `5 Whys, why ${i + 1}: answer required.` });
+  if (!x.evidence) ctx.addIssue({ code: 'custom', path: ['whys', i, 'evidence'], message: `5 Whys, why ${i + 1}: evidence required.` });
+}));
+
 // DV-04 to DV-07: the investigation, signed by the investigator.
 export const investigationData = z
   .object({
-    fishbone: fishboneData.default({}),
+    isIsNot: isIsNotData,
+    sixM: sixMData,
+    fiveWhys: fiveWhysData,
+    rootCauseCategory: z.enum(ROOT_CAUSE_CATEGORIES, { errorMap: () => ({ message: 'Choose the root-cause category.' }) }),
+    // S7 fishbone text of investigations signed before S13; new investigations use sixM.
+    fishbone: fishboneData.optional(),
     rootCause: text(5000),
     // DV-04 / SchM 1.5(s): the true root cause could not be confirmed; the most likely one is stated.
     mostLikely: z.boolean().default(false),
@@ -123,6 +158,19 @@ export const investigationData = z
     if (d.humanError && !d.humanErrorJustification) ctx.addIssue({ code: 'custom', path: ['humanErrorJustification'], message: 'Explain why human error is the cause and how process, procedure or system causes were ruled out.' });
     if (d.otherBatches.length === 0 && !d.noOtherReason) ctx.addIssue({ code: 'custom', path: ['otherBatches'], message: 'List the other batches or products checked, or say why none could be affected.' });
   });
+// A draft is the form as it stands: any shape, kept small. It is never signed and never counts for the step.
+// The known parts must have their shape (objects, lists, text), so a draft can always be shown and printed.
+const loose = z.record(z.unknown());
+export const investigationDraft = z.object({
+  isIsNot: z.record(z.object({ is: z.string(), isNot: z.string(), tells: z.string() }).partial()).optional(),
+  sixM: z.record(z.object({ checked: z.string(), evidence: z.string(), verdict: z.string() }).partial()).optional(),
+  fiveWhys: z.object({ problem: z.string(), whys: z.array(z.object({ answer: z.string(), evidence: z.string() }).partial()) }).partial().optional(),
+  otherBatches: z.array(z.object({ product: z.string(), batch: z.string(), outcome: z.string() }).partial()).optional(),
+  rootCause: z.string().optional(), rootCauseCategory: z.string().optional(), conclusion: z.string().optional(),
+  noOtherReason: z.string().optional(), humanErrorJustification: z.string().optional(),
+  mostLikely: z.boolean().optional(), humanError: z.boolean().optional(),
+  fishbone: loose.optional(), barriers: z.array(loose).optional(), fmea: loose.optional(), kt: loose.optional(), faultTree: loose.optional(),
+}).strict('A draft holds only the investigation form.').refine((d) => JSON.stringify(d).length <= 200_000, 'The draft is too large.');
 export type InvestigationData = z.infer<typeof investigationData>;
 
 export const latestId = async (tx: Tx | Sql, id: number, kind: string) =>
