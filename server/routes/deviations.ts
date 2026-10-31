@@ -156,13 +156,22 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
          or (a.object_type = 'section' and a.object_id in (select id::text from sections where deviation_id = ${id}))
       order by a.at, a.id`;
     const approval = d.step === 'approval' ? await approvalContent(sql, id) : null;
+    // After a correction the latest investigation version needs signing again (DV-14).
+    const investigation = d.step === 'investigation' ? await latest(sql, id, 'investigation') : undefined;
+    const attachments = await sql`
+      select a.id::int, a.filename, a.mime, a.size, a.sha256, a.uploaded_at as "uploadedAt", u.full_name as "uploadedBy",
+        w.reason as "withdrawnReason", w.withdrawn_at as "withdrawnAt"
+      from attachments a join users u on u.id = a.uploaded_by left join attachment_withdrawals w on w.attachment_id = a.id
+      where a.deviation_id = ${id} order by a.id`;
     return {
       ...d,
       sections,
       signatures,
       batches,
       history,
+      attachments,
       approvalHash: approval ? contentHash('section', approval.sectionId, approval.content) : null,
+      investigationHash: investigation ? contentHash('section', investigation.id, investigation.data) : null,
     };
   });
 

@@ -81,3 +81,22 @@ export async function targetDate(tx: Tx | Sql, deviationId: number, classificati
 // SQL fragment: overdue = past the target date in plant time and still open.
 export const overdueSql = (sql: Sql) =>
   sql`(d.target_date is not null and d.target_date < (now() at time zone ${PLANT_TZ})::date and d.step not in ('closed', 'rejected'))`;
+
+// DV-04 to DV-07: the investigation, signed by the investigator.
+export const investigationData = z
+  .object({
+    rootCause: text(5000),
+    // DV-04 / SchM 1.5(s): the true root cause could not be confirmed; the most likely one is stated.
+    mostLikely: z.boolean().default(false),
+    humanError: z.boolean().default(false),
+    humanErrorJustification: z.string().trim().max(5000).default(''),
+    // DV-06 / 211.192: other batches and products checked, or why none could be associated.
+    otherBatches: z.array(productBatch.extend({ outcome: z.enum(['affected', 'not_affected']) })).max(50),
+    noOtherReason: z.string().trim().max(2000).default(''),
+    conclusion: text(5000),
+  })
+  .superRefine((d, ctx) => {
+    if (d.humanError && !d.humanErrorJustification) ctx.addIssue({ code: 'custom', path: ['humanErrorJustification'], message: 'Explain why human error is the cause and how process, procedure or system causes were ruled out.' });
+    if (d.otherBatches.length === 0 && !d.noOtherReason) ctx.addIssue({ code: 'custom', path: ['otherBatches'], message: 'List the other batches or products checked, or say why none could be affected.' });
+  });
+export type InvestigationData = z.infer<typeof investigationData>;

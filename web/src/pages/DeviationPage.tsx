@@ -4,11 +4,15 @@ import {
   type Deviation, type Me, type NamedItem, type SectionVersion,
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
+import { ReportForm, type ReportValues } from './ReportForm.js';
 
 interface Person { id: number; fullName: string; username: string }
+type Kind = 'report' | 'classification' | 'investigation';
 
 const latestOf = (d: Deviation, kind: SectionVersion['kind']) => d.sections.find((s) => s.kind === kind && s.latest);
 const str = (v: unknown) => (v === undefined || v === null || v === '' ? '—' : String(v));
+const problemsOf = (err: unknown, fallback: string) =>
+  err instanceof ApiError && err.problems.length ? err.problems : [err instanceof ApiError && err.code === 'invalid_request' ? fallback : (err as Error).message];
 
 function Fields({ rows }: { rows: [string, ReactNode][] }) {
   return (
@@ -25,16 +29,48 @@ function nextAction(d: Deviation): string {
   switch (d.step) {
     case 'classification': return 'QA classifies the deviation (not the person who reported it).';
     case 'approval': return 'QA approves or rejects the planned deviation. Do not proceed before approval.';
-    case 'investigation': return `${d.investigator ?? 'The investigator'} investigates the root cause.`;
-    case 'closure': return 'QA reviews and closes the deviation.';
+    case 'investigation': return `${d.investigator ?? 'The investigator'} investigates the root cause and signs the investigation.`;
+    case 'closure': return 'QA raises CAPAs and closes the deviation.';
     case 'closed': return 'Closed.';
     case 'rejected': return 'Rejected: the planned deviation must not be carried out.';
   }
 }
 
+// DV-14: earlier versions stay readable, with who corrected them, when and why.
+function Versions({ d, kind }: { d: Deviation; kind: Kind }) {
+  const all = d.sections.filter((s) => s.kind === kind);
+  if (all.length < 2) return null;
+  const latest = all[all.length - 1]!;
+  return (
+    <details className="versions">
+      <summary>Corrected · version {latest.version} by {latest.savedBy}, {plantTime(latest.savedAt)}: {latest.reason}</summary>
+      {all.slice(0, -1).reverse().map((v) => (
+        <div key={v.id} className="old-version">
+          <b>Version {v.version}</b> · {v.savedBy} · {plantTime(v.savedAt)}{v.reason ? ` · reason: ${v.reason}` : ''}
+          <Fields rows={Object.entries(v.data).map(([k, x]) => [k, typeof x === 'object' ? JSON.stringify(x) : str(x)])} />
+        </div>
+      ))}
+    </details>
+  );
+}
+
+function Signatures({ d, kind }: { d: Deviation; kind: Kind }) {
+  const ids = new Map(d.sections.filter((s) => s.kind === kind).map((s) => [s.id, s.latest]));
+  return (
+    <>
+      {d.signatures.filter((s) => ids.has(s.sectionId)).map((s) => (
+        <p key={s.id} className={ids.get(s.sectionId) ? 'signature' : 'signature superseded'}>
+          {ids.get(s.sectionId) ? '✔' : '✖ Superseded by a correction:'} {MEANING_LABEL[s.meaning] ?? s.meaning} · {s.printedName} · {plantTime(s.signedAt)}
+        </p>
+      ))}
+    </>
+  );
+}
+
 export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: () => void }) {
   const [d, setD] = useState<Deviation | null>(null);
-  const [signing, setSigning] = useState<'approved' | 'rejected' | null>(null);
+  const [signing, setSigning] = useState<'approved' | 'rejected' | 'resign' | null>(null);
+  const [correcting, setCorrecting] = useState<Kind | null>(null);
   const load = async () => setD(await api<Deviation>('GET', `/api/deviations/${id}`));
   useEffect(() => {
     void load();
@@ -42,9 +78,25 @@ export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: 
   if (!d) return <p>Loading…</p>;
 
   const isQa = me.roles.includes('qa');
+  const open = d.step !== 'closed' && d.step !== 'rejected';
   const report = latestOf(d, 'report')!.data as Record<string, unknown>;
   const classification = latestOf(d, 'classification');
+  const investigation = latestOf(d, 'investigation');
   const own = d.batches.filter((b) => b.role === 'own');
+  const other = d.batches.filter((b) => b.role === 'other');
+  const isInvestigator = d.investigatorId === me.id || isQa;
+  const can: Record<Kind, boolean> = {
+    report: open && (d.reporterId === me.id || isQa),
+    classification: open && !!classification && isQa && d.reporterId !== me.id,
+    investigation: open && !!investigation && isInvestigator,
+  };
+  const correct = (kind: Kind) => async (data: object, reason: string) => {
+    await api('POST', `/api/deviations/${d.id}/correct`, { kind, data, reason });
+    setCorrecting(null);
+    await load();
+  };
+  const correctButton = (kind: Kind) =>
+    can[kind] && correcting !== kind && <button className="link small" onClick={() => setCorrecting(kind)}>Correct</button>;
 
   return (
     <>
@@ -58,43 +110,74 @@ export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: 
       </div>
 
       <section className="card">
-        <h2>1. Report{d.planned ? ' (planned deviation)' : ''}</h2>
-        <Fields rows={[
-          ['What happened', str(report.description)],
-          ...(d.planned ? [['Reason for the planned deviation', str(report.plannedReason)] as [string, ReactNode]] : []),
-          ['Area', str(d.area)],
-          ['Equipment', str(report.equipment)],
-          [d.planned ? 'Planned for' : 'When it happened', plantTime(str(report.eventAt))],
-          ['Product / batch', own.length ? own.map((b) => `${b.product} / ${b.batch}`).join('; ') : 'None concerned'],
-          ['Immediate action', str(report.immediateAction)],
-          ['Reported by', `${d.reporter} · ${plantTime(d.reportedAt)}`],
-        ]} />
+        <div className="section-head"><h2>1. Report{d.planned ? ' (planned deviation)' : ''}</h2>{correctButton('report')}</div>
+        {correcting === 'report' ? (
+          <ReportForm initial={report as unknown as ReportValues} correct={correct('report')} onDone={() => {}} onCancel={() => setCorrecting(null)} />
+        ) : (
+          <Fields rows={[
+            ['What happened', str(report.description)],
+            ...(d.planned ? [['Reason for the planned deviation', str(report.plannedReason)] as [string, ReactNode]] : []),
+            ['Area', str(d.area)],
+            ['Equipment', str(report.equipment)],
+            [d.planned ? 'Planned for' : 'When it happened', plantTime(str(report.eventAt))],
+            ['Product / batch', own.length ? own.map((b) => `${b.product} / ${b.batch}`).join('; ') : 'None concerned'],
+            ['Immediate action', str(report.immediateAction)],
+            ['Reported by', `${d.reporter} · ${plantTime(d.reportedAt)}`],
+          ]} />
+        )}
+        <Versions d={d} kind="report" />
       </section>
 
       <section className="card">
-        <h2>2. Classification</h2>
-        {classification ? (
+        <div className="section-head"><h2>2. Classification</h2>{correctButton('classification')}</div>
+        {classification && correcting !== 'classification' ? (
           <Classified d={d} c={classification} />
-        ) : d.step === 'classification' && isQa && d.reporterId !== me.id ? (
-          <ClassifyForm id={d.id} onDone={load} />
+        ) : (classification && correcting === 'classification') || (d.step === 'classification' && isQa && d.reporterId !== me.id) ? (
+          <ClassifyForm id={d.id} initial={classification?.data} correct={classification ? correct('classification') : undefined}
+            onDone={async () => { setCorrecting(null); await load(); }} onCancel={() => setCorrecting(null)} />
         ) : (
           <p className="muted">{d.reporterId === me.id && isQa ? 'You reported this deviation, so another QA person classifies it.' : 'Waiting for QA.'}</p>
         )}
+        <Versions d={d} kind="classification" />
+        <Signatures d={d} kind="classification" />
         {d.step === 'approval' && isQa && d.reporterId !== me.id && (
           <div className="actions">
             <button onClick={() => setSigning('rejected')}>Reject</button>
             <button className="primary" onClick={() => setSigning('approved')}>Approve planned deviation</button>
           </div>
         )}
-        {d.signatures.map((s) => (
-          <p key={s.id} className="signature">✔ {MEANING_LABEL[s.meaning] ?? s.meaning} · {s.printedName} · {plantTime(s.signedAt)}</p>
-        ))}
+      </section>
+
+      <section className="card">
+        <div className="section-head"><h2>3. Investigation</h2>{correctButton('investigation')}</div>
+        {investigation && correcting !== 'investigation' ? (
+          <Fields rows={[
+            ['Root cause', <>{str(investigation.data.rootCause)}{investigation.data.mostLikely ? <span className="chip chip-warn">most likely cause; not confirmed</span> : null}</>],
+            ...(investigation.data.humanError ? [['Human error', str(investigation.data.humanErrorJustification)] as [string, ReactNode]] : []),
+            ['Other batches and products', other.length
+              ? other.map((b) => `${b.product} / ${b.batch}: ${b.outcome === 'affected' ? 'affected' : 'not affected'}`).join('; ')
+              : `None could be affected: ${str(investigation.data.noOtherReason)}`],
+            ['Conclusion', str(investigation.data.conclusion)],
+          ]} />
+        ) : (investigation && correcting === 'investigation') || (d.step === 'investigation' && !investigation && isInvestigator) ? (
+          <InvestigationForm d={d} initial={investigation?.data} correct={investigation ? correct('investigation') : undefined}
+            onDone={async () => { setCorrecting(null); await load(); }} onCancel={() => setCorrecting(null)} />
+        ) : (
+          <p className="muted">{d.step === 'investigation' ? nextAction(d) : 'Follows classification.'}</p>
+        )}
+        <Versions d={d} kind="investigation" />
+        <Signatures d={d} kind="investigation" />
+        {d.investigationHash && isInvestigator && correcting !== 'investigation' && (
+          <div className="actions"><button className="primary" onClick={() => setSigning('resign')}>Sign corrected investigation</button></div>
+        )}
       </section>
 
       <section className="card muted-card">
-        <h2>3. Investigation · CAPAs · Closure</h2>
-        <p className="muted">{d.step === 'investigation' ? nextAction(d) : 'Follows classification.'}</p>
+        <h2>4. CAPAs and closure</h2>
+        <p className="muted">{d.step === 'closure' ? nextAction(d) : 'Follows the investigation.'}</p>
       </section>
+
+      <Attachments d={d} me={me} open={open} onChange={load} />
 
       <section className="card">
         <h2>History</h2>
@@ -102,14 +185,22 @@ export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: 
           <thead><tr><th>When</th><th>Who</th><th>What</th><th>Reason</th></tr></thead>
           <tbody>
             {d.history.map((h) => (
-              <tr key={h.id}><td>{plantTime(h.at)}</td><td>{h.actor ?? 'System'}</td><td>{h.action.replace('deviation.', '').replaceAll('_', ' ')}</td><td>{h.reason}</td></tr>
+              <tr key={h.id}><td>{plantTime(h.at)}</td><td>{h.actor ?? 'System'}</td><td>{h.action.replace('deviation.', '').replace('.', ' ').replaceAll('_', ' ')}</td><td>{h.reason}</td></tr>
             ))}
           </tbody>
         </table>
       </section>
 
-      {signing && (
+      {(signing === 'approved' || signing === 'rejected') && (
         <ApproveDialog d={d} meaning={signing} onCancel={() => setSigning(null)} onDone={async () => { setSigning(null); await load(); }} />
+      )}
+      {signing === 'resign' && (
+        <SignDialog meaning="investigation_complete" what={`${d.number}: the corrected investigation as shown.`} onCancel={() => setSigning(null)}
+          onSign={async (cred) => {
+            await api('POST', `/api/deviations/${d.id}/investigation/sign`, { ...cred, contentHash: d.investigationHash });
+            setSigning(null);
+            await load();
+          }} />
       )}
     </>
   );
@@ -133,10 +224,20 @@ function Classified({ d, c }: { d: Deviation; c: SectionVersion }) {
   );
 }
 
-function ClassifyForm({ id, onDone }: { id: number; onDone: () => Promise<void> }) {
+function ReasonField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <label>Reason for the correction *<input value={value} onChange={(e) => onChange(e.target.value)} /></label>;
+}
+
+function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
+  id: number; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
+}) {
   const [types, setTypes] = useState<NamedItem[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
-  const [f, setF] = useState({ classification: '', typeId: 0, impact: '', investigatorId: 0, productBatchChecked: false });
+  const [f, setF] = useState({
+    classification: String(initial?.classification ?? ''), typeId: Number(initial?.typeId ?? 0), impact: String(initial?.impact ?? ''),
+    investigatorId: Number(initial?.investigatorId ?? 0), productBatchChecked: false,
+  });
+  const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   useEffect(() => {
     void api<NamedItem[]>('GET', '/api/deviation-types').then((t) => setTypes(t.filter((x) => x.active)));
@@ -144,11 +245,13 @@ function ClassifyForm({ id, onDone }: { id: number; onDone: () => Promise<void> 
   }, []);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const data = { ...f, typeId: Number(f.typeId), investigatorId: Number(f.investigatorId) };
     try {
-      await api('POST', `/api/deviations/${id}/classify`, { ...f, typeId: Number(f.typeId), investigatorId: Number(f.investigatorId) });
+      if (correct) await correct(data, reason);
+      else await api('POST', `/api/deviations/${id}/classify`, data);
       await onDone();
     } catch (err) {
-      setProblems(err instanceof ApiError && err.problems.length ? err.problems : ['Please fill in every field.']);
+      setProblems(problemsOf(err, correct && !reason.trim() ? 'Give the reason for the correction.' : 'Please fill in every field.'));
     }
   };
   return (
@@ -174,9 +277,128 @@ function ClassifyForm({ id, onDone }: { id: number; onDone: () => Promise<void> 
       </div>
       <label>Impact assessment (product, batches, other batches possibly affected)<textarea rows={3} value={f.impact} onChange={(e) => setF({ ...f, impact: e.target.value })} /></label>
       <label className="check"><input type="checkbox" checked={f.productBatchChecked} onChange={(e) => setF({ ...f, productBatchChecked: e.target.checked })} /> I checked the product and batch numbers against the batch record</label>
+      {correct && <ReasonField value={reason} onChange={setReason} />}
       {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
-      <div className="actions"><button className="primary" type="submit">Save classification</button></div>
+      <div className="actions">
+        {correct && <button type="button" onClick={onCancel}>Cancel</button>}
+        <button className="primary" type="submit">{correct ? 'Save correction' : 'Save classification'}</button>
+      </div>
     </form>
+  );
+}
+
+type OtherRow = { product: string; batch: string; outcome: 'affected' | 'not_affected' };
+
+function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
+  d: Deviation; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
+}) {
+  const [f, setF] = useState({
+    rootCause: String(initial?.rootCause ?? ''), mostLikely: Boolean(initial?.mostLikely), humanError: Boolean(initial?.humanError),
+    humanErrorJustification: String(initial?.humanErrorJustification ?? ''), noOtherReason: String(initial?.noOtherReason ?? ''),
+    conclusion: String(initial?.conclusion ?? ''),
+  });
+  const [rows, setRows] = useState<OtherRow[]>((initial?.otherBatches as OtherRow[] | undefined) ?? []);
+  const [reason, setReason] = useState('');
+  const [problems, setProblems] = useState<string[]>([]);
+  const [signing, setSigning] = useState(false);
+  const data = () => ({ ...f, otherBatches: rows.filter((r) => r.product.trim() || r.batch.trim()) });
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setProblems([]);
+    if (!correct) return setSigning(true);
+    try {
+      await correct(data(), reason);
+      await onDone();
+    } catch (err) {
+      setProblems(problemsOf(err, !reason.trim() ? 'Give the reason for the correction.' : 'Please fill in every field.'));
+    }
+  };
+  const setRow = (i: number, patch: Partial<OtherRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <>
+    <form className="form" onSubmit={submit}>
+      <label>Root cause *<textarea rows={4} value={f.rootCause} onChange={(e) => setF({ ...f, rootCause: e.target.value })} /></label>
+      <label className="check"><input type="checkbox" checked={f.mostLikely} onChange={(e) => setF({ ...f, mostLikely: e.target.checked })} /> The true root cause could not be confirmed; the most likely cause is stated</label>
+      <label className="check"><input type="checkbox" checked={f.humanError} onChange={(e) => setF({ ...f, humanError: e.target.checked })} /> The cause is human error</label>
+      {f.humanError && <label>Why human error, and how process, procedure or system causes were ruled out *<textarea rows={3} value={f.humanErrorJustification} onChange={(e) => setF({ ...f, humanErrorJustification: e.target.value })} /></label>}
+      <div>
+        <b>Other batches and products checked *</b>
+        <p className="muted small">List every other batch or product that may have been affected, even if already distributed, with the outcome.</p>
+        {rows.map((r, i) => (
+          <div className="row" key={i}>
+            <input aria-label={`Other product ${i + 1}`} placeholder="Product" value={r.product} onChange={(e) => setRow(i, { product: e.target.value })} />
+            <input aria-label={`Other batch ${i + 1}`} placeholder="Batch number" value={r.batch} onChange={(e) => setRow(i, { batch: e.target.value })} />
+            <select aria-label={`Outcome ${i + 1}`} value={r.outcome} onChange={(e) => setRow(i, { outcome: e.target.value as OtherRow['outcome'] })}>
+              <option value="not_affected">Not affected</option>
+              <option value="affected">Affected</option>
+            </select>
+            <button type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button>
+          </div>
+        ))}
+        <button type="button" onClick={() => setRows([...rows, { product: '', batch: '', outcome: 'not_affected' }])}>Add a batch checked</button>
+        {rows.length === 0 && <label>Or: why no other batch or product could be affected<input value={f.noOtherReason} onChange={(e) => setF({ ...f, noOtherReason: e.target.value })} /></label>}
+      </div>
+      <label>Conclusion *<textarea rows={3} value={f.conclusion} onChange={(e) => setF({ ...f, conclusion: e.target.value })} /></label>
+      {correct && <ReasonField value={reason} onChange={setReason} />}
+      {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
+      <div className="actions">
+        {correct && <button type="button" onClick={onCancel}>Cancel</button>}
+        <button className="primary" type="submit">{correct ? 'Save correction' : 'Sign investigation complete'}</button>
+      </div>
+    </form>
+      {/* Outside the form: a nested form would submit the page. */}
+      {signing && (
+        <SignDialog meaning="investigation_complete" what={`${d.number}: the investigation as entered on this page.`} onCancel={() => setSigning(false)}
+          onSign={async (cred) => {
+            await api('POST', `/api/deviations/${d.id}/investigate`, { data: data(), signature: cred });
+            setSigning(false);
+            await onDone();
+          }} />
+      )}
+    </>
+  );
+}
+
+function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: boolean; onChange: () => Promise<void> }) {
+  const [error, setError] = useState('');
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setError('');
+    if (file.size > 10 * 1024 * 1024) return setError('Files can be at most 10 MB.');
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    try {
+      await api('POST', `/api/deviations/${d.id}/attachments`, { filename: file.name, mime: file.type, dataBase64: btoa(bin) });
+      await onChange();
+    } catch {
+      setError('Only PDF, PNG or JPEG files up to 10 MB can be attached.');
+    }
+  };
+  const withdraw = async (attachmentId: number) => {
+    const reason = window.prompt('Reason for withdrawing this file (it stays in the record):')?.trim();
+    if (!reason) return;
+    await api('POST', `/api/attachments/${attachmentId}/withdraw`, { reason });
+    await onChange();
+  };
+  const canAct = open && !me.roles.includes('admin');
+  return (
+    <section className="card">
+      <h2>Attachments</h2>
+      {d.attachments.length === 0 && <p className="muted">No files.</p>}
+      <ul className="plain">
+        {d.attachments.map((a) => (
+          <li key={a.id}>
+            {a.withdrawnAt ? <s>{a.filename}</s> : <a href={`/api/attachments/${a.id}`}>{a.filename}</a>}
+            <span className="muted"> · {Math.ceil(a.size / 1024)} KB · {a.uploadedBy} · {plantTime(a.uploadedAt)}</span>
+            {a.withdrawnAt ? <span className="muted"> · withdrawn: {a.withdrawnReason}</span>
+              : canAct && <button className="link small" onClick={() => withdraw(a.id)}>Withdraw</button>}
+          </li>
+        ))}
+      </ul>
+      {canAct && <label className="upload">Attach a file (PDF, PNG, JPEG, up to 10 MB)<input type="file" accept="application/pdf,image/png,image/jpeg" onChange={(e) => void upload(e.target.files?.[0])} /></label>}
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }
 
