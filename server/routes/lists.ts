@@ -27,6 +27,8 @@ export function listRoutes(app: FastifyInstance, sql: Sql) {
       const body = nameBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid_request' });
       const row = await sql.begin(async (tx) => {
+        // Serialise adds so two at once cannot both pass the case-insensitive check.
+        await tx`select pg_advisory_xact_lock(hashtext(${table}))`;
         const [exists] = await tx`select 1 from ${tx(table)} where lower(name) = lower(${body.data.name})`;
         if (exists) return null;
         const [r] = await tx<{ id: number }[]>`insert into ${tx(table)} (name) values (${body.data.name}) returning id::int`;
@@ -44,12 +46,17 @@ export function listRoutes(app: FastifyInstance, sql: Sql) {
       const out = await sql.begin(async (tx) => {
         const [before] = await tx<{ name: string; active: boolean }[]>`select name, active from ${tx(table)} where id = ${id} for update`;
         if (!before) return null;
+        if (body.data.name) {
+          const [dup] = await tx`select 1 from ${tx(table)} where lower(name) = lower(${body.data.name}) and id <> ${id}`;
+          if (dup) return 'taken' as const;
+        }
         const after = { name: body.data.name ?? before.name, active: body.data.active ?? before.active };
         await tx`update ${tx(table)} set name = ${after.name}, active = ${after.active} where id = ${id}`;
         await audit(tx, { actorId: req.user!.id, action: `${objectType}.updated`, objectType, objectId: id, old: before, new: after, reason: body.data.reason });
         return { id, ...after };
       });
       if (!out) return reply.code(404).send({ error: 'not_found' });
+      if (out === 'taken') return reply.code(409).send({ error: 'name_taken' });
       return out;
     });
   }

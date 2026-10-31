@@ -11,7 +11,11 @@ import {
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
 const reasonSign = signBody.extend({ reason: z.string().trim().min(1).max(2000) });
-const targetBody = z.object({ targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.string().trim().min(1).max(500) });
+// A real calendar date: "2026-02-30" is refused rather than rolled over.
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s), 'Not a valid date.');
+const targetBody = z.object({ targetDate: isoDate, reason: z.string().trim().min(1).max(500) });
+// LIKE wildcards in a search are taken literally.
+const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
 
 interface Header {
   id: number;
@@ -94,10 +98,12 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
       : view === 'overdue' ? overdueSql(sql)
       : view === 'mine' ? mine
       : sql`d.step not in ('closed', 'rejected')`;
+    const like = '%' + likeEscape(q) + '%';
+    const norm = normaliseBatch(q);
     const search = q
-      ? sql`(d.number ilike ${'%' + q + '%'} or r.data->>'title' ilike ${'%' + q + '%'}
-            or exists (select 1 from batches b join latest_sections s on s.id = b.section_id
-                       where b.deviation_id = d.id and b.batch_norm = ${normaliseBatch(q)}))`
+      ? sql`(d.number ilike ${like} or r.data->>'title' ilike ${like}
+            or (${norm !== ''} and exists (select 1 from batches b join latest_sections s on s.id = b.section_id
+                       where b.deviation_id = d.id and b.batch_norm = ${norm})))`
       : sql`true`;
     return sql`
       select d.id::int, d.number, d.planned, d.step, d.classification,
@@ -163,7 +169,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
   // People who can investigate or own a CAPA (active, role User or QA), for the pick lists.
   app.get('/api/people', reader, async () =>
     sql`select u.id::int, u.full_name as "fullName", u.username from users u
-        where u.active and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))
+        where u.active and u.locked_at is null and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))
         order by u.full_name`);
 
   // DV-03, DV-20: QA classifies; the reporter cannot classify their own deviation (independent check).
@@ -179,7 +185,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
       if (d.step !== 'classification') return { status: 409, error: 'wrong_step' };
       if (d.reporter_id === req.user!.id) return { status: 403, error: 'reporter_cannot_classify' };
       const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
-      const [inv] = await tx`select 1 from users u where u.id = ${c.investigatorId} and u.active
+      const [inv] = await tx`select 1 from users u where u.id = ${c.investigatorId} and u.active and u.locked_at is null
         and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))`;
       if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
       const section = await addSection(tx, id, 'classification', c, req.user!.id);
@@ -207,6 +213,8 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
           const d = await lockHeader(tx, id);
           if (!d) return reply.code(404).send({ error: 'not_found' });
           if (d.step !== 'approval') return reply.code(409).send({ error: 'wrong_step' });
+          // The approval is the independent check of a planned deviation: not by the person who asked for it.
+          if (d.reporter_id === req.user!.id) return reply.code(403).send({ error: 'reporter_cannot_approve' });
           const a = (await approvalContent(tx, id))!;
           await sign(tx, { signer, shownHash: body.data.contentHash, objectType: 'section', objectId: a.sectionId, meaning, content: a.content });
           const step: Step = meaning === 'approved' ? 'investigation' : 'rejected';
@@ -229,14 +237,19 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     const out = await sql.begin(async (tx) => {
       const d = await lockHeader(tx, id);
       if (!d) return 404;
-      if (!d.classification || d.step === 'closed' || d.step === 'rejected') return 409;
-      const [old] = await tx<{ t: string }[]>`select to_char(target_date, 'YYYY-MM-DD') as t from deviations where id = ${id}`;
+      // Not while a planned deviation awaits approval: the approver signs what is on the screen.
+      if (!d.classification || d.step === 'closed' || d.step === 'rejected' || d.step === 'approval') return 409;
+      const [old] = await tx<{ t: string; before_report: boolean }[]>`
+        select to_char(target_date, 'YYYY-MM-DD') as t, ${body.data.targetDate}::date < (reported_at at time zone ${PLANT_TZ})::date as before_report
+        from deviations where id = ${id}`;
+      if (old!.before_report) return 400;
       const section = await addSection(tx, id, 'target_date', { targetDate: body.data.targetDate, previous: old!.t }, req.user!.id, body.data.reason);
-      await tx`update deviations set target_date = ${body.data.targetDate} where id = ${id}`;
+      await tx`update deviations set target_date = ${body.data.targetDate}::date where id = ${id}`;
       await audit(tx, { actorId: req.user!.id, action: 'deviation.target_date_changed', objectType: 'section', objectId: section.id,
         old: { targetDate: old!.t }, new: { targetDate: body.data.targetDate }, reason: body.data.reason });
       return 200;
     });
+    if (out === 400) return reply.code(400).send({ error: 'invalid_request', problems: ['The target date cannot be before the report date.'] });
     if (out !== 200) return reply.code(out).send({ error: out === 404 ? 'not_found' : 'wrong_step' });
     return { targetDate: body.data.targetDate };
   });

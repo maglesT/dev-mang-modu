@@ -8,7 +8,13 @@ export type Classification = (typeof CLASSIFICATIONS)[number];
 export type Step = 'classification' | 'approval' | 'investigation' | 'closure' | 'closed' | 'rejected';
 
 const text = (max: number) => z.string().trim().min(1).max(max);
-const productBatch = z.object({ product: text(200), batch: text(80) });
+// Lower case without spaces, dashes, slashes or dots: "B-123/A" and "b123a" match (DV-11).
+export const normaliseBatch = (b: string) => b.toLowerCase().replace(/[\s\-/._]+/g, '');
+
+const productBatch = z.object({
+  product: text(200),
+  batch: text(80).refine((b) => normaliseBatch(b).length > 0, 'A batch number needs letters or digits.'),
+});
 
 // DV-01: the report. Product and batch are free text (owner default); "none" must be said explicitly.
 export const reportData = z
@@ -43,9 +49,6 @@ export const classificationData = z.object({
   productBatchChecked: z.literal(true, { errorMap: () => ({ message: 'Confirm that product and batch were checked.' }) }),
 });
 export type ClassificationData = z.infer<typeof classificationData>;
-
-// Lower case without spaces, dashes, slashes or dots: "B-123/A" and "b123a" match (DV-11).
-export const normaliseBatch = (b: string) => b.toLowerCase().replace(/[\s\-/._]+/g, '');
 
 export async function writeBatches(tx: Tx, deviationId: number, sectionId: number, rows: { product: string; batch: string; role: 'own' | 'other'; outcome?: string | null }[]) {
   for (const r of rows) {

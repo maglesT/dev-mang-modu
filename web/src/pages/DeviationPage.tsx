@@ -80,7 +80,7 @@ export function DeviationPage({ me, id, onBack }: { me: Me; id: number; onBack: 
         ) : (
           <p className="muted">{d.reporterId === me.id && isQa ? 'You reported this deviation, so another QA person classifies it.' : 'Waiting for QA.'}</p>
         )}
-        {d.step === 'approval' && isQa && (
+        {d.step === 'approval' && isQa && d.reporterId !== me.id && (
           <div className="actions">
             <button onClick={() => setSigning('rejected')}>Reject</button>
             <button className="primary" onClick={() => setSigning('approved')}>Approve planned deviation</button>

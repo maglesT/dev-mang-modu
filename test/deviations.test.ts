@@ -223,3 +223,49 @@ describe('records', () => {
     ]);
   });
 });
+
+describe('review fixes (S2)', () => {
+  it('an impossible or too-early target date is refused; none can be set while approval is pending', async () => {
+    const { id } = await reportAs('us1');
+    await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify());
+    expect((await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/target-date`, { targetDate: '2026-02-30', reason: 'x' })).statusCode).toBe(400);
+    expect((await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/target-date`, { targetDate: '1990-01-01', reason: 'x' })).statusCode).toBe(400);
+    const p = await reportAs('us1', { planned: true, plannedReason: 'Trial' });
+    await call(t.app, c.qa1!, 'POST', `/api/deviations/${p.id}/classify`, classify({ classification: 'minor' }));
+    const later = new Date(Date.now() + 40 * 86400_000).toISOString().slice(0, 10);
+    expect((await call(t.app, c.qa1!, 'POST', `/api/deviations/${p.id}/target-date`, { targetDate: later, reason: 'x' })).statusCode).toBe(409);
+  });
+
+  it('DV-02: the person who reported a planned deviation cannot approve it', async () => {
+    const p = await reportAs('qa1', { planned: true, plannedReason: 'Trial' });
+    await call(t.app, c.qa2!, 'POST', `/api/deviations/${p.id}/classify`, classify({ classification: 'minor' }));
+    const hash = (await get(p.id)).approvalHash;
+    const res = await call(t.app, c.qa1!, 'POST', `/api/deviations/${p.id}/approve`, { username: 'qa1', password: PASSWORD, contentHash: hash });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('reporter_cannot_approve');
+  });
+
+  it('DV-11: a batch number needs letters or digits; "%" or "/" in the search match nothing special', async () => {
+    expect((await call(t.app, c.us1!, 'POST', '/api/deviations', report({ products: [{ product: 'X', batch: '--' }] }))).statusCode).toBe(400);
+    const all = (await call(t.app, c.us1!, 'GET', '/api/deviations?view=all')).json().length;
+    expect(all).toBeGreaterThan(0);
+    for (const q of ['%', '/', '_']) {
+      expect((await call(t.app, c.us1!, 'GET', `/api/deviations?view=all&q=${encodeURIComponent(q)}`)).json()).toHaveLength(0);
+    }
+  });
+
+  it('area and type names stay unique regardless of case, also when renamed', async () => {
+    const id = (await call(t.app, c.admin1!, 'POST', '/api/areas', { name: 'Coating' })).json().id;
+    expect((await call(t.app, c.admin1!, 'PATCH', `/api/areas/${id}`, { name: 'granulation', reason: 'x' })).statusCode).toBe(409);
+    expect((await call(t.app, c.admin1!, 'POST', '/api/areas', { name: 'COATING' })).statusCode).toBe(409);
+  });
+
+  it('a locked account cannot be chosen as investigator', async () => {
+    const locked = await seedUser(t.owner, 'lockedinv', ['user']);
+    await t.owner`update users set locked_at = now() where id = ${locked}`;
+    const people = (await call(t.app, c.qa1!, 'GET', '/api/people')).json() as { id: number }[];
+    expect(people.map((p) => p.id)).not.toContain(locked);
+    const { id } = await reportAs('us1');
+    expect((await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ investigatorId: locked }))).statusCode).toBe(400);
+  });
+});
