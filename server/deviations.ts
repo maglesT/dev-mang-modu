@@ -83,9 +83,19 @@ export async function targetDate(tx: Tx | Sql, deviationId: number, classificati
 export const overdueSql = (sql: Sql) =>
   sql`(d.target_date is not null and d.target_date < (now() at time zone ${PLANT_TZ})::date and d.step not in ('closed', 'rejected'))`;
 
+// Fishbone (Ishikawa) categories: possible causes considered per category (owner decision D-26). Optional;
+// older investigations without it read as empty. Saved and signed with the investigation.
+export const FISHBONE = [
+  ['man', 'People'], ['machine', 'Machine / equipment'], ['method', 'Method'],
+  ['material', 'Material'], ['measurement', 'Measurement'], ['environment', 'Environment'],
+] as const;
+const cause = z.string().trim().max(2000).default('');
+export const fishboneData = z.object({ man: cause, machine: cause, method: cause, material: cause, measurement: cause, environment: cause });
+
 // DV-04 to DV-07: the investigation, signed by the investigator.
 export const investigationData = z
   .object({
+    fishbone: fishboneData.default({}),
     rootCause: text(5000),
     // DV-04 / SchM 1.5(s): the true root cause could not be confirmed; the most likely one is stated.
     mostLikely: z.boolean().default(false),

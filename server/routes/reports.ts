@@ -3,7 +3,7 @@ import type { Content } from 'pdfmake/interfaces.js';
 import { z } from 'zod';
 import type { Sql } from '../db.js';
 import { parseId, requireRole } from '../auth.js';
-import { PLANT_TZ, normaliseBatch } from '../deviations.js';
+import { FISHBONE, PLANT_TZ, normaliseBatch } from '../deviations.js';
 import { fields, heading, plant, render, t, table } from '../pdf.js';
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -37,9 +37,13 @@ type Names = { area: Map<number, string>; type: Map<number, string>; user: Map<n
 // Ids in stored data are printed with their names, so every version is readable on its own (DV-21).
 const NAMED: Record<string, [keyof Names, string]> = { areaId: ['area', 'area'], typeId: ['type', 'type'], investigatorId: ['user', 'investigator'], ownerId: ['user', 'owner'] };
 const dataRows = (data: Row, names: Names): [string, unknown][] =>
-  Object.entries(data).map(([k, v]) => {
+  Object.entries(data).flatMap(([k, v]): [string, unknown][] => {
+    // The fishbone prints one row per category that has text (D-26).
+    if (k === 'fishbone' && v && typeof v === 'object') {
+      return FISHBONE.filter(([key]) => (v as Row)[key]).map(([key, label]) => [`fishbone: ${label}`, val((v as Row)[key])]);
+    }
     const n = NAMED[k];
-    return n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [k, val(v)];
+    return [n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [k, val(v)]];
   });
 async function loadNames(sql: Sql): Promise<Names> {
   const rows = async (q: Promise<{ id: number; name: string }[]>) => new Map((await q).map((r) => [r.id, r.name]));

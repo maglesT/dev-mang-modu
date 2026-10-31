@@ -263,3 +263,15 @@ table.trend tr.total td { border-top: 2px solid var(--line-strong); font-weight:
 table.list td:first-child { white-space: nowrap; }
 .scroll { overflow-x: auto; }
 .stat-link { padding: 14px 16px; border-radius: var(--radius); }
+
+/* Fishbone diagram (D-26): bones above and below a spine that points at the deviation. */
+.fishbone { display: grid; gap: 6px; }
+.fishbone .bones { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-right: 11em; }
+.fishbone .bone { border-left: 3px solid var(--line); padding: 4px 8px; }
+.fishbone .bone p { margin: 2px 0 0; white-space: pre-wrap; }
+.fishbone .bone textarea { width: 100%; }
+.fishbone .spine { display: flex; align-items: center; gap: 0; }
+.fishbone .spine-line { flex: 1; height: 3px; background: var(--muted); position: relative; }
+.fishbone .spine-line::after { content: ''; position: absolute; right: -2px; top: -6px; border: 7.5px solid transparent; border-left: 10px solid var(--muted); border-right: 0; }
+.fishbone .effect { width: 10.5em; margin-left: 10px; padding: 6px 8px; border: 2px solid var(--muted); border-radius: var(--radius); font-weight: 600; font-size: 0.9em; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .fishbone .bones { margin-right: 0; } .fishbone .spine { flex-direction: column; align-items: stretch; } .fishbone .spine-line { display: none; } .fishbone .effect { width: auto; margin: 0; } }

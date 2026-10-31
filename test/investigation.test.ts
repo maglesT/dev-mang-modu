@@ -70,6 +70,23 @@ describe('investigation', () => {
     expect(s.data.mostLikely).toBe(true);
   });
 
+  it('DV-04: fishbone causes are saved and signed with the investigation and printed in the PDF; without them it still signs', async () => {
+    const id = await inInvestigation();
+    const fishbone = { man: 'New operator on night shift.', machine: 'Punch 7 past its life.', method: '', material: '', measurement: 'Counter not reset.', environment: '' };
+    expect((await investigate(id, 'us2', investigation({ fishbone }))).statusCode).toBe(200);
+    const d = await get(id);
+    const s = d.sections.find((x: { kind: string }) => x.kind === 'investigation');
+    expect(s.data.fishbone).toEqual(fishbone);
+    const pdf = await call(t.app, c.qa1!, 'GET', `/api/deviations/${id}/pdf`);
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    // Investigations saved before the fishbone existed (no field) still read and sign: it defaults to empty.
+    const old = await inInvestigation();
+    expect((await investigate(old)).statusCode).toBe(200);
+    const o = (await get(old)).sections.find((x: { kind: string }) => x.kind === 'investigation');
+    expect(o.data.fishbone.machine).toBe('');
+  });
+
   it('DV-05: human error needs a justification', async () => {
     const id = await inInvestigation();
     const res = await investigate(id, 'us2', investigation({ humanError: true }));
