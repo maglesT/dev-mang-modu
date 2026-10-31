@@ -11,8 +11,8 @@ State on 2026-10-31, for the next working session.
 | S1 accounts, roles, lockout, audit trail | #3 | merged |
 | S2 report, classify, planned approval, home lists | #4 | merged |
 | S3 investigation, corrections, attachments | #5 | merged |
-| S4 CAPA register, closure, reopen | #6 | open: review pass, then merge when CI is green |
-| S5 batch lookup page, trend view, PDF per deviation and per CAPA | — | next |
+| S4 CAPA register, closure, reopen | #6 | merged |
+| S5 batch lookup page, trend view, PDF per deviation and per CAPA | #7 | open |
 | S6 integrity check, backup (checksum + off-host copy), restore check, traceability list | — | after S5 |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.

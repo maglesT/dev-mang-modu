@@ -8,9 +8,10 @@ import { ReportForm } from './pages/ReportForm.js';
 import { DeviationPage } from './pages/DeviationPage.js';
 import { Admin } from './pages/Admin.js';
 import { CapaList, CapaPage } from './pages/Capas.js';
+import { BatchTrends } from './pages/BatchTrends.js';
 import { Alerts } from './components/Alerts.js';
 
-type Page = 'home' | 'report' | 'deviation' | 'capas' | 'capa' | 'admin' | 'users' | 'audit' | 'password';
+type Page = 'home' | 'report' | 'deviation' | 'capas' | 'capa' | 'batch' | 'admin' | 'users' | 'audit' | 'password';
 
 export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
@@ -60,6 +61,7 @@ export function App() {
         <nav>
           {!isAdmin && tab('home', 'Deviations')}
           {!isAdmin && tab('capas', 'CAPAs')}
+          {!isAdmin && tab('batch', 'Batch check & trends')}
           {me.roles.some((r) => r === 'qa' || r === 'admin') && tab('audit', 'Audit trail')}
           {isAdmin && tab('admin', 'Admin')}
           {isAdmin && tab('users', 'Users')}
@@ -76,6 +78,7 @@ export function App() {
         {page === 'report' && <ReportForm onDone={open} onCancel={() => setPage('home')} />}
         {page === 'deviation' && <DeviationPage key={openId} me={me} id={openId} onBack={() => setPage('home')} onOpenCapa={openCapa} />}
         {page === 'capas' && <CapaList me={me} onOpen={openCapa} />}
+        {page === 'batch' && <BatchTrends onOpen={open} />}
         {page === 'capa' && <CapaPage key={openId} me={me} id={openId} onBack={() => setPage('capas')} onOpenDeviation={open} onOpenCapa={openCapa} />}
         {page === 'admin' && <Admin />}
         {page === 'audit' && <AuditTrail />}

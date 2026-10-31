@@ -152,7 +152,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
   return (
     <>
       <button className="link" onClick={onBack}>← CAPAs</button>
-      <h1>{c.number} · {data.type === 'corrective' ? 'Corrective' : 'Preventive'} action</h1>
+      <div className="home-head"><h1>{c.number} · {data.type === 'corrective' ? 'Corrective' : 'Preventive'} action</h1><a className="button" href={`/api/capas/${c.id}/pdf`}>Print PDF</a></div>
       <div className={`statusbar ${c.overdue ? 'blocked' : 'fit'}`}>
         <span className={`chip ${CAPA_STEP_CHIP[c.step]}`}>{CAPA_STEP_LABEL[c.step]}</span>
         <span>{c.step === 'check' ? 'Check due' : 'Due'}: <b>{plantDate(c.step === 'check' ? c.checkDue : c.dueDate)}</b>{c.overdue && <span className="chip chip-bad">Overdue</span>}</span>
