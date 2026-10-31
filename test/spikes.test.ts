@@ -7,21 +7,23 @@ const rows = (key: string, counts: Record<string, number>) => Object.entries(cou
 
 describe('unusual months (S10)', () => {
   it('S10: a month above the average of the 12 months before it plus 3 × its square root is marked, with its numbers', () => {
-    // 12 months of 2 a month, then 9: mean 2, limit 2 + 3√2 = 6.2.
+    // 12 months of 2 a month, then 9: mean 2, limit 2 + 3√2 = 6.24, shown as 6.2.
     const history = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [addMonths('2026-01', i), 2]));
-    const s = spikeFlags(rows('Compression', { ...history, '2027-01': 9 }), '2027-01', '2027-01');
+    const s = spikeFlags(rows('Compression', { ...history, '2027-01': 9 }), '2027-01', '2027-01', '2026-01');
     expect(s).toEqual(expect.arrayContaining([{ key: 'Compression', month: '2027-01', n: 9, mean: 2, limit: 6.2 }]));
     // The same counts for "all deviations" (one key only).
     expect(s.find((x) => x.key === null)).toMatchObject({ n: 9 });
     // 6 is within the limit: no mark.
-    expect(spikeFlags(rows('Compression', { ...history, '2027-01': 6 }), '2027-01', '2027-01')).toEqual([]);
+    expect(spikeFlags(rows('Compression', { ...history, '2027-01': 6 }), '2027-01', '2027-01', '2026-01')).toEqual([]);
   });
 
-  it('S10: no mark with fewer than 6 earlier months of records, or fewer than 3 deviations in the month', () => {
-    expect(spikeFlags(rows('A', { '2026-01': 1, '2026-02': 1, '2026-03': 1, '2026-04': 1, '2026-05': 9 }), '2026-05', '2026-05')).toEqual([]);
-    const quiet = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [addMonths('2026-01', i), 0]));
-    // Zero months before the first record do not count as history, so only months after it are used.
-    expect(spikeFlags(rows('A', { ...quiet, '2026-01': 0, '2027-01': 2 }), '2027-01', '2027-01')).toEqual([]);
+  it('S10: quiet months after the first record count as 0; months before it do not count; fewer than 3 is never marked', () => {
+    // Records since 2025-01, nothing for a year, then 3: average 0, limit 0, so it is marked.
+    expect(spikeFlags(rows('A', { '2027-01': 3 }), '2027-01', '2027-01', '2025-01')).toEqual(
+      expect.arrayContaining([{ key: 'A', month: '2027-01', n: 3, mean: 0, limit: 0 }]));
+    // The same counts on a site whose records start in 2026-10: fewer than 6 earlier months, no mark.
+    expect(spikeFlags(rows('A', { '2026-10': 1, '2027-01': 9 }), '2027-01', '2027-01', '2026-10')).toEqual([]);
+    expect(spikeFlags(rows('A', { '2027-01': 2 }), '2027-01', '2027-01', '2025-01')).toEqual([]);
     expect(addMonths('2026-01', -1)).toBe('2025-12');
     expect(addMonths('2025-12', 13)).toBe('2027-01');
   });

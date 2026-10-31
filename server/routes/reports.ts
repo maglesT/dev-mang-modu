@@ -24,7 +24,7 @@ export const addMonths = (m: string, k: number) => {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
 };
 export interface Spike { key: string | null; month: string; n: number; mean: number; limit: number }
-export function spikeFlags(rows: { key: string; month: string; n: number }[], from: string, to: string, firstMonth?: string): Spike[] {
+export function spikeFlags(rows: { key: string; month: string; n: number }[], from: string, to: string, firstMonth: string): Spike[] {
   // Series: each key, and null for all deviations together. Months before the first deviation on record do not count as history.
   const series = new Map<string | null, Map<string, number>>([[null, new Map()]]);
   for (const r of rows) {
@@ -32,7 +32,7 @@ export function spikeFlags(rows: { key: string; month: string; n: number }[], fr
     series.get(r.key)!.set(r.month, (series.get(r.key)!.get(r.month) ?? 0) + r.n);
     series.get(null)!.set(r.month, (series.get(null)!.get(r.month) ?? 0) + r.n);
   }
-  const start = firstMonth ?? rows.reduce((a, r) => (r.month < a ? r.month : a), to);
+  const start = firstMonth;
   const out: Spike[] = [];
   for (const [key, byMonth] of series) {
     for (let m = from; m <= to; m = addMonths(m, 1)) {
@@ -46,7 +46,8 @@ export function spikeFlags(rows: { key: string; month: string; n: number }[], fr
       if (history.length < MIN_HISTORY) continue;
       const mean = history.reduce((a, b) => a + b, 0) / history.length;
       const limit = mean + 3 * Math.sqrt(mean);
-      if (n > limit) out.push({ key, month: m, n, mean: Math.round(mean * 10) / 10, limit: Math.round(limit * 10) / 10 });
+      // The limit is shown rounded down, so a marked count is always visibly above it.
+      if (n > limit) out.push({ key, month: m, n, mean: Math.round(mean * 10) / 10, limit: Math.floor(limit * 10) / 10 });
     }
   }
   return out;
@@ -134,9 +135,12 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     const key = by === 'area' ? sql`coalesce(area, '—')` : by === 'type' ? sql`coalesce(type, 'Not classified')` : sql`coalesce(classification, 'not classified')`;
     const countsIn = (f: string, t: string) => sql<{ key: string; month: string; n: number }[]>`
       select ${key} as key, month, count(*)::int as n from (${devsIn(f, t)}) x group by 1, 2 order by 1, 2`;
-    const counts = await countsIn(from, to);
-    // S10 (D-30): the 12 months before the period too, so the first months have a baseline.
-    const spikes = spikeFlags(await countsIn(addMonths(from, -BASELINE_MONTHS), to), from, to);
+    // S10 (D-30): counted from 12 months before the period, so the first months have a baseline; the table shows the period.
+    const all = await countsIn(addMonths(from, -BASELINE_MONTHS), to);
+    const counts = all.filter((r) => r.month >= from);
+    // Months before the site's first deviation are not history; quiet months after it count as 0.
+    const [first] = await sql<{ m: string | null }[]>`select to_char(min(reported_at) at time zone ${PLANT_TZ}, 'YYYY-MM') as m from deviations`;
+    const spikes = spikeFlags(all, from, to, first?.m ?? to);
     // Every spelling of the product that matched, so variants are seen and not silently missed (DV-12).
     const products = product === '' ? [] : (await sql<{ product: string; n: number }[]>`
       select b.product, count(distinct d.id)::int as n
