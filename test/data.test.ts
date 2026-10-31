@@ -145,6 +145,28 @@ describe('data collection (S17)', () => {
     expect(f.find((x) => x.source === 'logbook')!.params.equipment).toContain('PRESS-01');
   });
 
+  it('DV-23: where Batchwright offers the per-batch functions (<view>_for), they are used, with the same result', async () => {
+    const FN = `${BW}_fn`;
+    await t.owner.unsafe(`create schema ${FN}; ${['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1', 'batch_reference_v1', 'equipment_use_v1', 'ipc_result_v1', 'process_actual_v1', 'exception_detail_v1']
+      .map((v) => `create table ${FN}.${v} as table ${BW}.${v}`).join('; ')}`);
+    for (const v of ['equipment_use_v1', 'ipc_result_v1', 'process_actual_v1', 'exception_detail_v1']) {
+      await t.owner.unsafe(`create function ${FN}.${v}_for(b text[]) returns setof ${FN}.${v} language sql stable as 'select * from ${FN}.${v} where batch_number = any(b)'`);
+    }
+    const app = await buildApp({ sql: t.sql, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: FN } } });
+    try {
+      const ck = (await login(app, 'us1')).cookie;
+      const id = (await report()).json().id as number;
+      await call(app, ck, 'POST', `/api/deviations/${id}/fetch`, {});
+      const bw = ((await call(app, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; views: string[]; data: { findings: string[] } }[]).find((x) => x.source === 'batchwright')!;
+      expect(bw.views).toEqual(expect.arrayContaining(['ipc_result_v1_for', 'process_actual_v1_for', 'exception_detail_v1_for', 'equipment_use_v1_for']));
+      expect(bw.views).not.toContain('ipc_result_v1');
+      expect(bw.data.findings.join('\n')).toContain('mean 65 N (below the alert limit 70)');
+    } finally {
+      await app.close();
+      await t.owner.unsafe(`drop schema ${FN} cascade`);
+    }
+  });
+
   it('DV-23: a Batchwright without the newer views is still read; the record says which views were read', async () => {
     const OLD = `${BW}_old`;
     await t.owner.unsafe(`create schema ${OLD}; ${['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1'].map((v) => `create table ${OLD}.${v} as table ${BW}.${v}`).join('; ')}`);

@@ -35,7 +35,7 @@ results or process actuals, `step_use_v1.equipment_code` is empty there, and `ex
 | `report.process_actual_v1` | `batch_number`, `step`, `tag`, `value_text`, `unit`, `lower_text`, `upper_text`, `within_limits`, `recorded_at`, `read_at`, `data_as_of` |
 | `report.exception_detail_v1` | `batch_number`, `exception_id`, `exception_type`, `category`, `severity`, `step`, `step_title`, `description`, `status`, `disposition`, `disposed_by` (pseudonymous person id), `disposed_at`, `raised_at`, `read_at`, `data_as_of` |
 
-The reader checks which of the S16 views exist (`to_regclass`) and reads only those; each fetch records the views read.
+Each of these four also exists as a function taking batch numbers, `report.<view>_for(text[])`, with the same columns (milliseconds per batch instead of a scan of all batches; Batchwright D-S16-5). The reader uses the function where the login may execute it, else the view if readable, else skips it; each fetch records what it read. `exception_detail_v1.disposed_by` is a pseudonymous person id; `ipc_result_v1.result` is PASS, ALERT or FAIL (one combined verdict per parameter).
 
 Not read: `report.deviation_fact_v1` and every `site.deviation*` / `site.capa*` table (owner: read the batch data
 directly, not Batchwright's deviation module).

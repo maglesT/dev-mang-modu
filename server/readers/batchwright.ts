@@ -69,20 +69,32 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
     const has = (name: string) => present.has(name);
     const references = has('batch_reference_v1') ? await tx<BatchwrightData['references']>`
       select batch_number, kind, code, version, title from ${v('batch_reference_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, kind, code limit 200` : [];
-    const equipmentUse = has('equipment_use_v1') ? await tx<BatchwrightData['equipmentUse']>`
-      select batch_number, equipment_code, equipment_type, room_code, step, started_at, ended_at
-      from ${v('equipment_use_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, started_at nulls last limit 1000` : [];
-    const ipc = has('ipc_result_v1') ? await tx<BatchwrightData['ipc']>`
-      select batch_number, step, step_title, check_kind, item, instrument_code, reading, value_text, unit, lower_text, upper_text, aggregate,
-        alert_lower_text, alert_upper_text, result, recorded_at
-      from ${v('ipc_result_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, recorded_at nulls last, step, item, aggregate nulls first, reading limit 3000` : [];
-    const actuals = has('process_actual_v1') ? await tx<BatchwrightData['actuals']>`
-      select batch_number, step, tag, value_text, unit, lower_text, upper_text, within_limits, recorded_at
-      from ${v('process_actual_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, recorded_at nulls last, step, tag limit 3000` : [];
-    const exceptionDetails = has('exception_detail_v1') ? await tx<BatchwrightData['exceptionDetails']>`
-      select batch_number, exception_id, exception_type, category, severity, step, step_title, description, status, disposition, disposed_by, disposed_at, raised_at
-      from ${v('exception_detail_v1')} where ${b} = any(${q.batchesNorm}) order by raised_at limit 500` : [];
-    const viewsRead = ['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1', ...OPTIONAL.filter(has)];
+    // The four S16 views also come as functions taking batch numbers (report.<view>_for(text[])): the same columns,
+    // milliseconds per batch instead of a scan of every batch. Used when this login may run them, else the view.
+    const exact = batches.map((x) => x.batch_number);
+    const fns = new Set((await tx<{ name: string }[]>`
+      select n as name from unnest(${OPTIONAL}::text[]) n
+      where case when not has_schema_privilege(${src.schema}, 'USAGE') then false
+                 when to_regprocedure(format('%I.%I(text[])', ${src.schema}::text, n || '_for')) is null then false
+                 else has_function_privilege(format('%I.%I(text[])', ${src.schema}::text, n || '_for'), 'EXECUTE') end`).map((r) => r.name));
+    const from = (name: string) => (fns.has(name) ? tx`${tx(src.schema)}.${tx(`${name}_for`)}(${exact}::text[])` : tx`${v(name)}`);
+    const read = (name: string) => has(name) || fns.has(name);
+    // cols and order are constants of this file (never user input).
+    const rowsOf = async <T,>(name: string, cols: string, order: string, limit: number): Promise<T[]> =>
+      read(name) && exact.length
+        ? ([...await tx`select ${tx.unsafe(cols)} from ${from(name)} x where ${tx.unsafe(norm('x.batch_number'))} = any(${q.batchesNorm}) order by ${tx.unsafe(order)} limit ${limit}`] as T[])
+        : [];
+    const equipmentUse = await rowsOf<BatchwrightData['equipmentUse'][number]>('equipment_use_v1',
+      'batch_number, equipment_code, equipment_type, room_code, step, started_at, ended_at', 'batch_number, started_at nulls last', 1000);
+    const ipc = await rowsOf<BatchwrightData['ipc'][number]>('ipc_result_v1',
+      'batch_number, step, step_title, check_kind, item, instrument_code, reading, value_text, unit, lower_text, upper_text, aggregate, alert_lower_text, alert_upper_text, result, recorded_at',
+      'batch_number, recorded_at nulls last, step, item, aggregate nulls first, reading', 3000);
+    const actuals = await rowsOf<BatchwrightData['actuals'][number]>('process_actual_v1',
+      'batch_number, step, tag, value_text, unit, lower_text, upper_text, within_limits, recorded_at', 'batch_number, recorded_at nulls last, step, tag', 3000);
+    const exceptionDetails = await rowsOf<BatchwrightData['exceptionDetails'][number]>('exception_detail_v1',
+      'batch_number, exception_id, exception_type, category, severity, step, step_title, description, status, disposition, disposed_by, disposed_at, raised_at', 'raised_at', 500);
+    const viewsRead = ['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1',
+      ...OPTIONAL.filter((n) => fns.has(n) ? false : has(n)), ...OPTIONAL.filter((n) => fns.has(n)).map((n) => `${n}_for`)];
     const [asOf] = await tx<{ at: string | null }[]>`select greatest(
       (select max(data_as_of) from ${v('batch_fact_v1')} where ${b} = any(${q.batchesNorm})),
       (select max(data_as_of) from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}))) as at`;
