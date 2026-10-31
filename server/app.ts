@@ -5,6 +5,11 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import type { Sql } from './db.js';
+import { BACKGROUND_HEADER, SESSION_COOKIE, loadSession } from './auth.js';
+import { authRoutes } from './routes/auth.js';
+import { userRoutes } from './routes/users.js';
+import { alertRoutes } from './routes/alerts.js';
+import { auditRoutes } from './routes/audit.js';
 
 export const VERSION = '0.1.0';
 
@@ -28,6 +33,8 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
     if (req.method !== 'GET' && req.method !== 'HEAD' && !req.headers['content-type']?.startsWith('application/json')) {
       return reply.code(415).send({ error: 'json_required' });
     }
+    const sid = req.cookies[SESSION_COOKIE];
+    if (sid) req.user = (await loadSession(sql, sid, !req.headers[BACKGROUND_HEADER])) ?? undefined;
   });
 
   app.get('/api/health', async (_req, reply) => {
@@ -38,6 +45,11 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
       return reply.code(503).send({ status: 'error', version: VERSION, db: 'unreachable' });
     }
   });
+
+  authRoutes(app, sql);
+  userRoutes(app, sql);
+  alertRoutes(app, sql);
+  auditRoutes(app, sql);
 
   // In production the built web UI is served from the same process.
   const root = webRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../web');
