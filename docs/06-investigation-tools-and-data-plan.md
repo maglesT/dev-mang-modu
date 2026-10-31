@@ -1,6 +1,6 @@
 # Plan: investigation tools and data from the Logbook and Batchwright (draft for owner approval)
 
-Status: draft · 2026-10-31. Owner request of 31 Oct: initial impact assessment, action taken, a data
+Status: approved by the owner · 2026-10-31 (D-32, D-33). Owner request of 31 Oct: initial impact assessment, action taken, a data
 collection step (PDF uploads and data fetched from the Logbook, SOPs and the batch record system), the
 fishbone in Analysis, and the investigation tools of the owner's guide (5 Whys, 6M with evidence, Is / Is Not,
 KT for OOS, fault tree, Pareto, barrier analysis and CAPA strength, FMEA). Batch data is read straight from
@@ -22,8 +22,8 @@ The AI help (S9) also reads the fetched data, so its suggestions use the batch r
 ## 2. How the data is fetched (read only)
 
 - **Batchwright:** its own read-only reporting role `ebmr_report` and the versioned `report.*_v1` views
-  (batch_fact, step_use, cpp_value, exception, alarm). Batchwright gets one new view for SOPs and the
-  references of the batch's master record (`report.reference_document_v1`), in a new Batchwright migration.
+  (batch_fact, step_use, cpp_value, exception, alarm). Batchwright gets two new views: SOPs (`report.reference_document_v1`) and the
+  documents the batch's master record cites (`report.batch_reference_v1`), in a new Batchwright migration.
   The deviation module views (`deviation_fact_v1`) are not used.
 - **Logbook:** a new read-only role `logbook_report` with SELECT on new `report` views only (equipment,
   latest entry versions with type, times, batch and data, calibration due at a time, SOP references), in a
