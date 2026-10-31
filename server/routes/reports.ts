@@ -82,6 +82,20 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     if (k === 'fishbone' && v && typeof v === 'object') {
       return FISHBONE.filter(([key]) => (v as Row)[key]).map(([key, label]) => [`fishbone: ${label}`, val((v as Row)[key])]);
     }
+    // S13 tools print readably (D-35).
+    if (k === 'isIsNot' && v && typeof v === 'object') {
+      return Object.entries(v as Record<string, Row>).map(([q, r]): [string, unknown] => [`is / is not: ${q}`, `is: ${val(r.is)} | is not: ${val(r.isNot)} | tells: ${val(r.tells)}`]);
+    }
+    if (k === 'sixM' && v && typeof v === 'object') {
+      return FISHBONE.map(([key, label]): [string, unknown] => {
+        const m = ((v as Row)[key] ?? {}) as Row;
+        return [`6M: ${label}`, `${m.verdict === 'ruled_in' ? 'RULED IN' : m.verdict === 'ruled_out' ? 'ruled out' : '—'}. Checked: ${val(m.checked)}. Evidence: ${val(m.evidence)}`];
+      });
+    }
+    if (k === 'fiveWhys' && v && typeof v === 'object') {
+      const w = v as { problem?: unknown; whys?: Row[] };
+      return [['5 whys: problem', val(w.problem)], ...(w.whys ?? []).map((x, i): [string, unknown] => [`why ${i + 1}`, `${val(x.answer)} (evidence: ${val(x.evidence)})`])];
+    }
     // The initial impact assessment prints as readable answers (D-34).
     if (k === 'initialImpact' && v && typeof v === 'object') {
       const a = v as Row;
@@ -191,10 +205,10 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       heading('Product and batches'),
       table(['Role', 'Product', 'Batch', 'Outcome'], d.batches.map((b) => [b.role === 'own' ? 'Concerned' : 'Other batch checked', b.product, b.batch, b.outcome ?? ''])),
     ];
-    for (const kind of ['report', 'classification', 'investigation', 'closure', 'target_date']) {
+    for (const kind of ['report', 'classification', 'investigation_draft', 'investigation', 'closure', 'target_date']) {
       const versions = d.sections.filter((x) => x.kind === kind);
       if (!versions.length) continue;
-      content.push(heading({ report: 'Report', classification: 'Classification', investigation: 'Investigation', closure: 'Closure', target_date: 'Target date changes' }[kind]!));
+      content.push(heading({ report: 'Report', classification: 'Classification', investigation_draft: 'Investigation drafts (saved while investigating, not signed)', investigation: 'Investigation', closure: 'Closure', target_date: 'Target date changes' }[kind]!));
       for (const v of [...versions].reverse()) {
         content.push(t(`Version ${v.version}${latestIds.has(v.id) ? ' (current)' : ' (superseded by a correction)'} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(fields(dataRows(v.data as Row, names)));

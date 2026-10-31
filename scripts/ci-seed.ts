@@ -3,6 +3,7 @@
 import { buildApp } from '../server/app.js';
 import { connect } from '../server/db.js';
 import { hashPassword } from '../server/passwords.js';
+import { TOOLS } from '../test/fixtures.js';
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is required');
@@ -38,7 +39,7 @@ const { id } = await call(user, 'POST', '/api/deviations', {
   products: [{ product: 'Seed product', batch: 'SEED-1' }], initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'None.',
 });
 await call(qa, 'POST', `/api/deviations/${id}/classify`, { classification: 'minor', typeId, impact: 'x', investigatorId: userId, productBatchChecked: true });
-await call(user, 'POST', `/api/deviations/${id}/investigate`, { data: { rootCause: 'x', otherBatches: [], noOtherReason: 'x', conclusion: 'x' }, signature: sig('seeduser') });
+await call(user, 'POST', `/api/deviations/${id}/investigate`, { data: { ...TOOLS, rootCause: 'x', otherBatches: [], noOtherReason: 'x', conclusion: 'x' }, signature: sig('seeduser') });
 await call(user, 'POST', `/api/deviations/${id}/attachments`, { filename: 'seed.pdf', mime: 'application/pdf', dataBase64: Buffer.from('%PDF-1.4 seed').toString('base64') });
 await call(qa2, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Seed', noCapaReason: 'Seed' }, signature: sig('seedqa2') });
 const due = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);

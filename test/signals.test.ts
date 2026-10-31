@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { TOOLS } from './fixtures.js';
 
 // S8 (D-27): rule-based hints on a deviation. Each test uses its own area, so tests do not see each other's data.
 let t: TestApp;
@@ -34,7 +35,7 @@ const classify = (id: number, type = typeId) =>
   call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, { classification: 'minor', typeId: type, impact: 'This batch.', investigatorId: ids.us2, productBatchChecked: true });
 const investigate = (id: number, over: object = {}) =>
   call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, {
-    data: { rootCause: 'Feeder speed not reset after maintenance.', otherBatches: [], noOtherReason: 'Single batch on the press.', conclusion: 'Only this batch.', ...over },
+    data: { ...TOOLS, rootCause: 'Feeder speed not reset after maintenance.', otherBatches: [], noOtherReason: 'Single batch on the press.', conclusion: 'Only this batch.', ...over },
     signature: { username: 'us2', password: PASSWORD },
   });
 const signals = async (id: number) => {
@@ -87,7 +88,7 @@ describe('investigation hints (S8)', () => {
     const a = await newArea();
     const old = await report(a, { equipment: 'Press 7', title: 'Weight variation on press 7' });
     await classify(old);
-    await investigate(old, { fishbone: { man: '', machine: 'Feeder worn', method: '', material: '', measurement: '', environment: '' } });
+    await investigate(old, { sixM: { ...TOOLS.sixM, machine: { checked: 'Feeder worn', evidence: 'PM log', verdict: 'ruled_in' } } });
     const capa = await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: old, type: 'corrective', description: 'Replace feeder', ownerId: ids.us2, dueDate: '2030-01-01' });
     expect(capa.statusCode, capa.body).toBe(201);
     const unrelated = await report(await newArea(), { title: 'Label torn' });

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PASSWORD, apiAs, logIn, logOut, post } from './helpers.js';
+import { TOOLS } from '../test/fixtures.js';
 
 const inDays = (n: number) => new Date(Date.now() + n * 86400_000 + 5.5 * 3600_000).toISOString().slice(0, 10);
 
@@ -21,7 +22,7 @@ async function awaitingClosure(batch: string) {
   await qa.dispose();
   const us2 = await apiAs('us2');
   await post(us2, `/api/deviations/${id}/investigate`, {
-    data: { rootCause: 'Old stock not removed.', otherBatches: [], noOtherReason: 'Only this line had rev 3.', conclusion: 'Repack.' },
+    data: { ...TOOLS, rootCause: 'Old stock not removed.', otherBatches: [], noOtherReason: 'Only this line had rev 3.', conclusion: 'Repack.' },
     signature: { username: 'us2', password: PASSWORD },
   });
   await us2.dispose();

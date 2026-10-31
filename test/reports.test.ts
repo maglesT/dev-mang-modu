@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
 const c: Record<string, string> = {};
@@ -37,7 +38,7 @@ describe('batch lookup', () => {
     const viaOther = await report('Packing', 'Ibuprofen 400', 'IB-1');
     await classify(viaOther.id);
     await call(t.app, c.us2!, 'POST', `/api/deviations/${viaOther.id}/investigate`, {
-      data: { rootCause: 'x', otherBatches: [{ product: 'Paracetamol 500', batch: 'lk 100', outcome: 'not_affected' }], conclusion: 'x' },
+      data: { ...TOOLS, rootCause: 'x', otherBatches: [{ product: 'Paracetamol 500', batch: 'lk 100', outcome: 'not_affected' }], conclusion: 'x' },
       signature: sig('us2'),
     });
     const rows = (await call(t.app, c.us2!, 'GET', '/api/batch-lookup?batch=LK-100')).json() as { number: string; role: string; open: boolean }[];

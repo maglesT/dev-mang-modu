@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
 const c: Record<string, string> = {};
@@ -23,7 +24,8 @@ const report = (over: object = {}) => ({
   eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Metformin 500', batch: 'MET-11' }],
   initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Tablets since last IPC segregated.', ...over,
 });
-const investigation = (over: object = {}) => ({
+const investigation = (over: Record<string, unknown> = {}) => ({
+  ...TOOLS,
   rootCause: 'Punch used beyond its life; counter not reset after tooling change.',
   mostLikely: false, humanError: false,
   otherBatches: [{ product: 'Metformin 500', batch: 'MET-10', outcome: 'not_affected' }],
@@ -80,11 +82,45 @@ describe('investigation', () => {
     const pdf = await call(t.app, c.qa1!, 'GET', `/api/deviations/${id}/pdf`);
     expect(pdf.statusCode).toBe(200);
     expect(pdf.headers['content-type']).toBe('application/pdf');
-    // Investigations saved before the fishbone existed (no field) still read and sign: it defaults to empty.
+    // Without the older fishbone text it still signs; the 6M (S13) carries the analysis.
     const old = await inInvestigation();
     expect((await investigate(old)).statusCode).toBe(200);
     const o = (await get(old)).sections.find((x: { kind: string }) => x.kind === 'investigation');
-    expect(o.data.fishbone.machine).toBe('');
+    expect(o.data.fishbone).toBeUndefined();
+    expect(o.data.sixM.machine.verdict).toBe('ruled_in');
+  });
+
+  it('S13: every tool is required, and each missing piece is named: Is / Is Not, 6M with evidence and a ruled-in M, at least 3 whys, the category', async () => {
+    const id = await inInvestigation();
+    const problemsFor = async (over: Record<string, unknown>) => (await investigate(id, 'us2', investigation(over))).json().problems as string[];
+    expect(await problemsFor({ isIsNot: undefined })).toContain('Is / Is Not: required.');
+    expect(await problemsFor({ isIsNot: { ...TOOLS.isIsNot, where: { is: 'Press 2', isNot: '', tells: 'x' } } })).toContain('Is / Is Not, where: is not: required.');
+    expect(await problemsFor({ sixM: { ...TOOLS.sixM, method: { checked: 'SOP v4', evidence: '', verdict: 'ruled_out' } } })).toContain('6M, Method: evidence: required.');
+    const allOut = Object.fromEntries(Object.entries(TOOLS.sixM).map(([k, v]) => [k, { ...v, verdict: 'ruled_out' }]));
+    expect(await problemsFor({ sixM: allOut })).toContain('6M: at least one M must be ruled in (the root cause sits there).');
+    expect(await problemsFor({ fiveWhys: { problem: 'x', whys: TOOLS.fiveWhys.whys.slice(0, 2) } })).toContain('5 Whys: at least 3 whys, each with evidence.');
+    expect(await problemsFor({ rootCauseCategory: '' })).toContain('Choose the root-cause category.');
+    // The check lists the same problems and writes nothing.
+    const check = await call(t.app, c.us2!, 'POST', '/api/investigation/check', { data: investigation({ rootCauseCategory: undefined }) });
+    expect(check.json().problems).toEqual(['Choose the root-cause category.']);
+    expect((await call(t.app, c.us2!, 'POST', '/api/investigation/check', { data: investigation() })).json().problems).toEqual([]);
+    expect((await get(id)).step).toBe('investigation');
+  });
+
+  it('S13: drafts are saved as unsigned versions while investigating, are audited, never move the step, and stop once the investigation is signed', async () => {
+    const id = await inInvestigation();
+    const draft = (user: string, data: object) => call(t.app, c[user]!, 'POST', `/api/deviations/${id}/investigation/draft`, { data });
+    expect((await draft('us2', { rootCause: 'Thinking: feeder?' })).json()).toEqual({ version: 1 });
+    expect((await draft('us2', { rootCause: 'Feeder speed', sixM: { machine: { checked: 'speed log' } } })).json()).toEqual({ version: 2 });
+    expect((await draft('us3', { rootCause: 'x' })).statusCode).toBe(403);
+    const d = await get(id);
+    expect(d.step).toBe('investigation');
+    const drafts = d.sections.filter((x: { kind: string }) => x.kind === 'investigation_draft');
+    expect(drafts.map((x: { version: number; reason: string | null }) => [x.version, x.reason])).toEqual([[1, null], [2, 'Draft saved']]);
+    const [n] = await t.owner`select count(*)::int as n from audit_log where action = 'investigation.draft_saved'`;
+    expect(n!.n).toBeGreaterThanOrEqual(2);
+    expect((await investigate(id)).statusCode).toBe(200);
+    expect((await draft('us2', { rootCause: 'late' })).statusCode).toBe(409);
   });
 
   it('DV-05: human error needs a justification', async () => {

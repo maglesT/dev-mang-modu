@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runIntegrityCheck } from '../server/integrity.js';
 import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
 const c: Record<string, string> = {};
@@ -32,7 +33,7 @@ beforeAll(async () => {
   await approve();
   await call(t.app, c.us1!, 'POST', `/api/deviations/${dev}/correct`, { kind: 'report', data: report('Filter delivery late (vendor)'), reason: 'clarified' });
   await approve();
-  await call(t.app, c.us2!, 'POST', `/api/deviations/${dev}/investigate`, { data: { rootCause: 'x', otherBatches: [], noOtherReason: 'x', conclusion: 'x' }, signature: sig('us2') });
+  await call(t.app, c.us2!, 'POST', `/api/deviations/${dev}/investigate`, { data: { ...TOOLS, rootCause: 'x', otherBatches: [], noOtherReason: 'x', conclusion: 'x' }, signature: sig('us2') });
   await call(t.app, c.us1!, 'POST', `/api/deviations/${dev}/attachments`, { filename: 'a.pdf', mime: 'application/pdf', dataBase64: Buffer.from('%PDF-1.4 a').toString('base64') });
   const close = await call(t.app, c.qa2!, 'POST', `/api/deviations/${dev}/close`, { data: { summary: 'ok', noCapaReason: 'Immediate action enough.' }, signature: sig('qa2') });
   expect(close.statusCode, close.body).toBe(200);

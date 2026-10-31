@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { FISHBONE, Fishbone, emptyFishbone, hasFishbone } from '../components/Fishbone.js';
+import { FISHBONE, Fishbone, SixMDiagram, emptyFishbone, emptySixM, hasFishbone } from '../components/Fishbone.js';
+import { FiveWhysEdit, IsIsNotTable, ROOT_CAUSE_CATEGORY, emptyFiveWhys, emptyIsIsNot } from '../components/Tools.js';
 import { Signals } from '../components/Signals.js';
 import { AiSuggest } from '../components/AiSuggest.js';
 import { DmaicBar, PhaseHead } from '../components/DmaicBar.js';
@@ -174,8 +175,13 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         <div className="section-head"><h2>Investigation</h2>{correctButton('investigation')}</div>
         {investigation && correcting !== 'investigation' ? (
           <>
-          {hasFishbone(investigation.data.fishbone) && <Fishbone value={emptyFishbone(investigation.data.fishbone)} effect={str(report.title)} />}
+          {investigation.data.isIsNot ? <details className="tool"><summary>Is / Is Not</summary><IsIsNotTable value={emptyIsIsNot(investigation.data.isIsNot)} /></details> : null}
+          {investigation.data.sixM
+            ? <SixMDiagram value={emptySixM(investigation.data.sixM)} effect={str(report.title)} />
+            : hasFishbone(investigation.data.fishbone) && <Fishbone value={emptyFishbone(investigation.data.fishbone)} effect={str(report.title)} />}
+          {investigation.data.fiveWhys ? <details className="tool"><summary>5 Whys</summary><FiveWhysEdit value={emptyFiveWhys(investigation.data.fiveWhys)} /></details> : null}
           <Fields rows={[
+            ...(investigation.data.rootCauseCategory ? [['Root-cause category', ROOT_CAUSE_CATEGORY[String(investigation.data.rootCauseCategory)] ?? str(investigation.data.rootCauseCategory)] as [string, ReactNode]] : []),
             ['Root cause', <>{str(investigation.data.rootCause)}{investigation.data.mostLikely ? <span className="chip chip-warn">most likely cause; not confirmed</span> : null}</>],
             ...(investigation.data.humanError ? [['Human error', str(investigation.data.humanErrorJustification)] as [string, ReactNode]] : []),
             ['Other batches and products', other.length
@@ -397,24 +403,49 @@ type OtherRow = { product: string; batch: string; outcome: 'affected' | 'not_aff
 function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   d: Deviation; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
 }) {
+  // A new investigation continues from the latest draft (S13, D-35).
+  const draft = !correct ? (latestOf(d, 'investigation_draft')?.data as Record<string, unknown> | undefined) : undefined;
+  const start = initial ?? draft;
   const [f, setF] = useState({
-    rootCause: String(initial?.rootCause ?? ''), mostLikely: Boolean(initial?.mostLikely), humanError: Boolean(initial?.humanError),
-    humanErrorJustification: String(initial?.humanErrorJustification ?? ''), noOtherReason: String(initial?.noOtherReason ?? ''),
-    conclusion: String(initial?.conclusion ?? ''),
+    rootCause: String(start?.rootCause ?? ''), mostLikely: Boolean(start?.mostLikely), humanError: Boolean(start?.humanError),
+    humanErrorJustification: String(start?.humanErrorJustification ?? ''), noOtherReason: String(start?.noOtherReason ?? ''),
+    conclusion: String(start?.conclusion ?? ''), rootCauseCategory: String(start?.rootCauseCategory ?? ''),
   });
-  const [fishbone, setFishbone] = useState(emptyFishbone(initial?.fishbone));
-  const [rows, setRows] = useState<OtherRow[]>((initial?.otherBatches as OtherRow[] | undefined) ?? []);
+  const [isIsNot, setIsIsNot] = useState(emptyIsIsNot(start?.isIsNot));
+  const [sixM, setSixM] = useState(emptySixM(start?.sixM));
+  const [fiveWhys, setFiveWhys] = useState(emptyFiveWhys(start?.fiveWhys));
+  const [rows, setRows] = useState<OtherRow[]>((start?.otherBatches as OtherRow[] | undefined) ?? []);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
+  const [saved, setSaved] = useState('');
   const [signing, setSigning] = useState(false);
-  const data = () => ({ ...f, fishbone, otherBatches: rows.filter((r) => r.product.trim() || r.batch.trim()) });
+  const title = str((latestOf(d, 'report')?.data as Record<string, unknown> | undefined)?.title);
+  const data = () => ({
+    ...f, isIsNot, sixM, fiveWhys: { ...fiveWhys, whys: fiveWhys.whys.filter((w) => w.answer.trim() || w.evidence.trim()) },
+    otherBatches: rows.filter((r) => r.product.trim() || r.batch.trim()),
+  });
+  const saveDraft = async () => {
+    setProblems([]);
+    try {
+      const r = await api<{ version: number }>('POST', `/api/deviations/${d.id}/investigation/draft`, { data: data() });
+      setSaved(`Draft ${r.version} saved at ${plantTime(new Date().toISOString())}.`);
+    } catch (err) {
+      setProblems(problemsOf(err, 'The draft could not be saved.'));
+    }
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setProblems([]);
-    if (!correct) return setSigning(true);
     try {
-      await correct(data(), reason);
-      await onDone();
+      if (correct) {
+        await correct(data(), reason);
+        await onDone();
+        return;
+      }
+      // Lists everything still missing before the signature is asked for.
+      const check = await api<{ problems: string[] }>('POST', '/api/investigation/check', { data: data() });
+      if (check.problems.length) return setProblems(check.problems);
+      setSigning(true);
     } catch (err) {
       setProblems(problemsOf(err, !reason.trim() ? 'Give the reason for the correction.' : 'Please fill in every field.'));
     }
@@ -423,14 +454,30 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   return (
     <>
     <form className="form" onSubmit={submit}>
-      <div>
-        <b>Fishbone: possible causes considered</b>
-        <p className="muted small">Optional. Note what was considered in each category, then state the root cause below.</p>
-        <Fishbone value={fishbone} effect={str((latestOf(d, 'report')?.data as Record<string, unknown> | undefined)?.title)} onChange={setFishbone} />
+      {draft && !initial && <p className="muted small">Continuing from draft {latestOf(d, 'investigation_draft')!.version}.</p>}
+      <details className="tool" open>
+        <summary>1. Is / Is Not: narrow the scope *</summary>
+        <p className="muted small">For each line: where the problem is, where it is not, and what that tells you.</p>
+        <IsIsNotTable value={isIsNot} onChange={setIsIsNot} />
+      </details>
+      <details className="tool" open>
+        <summary>2. 6M fishbone with evidence *</summary>
+        <p className="muted small">Check every M with data, write the evidence, and rule it in or out. At least one M is ruled in.</p>
+        <SixMDiagram value={sixM} effect={title} onChange={setSixM} />
         {!correct && <AiSuggest deviationId={d.id}
-          onAdd={(k, text) => setFishbone((fb) => ({ ...fb, [k]: (fb[k].trim() ? `${fb[k].trim()}\n${text}` : text).slice(0, 2000) }))} />}
-      </div>
-      <label>Root cause *<textarea rows={4} value={f.rootCause} onChange={(e) => setF({ ...f, rootCause: e.target.value })} /></label>
+          onAdd={(k, text) => setSixM((m) => ({ ...m, [k]: { ...m[k], checked: (m[k].checked.trim() ? `${m[k].checked.trim()}\n${text}` : text).slice(0, 2000) } }))} />}
+      </details>
+      <details className="tool" open>
+        <summary>3. 5 Whys to the system cause *</summary>
+        <FiveWhysEdit value={fiveWhys} onChange={setFiveWhys} />
+      </details>
+      <label>Root cause *<textarea rows={3} value={f.rootCause} onChange={(e) => setF({ ...f, rootCause: e.target.value })} /></label>
+      <label>Root-cause category *
+        <select value={f.rootCauseCategory} onChange={(e) => setF({ ...f, rootCauseCategory: e.target.value })}>
+          <option value="">Choose…</option>
+          {Object.entries(ROOT_CAUSE_CATEGORY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </label>
       <label className="check"><input type="checkbox" checked={f.mostLikely} onChange={(e) => setF({ ...f, mostLikely: e.target.checked })} /> The true root cause could not be confirmed; the most likely cause is stated</label>
       <label className="check"><input type="checkbox" checked={f.humanError} onChange={(e) => setF({ ...f, humanError: e.target.checked })} /> The cause is human error</label>
       {f.humanError && <label>Why human error, and how process, procedure or system causes were ruled out *<textarea rows={3} value={f.humanErrorJustification} onChange={(e) => setF({ ...f, humanErrorJustification: e.target.value })} /></label>}
@@ -453,9 +500,11 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
       </div>
       <label>Conclusion *<textarea rows={3} value={f.conclusion} onChange={(e) => setF({ ...f, conclusion: e.target.value })} /></label>
       {correct && <ReasonField value={reason} onChange={setReason} />}
-      {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
+      {problems.length > 0 && <div className="error" role="alert"><p><b>Still missing:</b></p>{problems.map((p) => <p key={p}>{p}</p>)}</div>}
+      {saved && !problems.length && <p className="muted small" role="status">{saved}</p>}
       <div className="actions">
         {correct && <button type="button" onClick={onCancel}>Cancel</button>}
+        {!correct && <button type="button" onClick={saveDraft}>Save draft</button>}
         <button className="primary" type="submit">{correct ? 'Save correction' : 'Sign investigation complete'}</button>
       </div>
     </form>

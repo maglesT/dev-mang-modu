@@ -28,7 +28,7 @@ export interface Signals { flags: Flag[]; similar: SimilarCase[] }
 interface Candidate {
   id: number; number: string; step: string; reported_at: Date; title: string;
   same_area: boolean; same_type: boolean; same_equipment: boolean; same_product: boolean; same_batch: boolean;
-  root_cause: string | null; fishbone: Record<string, string> | null; human_error: boolean;
+  root_cause: string | null; fishbone: Record<string, string> | null; six_m: Record<string, { checked?: string; verdict?: string }> | null; human_error: boolean;
 }
 
 export async function computeSignals(sql: Sql, id: number): Promise<Signals | null> {
@@ -68,7 +68,7 @@ export async function computeSignals(sql: Sql, id: number): Promise<Signals | nu
         (${eqNorm} <> '' and lower(regexp_replace(coalesce(r.data->>'equipment', ''), '[\\s\\-/._]+', '', 'g')) = ${eqNorm}) as same_equipment,
         exists (select 1 from batches b where b.section_id = r.id and b.role = 'own' and lower(trim(b.product)) = any(${products})) as same_product,
         d.id in (select deviation_id from batch_hits) as same_batch,
-        i.data->>'rootCause' as root_cause, i.data->'fishbone' as fishbone, coalesce(i.data->>'humanError' = 'true', false) as human_error
+        i.data->>'rootCause' as root_cause, coalesce(i.data->'fishbone', '{}'::jsonb) as fishbone, i.data->'sixM' as six_m, coalesce(i.data->>'humanError' = 'true', false) as human_error
       from cand join deviations d on d.id = cand.id
       cross join lateral (select s.id, s.data from sections s where s.deviation_id = d.id and s.kind = 'report' order by s.version desc limit 1) r
       left join lateral (select s.data from sections s where s.deviation_id = d.id and s.kind = 'classification' order by s.version desc limit 1) c on true
@@ -125,7 +125,11 @@ export async function computeSignals(sql: Sql, id: number): Promise<Signals | nu
   const similar: SimilarCase[] = scored.map(({ c, why }) => ({
     id: c.id, number: c.number, title: c.title, step: c.step, why,
     rootCause: c.root_cause ?? '', humanError: c.human_error,
-    causes: FISHBONE.map(([k, label]) => ({ category: label, text: String(c.fishbone?.[k] ?? '').trim() })).filter((x) => x.text),
+    // Ruled-in Ms of the 6M (S13), or the older fishbone text (S7).
+    causes: FISHBONE.map(([k, label]) => ({
+      category: label,
+      text: c.six_m ? (c.six_m[k]?.verdict === 'ruled_in' ? String(c.six_m[k]?.checked ?? '').trim() : '') : String(c.fishbone?.[k] ?? '').trim(),
+    })).filter((x) => x.text),
     capas: capaRows.filter((r) => r.deviation_id === c.id).map((r) => ({ number: r.number, description: r.description, step: r.step })),
   }));
   return { flags, similar };

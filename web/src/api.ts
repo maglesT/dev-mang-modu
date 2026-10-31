@@ -134,7 +134,7 @@ export interface DeviationItem {
 
 export interface SectionVersion {
   id: number;
-  kind: 'report' | 'classification' | 'investigation' | 'closure' | 'target_date';
+  kind: 'report' | 'classification' | 'investigation' | 'investigation_draft' | 'closure' | 'target_date';
   version: number;
   data: Record<string, unknown>;
   savedAt: string;

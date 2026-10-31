@@ -310,3 +310,16 @@ fieldset.impact { border: 1px solid var(--line); border-radius: var(--radius); p
 fieldset.impact .row { margin: 2px 0; align-items: center; }
 fieldset.impact .q { min-width: 17em; }
 .impact-view { display: grid; gap: 4px; }
+
+/* S13 tools (D-35). */
+.fishbone .bone.ruled_in { border-left-color: var(--bad); }
+.fishbone .bone.ruled_out { border-left-color: var(--ok); }
+fieldset.mcheck { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+fieldset.mcheck legend { font-weight: 700; padding: 0; }
+.tool { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.tool > summary { cursor: pointer; font-weight: 700; }
+.tool table.isnot { width: 100%; border-collapse: collapse; }
+.tool table.isnot td, .tool table.isnot th { padding: 4px; vertical-align: top; text-align: left; }
+.tool table.isnot input { width: 100%; }
+.whys { display: grid; gap: 8px; padding-left: 0; list-style: none; }
+.whys li { display: grid; grid-template-columns: 4.5em 1fr 1fr auto; gap: 6px; align-items: start; }
