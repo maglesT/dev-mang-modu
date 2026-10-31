@@ -240,3 +240,9 @@ table.list tr.click:hover td { background: var(--brand-soft); }
 .signature { color: var(--ok); font-weight: 600; margin: 4px 0; }
 .muted-card { opacity: 0.75; }
 ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.link.small, .small { font-size: 0.88rem; }
+.versions summary { cursor: pointer; color: var(--warn); font-weight: 600; }
+.old-version { border-left: 3px solid var(--line-strong); padding: 6px 12px; margin: 8px 0; color: var(--muted); }
+.signature.superseded { color: var(--muted); text-decoration: line-through; }
+.upload { display: grid; gap: 6px; }

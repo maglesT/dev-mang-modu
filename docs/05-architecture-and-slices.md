@@ -71,8 +71,8 @@ that repo is attached; I'll ask when a slice needs it.
 | S0 | Skeleton copied from the logbook: server, web, db runner, Docker, CI | — | S | App starts; CI green |
 | S1 | Accounts and audit trail (copied, re-checked): login, 3 roles, timeout, lockout + alert (failed signing counts), Admin cannot change own roles, password rules, user admin, audit view | DV-15, DV-17 (IDs), DV-18 | S | Admin creates users; lockout raises an alert |
 | S2 | Report and classify: report form, numbers, areas/types lists, settings, QA classify with target date, planned approval/reject, home lists (awaiting me, open, overdue) | DV-01–03, DV-13, DV-19, DV-20 | M | Report a deviation; QA classifies it; target date and overdue show |
-| S3 | Investigate and close: investigation with other batches, human-error and most-likely ticks; QA close and reopen; e-signatures; corrections; attachments | DV-04–07, DV-10, DV-14, DV-16, DV-17 | M | Deviation to *Closed*; correct a signed section |
-| S4 | CAPA register: raise from a deviation or directly (audit, complaint, other); done, verify, effectiveness check, close; CAPA list and page; deviation page shows its CAPAs | DV-08, DV-09 | M | Raise a CAPA from an audit finding and close it |
+| S3 | Investigation and corrections: investigation with other batches, human-error and most-likely ticks, signed by the investigator; corrections with reason (signatures superseded, re-sign); attachments (D-21) | DV-04–07, DV-14, DV-16, DV-17 | M | Sign an investigation; correct a signed section |
+| S4 | CAPA register and closure: raise from a deviation or directly (audit, complaint, other); done, verify, effectiveness, close; CAPA list and page; QA closes the deviation (D-14) and reopens it | DV-08–10 | M | Raise a CAPA from an audit finding; close a deviation with open CAPAs |
 | S5 | Batch lookup, trends, PDF: "affects batch X", trend table and chart, one PDF per deviation and per CAPA | DV-11, DV-12, DV-21 | M | Look up a batch; print a deviation |
 | S6 | Integrity check, backup with checksum and off-host copy, restore check, traceability, handover | DV-22, CP-01 support | S | Restore check and traceability list |
 
