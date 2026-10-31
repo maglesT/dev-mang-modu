@@ -54,7 +54,7 @@ function Versions({ d, kind }: { d: Deviation; kind: Kind }) {
           <Fields rows={Object.entries(v.data).flatMap(([k, x]): [string, ReactNode][] =>
             // The fishbone shows one line per category with text, as in the PDF (D-26).
             k === 'fishbone' && x && typeof x === 'object'
-              ? FISHBONE.filter(([c]) => str((x as Record<string, unknown>)[c]).trim()).map(([c, label]) => [`fishbone: ${label}`, str((x as Record<string, unknown>)[c])])
+              ? FISHBONE.filter(([c]) => String((x as Record<string, unknown>)[c] ?? '').trim()).map(([c, label]) => [`fishbone: ${label}`, str((x as Record<string, unknown>)[c])])
               : [[k, typeof x === 'object' ? JSON.stringify(x) : str(x)]])} />
         </div>
       ))}
