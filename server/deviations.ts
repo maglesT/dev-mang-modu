@@ -177,17 +177,28 @@ export const faultTreeData = z.object({
   })).min(2, 'Fault tree: at least 2 branches, each tested with evidence.').max(40),
 }, { required_error: 'Fault tree: required for a critical deviation.' }).superRefine((t, ctx) => {
   const ids = new Set(t.branches.map((b) => b.id));
-  if (ids.size !== t.branches.length || t.branches.some((b) => b.parent !== null && !ids.has(b.parent))) {
+  const parent = new Map(t.branches.map((b) => [b.id, b.parent]));
+  // Every branch must lead up to the top event (no missing parents, no loops).
+  const reachesTop = (id: string) => { let cur: string | null | undefined = id; for (let i = 0; i <= t.branches.length; i++) { cur = parent.get(cur!); if (cur === null) return true; if (cur === undefined) return false; } return false; };
+  if (ids.size !== t.branches.length || t.branches.some((b) => !reachesTop(b.id))) {
     ctx.addIssue({ code: 'custom', message: 'Fault tree: each branch hangs from the top event or another branch.' });
   }
 });
 // Which context-dependent tools a deviation needs (D-33): KT for lab / OOS types, the fault tree when critical.
-export function contextProblems(d: { kt?: unknown; faultTree?: unknown }, ctx: { labOos: boolean; critical: boolean }): string[] {
-  const out: string[] = [];
-  if (ctx.labOos) { const r = ktData.safeParse(d.kt); if (!r.success) out.push(...r.error.issues.map((i) => i.message)); }
-  if (ctx.critical) { const r = faultTreeData.safeParse(d.faultTree); if (!r.success) out.push(...r.error.issues.map((i) => i.message)); }
-  return out;
+// Returns the problems and the data to store: a tool that applies is stored as checked (trimmed, known fields
+// only); a tool that does not apply is kept only if it is valid (e.g. from before a reclassification), else dropped.
+export function applyContext<T extends { kt?: unknown; faultTree?: unknown }>(d: T, ctx: { labOos: boolean; critical: boolean }): { problems: string[]; data: T } {
+  const problems: string[] = [];
+  const data = { ...d };
+  for (const [key, schema, needed] of [['kt', ktData, ctx.labOos], ['faultTree', faultTreeData, ctx.critical]] as const) {
+    const r = (schema as z.ZodTypeAny).safeParse(d[key]);
+    if (r.success) data[key] = r.data;
+    else if (needed) problems.push(...r.error.issues.map((i) => i.message));
+    else delete data[key];
+  }
+  return { problems, data };
 }
+export const contextProblems = (d: { kt?: unknown; faultTree?: unknown }, ctx: { labOos: boolean; critical: boolean }) => applyContext(d, ctx).problems;
 export async function investigationContext(tx: Tx | Sql, deviationId: number) {
   const [r] = await tx<{ lab_oos: boolean | null; classification: string | null }[]>`
     select t.lab_oos, d.classification from deviations d

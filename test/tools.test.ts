@@ -102,6 +102,34 @@ describe('investigation tools II (S14)', () => {
     expect((await close(other, {})).statusCode).toBe(200);
   });
 
+  it('S14: reclassified as critical after signing: closing waits until the investigation is corrected to add a fault tree', async () => {
+    const id = await classified('major');
+    expect((await investigate(id)).statusCode).toBe(200);
+    await raise(id, 'strong');
+    const cls = { classification: 'critical', typeId, impact: 'Worse than thought.', investigatorId: ids.us2, productBatchChecked: true };
+    expect((await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/correct`, { kind: 'classification', data: cls, reason: 'Patient risk' })).statusCode).toBe(200);
+    const blocked = await close(id, {});
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().problems).toContain('Fault tree: required for a critical deviation.');
+    const fixed = await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/correct`, { kind: 'investigation', data: investigation({ faultTree: FAULT_TREE }), reason: 'Fault tree for critical' });
+    expect(fixed.statusCode, fixed.body).toBe(200);
+    const hash = (await call(t.app, c.us2!, 'GET', `/api/deviations/${id}`)).json().investigationHash;
+    expect((await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigation/sign`, { ...sig('us2'), contentHash: hash })).statusCode).toBe(200);
+    expect((await close(id, {})).statusCode).toBe(200);
+  });
+
+  it('S14: a tool that does not apply is stored only if valid; fault-tree loops are refused', async () => {
+    const id = await classified('major');
+    expect((await investigate(id, investigation({ kt: 'junk', faultTree: { topEvent: 'x', branches: [] } }))).statusCode).toBe(200);
+    const d = (await call(t.app, c.qa1!, 'GET', `/api/deviations/${id}`)).json();
+    const data = d.sections.find((x: { kind: string }) => x.kind === 'investigation').data;
+    expect(data.kt).toBeUndefined();
+    expect(data.faultTree).toBeUndefined();
+    const crit = await classified('critical');
+    const loop = { ...FAULT_TREE, branches: [{ ...FAULT_TREE.branches[0], id: 'b1', parent: 'b2' }, { ...FAULT_TREE.branches[1], id: 'b2', parent: 'b1' }] };
+    expect((await investigate(crit, investigation({ faultTree: loop }))).json().problems).toContain('Fault tree: each branch hangs from the top event or another branch.');
+  });
+
   it('S14: the trend shows a Pareto of root-cause categories and flags a category repeated 3 times in 6 months', async () => {
     for (let i = 0; i < 3; i++) await investigate(await classified(), investigation({ rootCauseCategory: 'human' }));
     const month = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 7);
@@ -109,5 +137,11 @@ describe('investigation tools II (S14)', () => {
     expect(r.pareto[0]).toMatchObject({ category: 'equipment' });
     expect(r.pareto).toEqual(expect.arrayContaining([{ category: 'human', n: 3 }]));
     expect(r.repeats).toEqual(expect.arrayContaining([{ category: 'human', n: 3 }]));
+    // A correction awaiting re-signing does not count yet.
+    const id = await classified();
+    await investigate(id, investigation({ rootCauseCategory: 'material' }));
+    await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/correct`, { kind: 'investigation', data: investigation({ rootCauseCategory: 'environment' }), reason: 'Re-assessed' });
+    const after = (await call(t.app, c.qa1!, 'GET', `/api/trends?from=${month}&to=${month}`)).json();
+    expect(after.pareto.find((x: { category: string }) => x.category === 'environment')).toBeUndefined();
   });
 });

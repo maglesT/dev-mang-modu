@@ -229,7 +229,7 @@ export function FaultTreeEdit({ value, onChange }: { value: FaultTree; onChange?
       {ro ? <p><b>Top event:</b> {value.topEvent}</p> : (
         <div className="grid2">
           <label>Top event (the failure)<input aria-label="Fault tree: top event" value={value.topEvent} onChange={(e) => onChange!({ ...value, topEvent: e.target.value })} /></label>
-          <label>Branches under it combine with<select value={value.topGate} onChange={(e) => onChange!({ ...value, topGate: e.target.value as 'OR' | 'AND' })}><option value="OR">OR</option><option value="AND">AND</option></select></label>
+          <label>Branches under it combine with<select aria-label="Fault tree: branches under the top event combine with" value={value.topGate} onChange={(e) => onChange!({ ...value, topGate: e.target.value as 'OR' | 'AND' })}><option value="OR">OR</option><option value="AND">AND</option></select></label>
         </div>
       )}
       <ul className="tree">{children(null, 0)}</ul>

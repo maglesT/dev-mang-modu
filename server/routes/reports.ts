@@ -96,6 +96,38 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
       const w = v as { problem?: unknown; whys?: Row[] };
       return [['5 whys: problem', val(w.problem)], ...(w.whys ?? []).map((x, i): [string, unknown] => [`why ${i + 1}`, `${val(x.answer)} (evidence: ${val(x.evidence)})`])];
     }
+    // S14 tools print readably (D-36).
+    if (k === 'barriers' && Array.isArray(v)) {
+      return (v as Row[]).map((b, i): [string, unknown] => [`barrier ${i + 1}`, `${val(b.barrier)}: ${({ yes: 'worked', no: 'did not work', not_present: 'not present' } as Record<string, string>)[String(b.worked)] ?? val(b.worked)}${b.whyFailed ? `; why: ${val(b.whyFailed)}` : ''}`]);
+    }
+    if (k === 'fmea' && v && typeof v === 'object') {
+      const f = v as Row;
+      return [['FMEA', `severity ${val(f.severity)} x occurrence ${val(f.occurrence)} x detection ${val(f.detection)} = RPN ${Number(f.severity) * Number(f.occurrence) * Number(f.detection)}. Risk to the patient: ${val(f.patientRisk)}`]];
+    }
+    if (k === 'kt' && v && typeof v === 'object') {
+      const x = v as Row & { checklist?: Row; phase1b?: Row };
+      return [
+        ['KT 1A: analyst interview', val(x.analystInterview)],
+        ['KT 1A: checklist', Object.entries(x.checklist ?? {}).map(([c, r]) => `${c} ${({ ok: 'OK', error: 'ERROR', na: 'n/a' } as Record<string, string>)[String(r)] ?? val(r)}`).join('; ')],
+        ['KT questions', `same sample reproduces: ${val(x.sameSampleReproduces)}; fresh preparation reproduces: ${val(x.freshPrepReproduces)}; instrument malfunction logged: ${val(x.instrumentMalfunctionLogged)}; second analyst same: ${val(x.secondAnalystSame)}`],
+        ['KT 1A: hypothesis testing', val(x.hypothesisTesting)],
+        ['KT 1A: assignable lab cause', val(x.assignableLabCause)],
+        ...(x.assignableLabCause === 'no' ? [['KT 1B: manufacturing review', val(x.phase1b?.manufacturingReview)], ['KT 1B: retest plan', val(x.phase1b?.retestPlan)]] as [string, unknown][] : []),
+      ];
+    }
+    if (k === 'faultTree' && v && typeof v === 'object') {
+      const ft = v as { topEvent?: unknown; topGate?: unknown; branches?: Row[] };
+      const branches = Array.isArray(ft.branches) ? ft.branches : [];
+      const lines: [string, unknown][] = [['fault tree: top event', `${val(ft.topEvent)} (branches: ${val(ft.topGate)})`]];
+      const walk = (parent: unknown, depth: number) => {
+        for (const b of branches.filter((x) => (x.parent ?? null) === parent)) {
+          lines.push([`fault tree ${'  '.repeat(depth)}${val(b.id)}`, `${val(b.text)}: ${b.verdict === 'ruled_in' ? 'RULED IN' : 'ruled out'}; evidence: ${val(b.evidence)}${branches.some((x) => x.parent === b.id) ? `; sub-branches: ${val(b.gate)}` : ''}`]);
+          if (depth < 20) walk(b.id, depth + 1);
+        }
+      };
+      walk(null, 0);
+      return lines;
+    }
     // The initial impact assessment prints as readable answers (D-34).
     if (k === 'initialImpact' && v && typeof v === 'object') {
       const a = v as Row;
@@ -187,7 +219,10 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     const byCategory = (f: string, t: string) => sql<{ category: string; n: number }[]>`
       select i.data->>'rootCauseCategory' as category, count(*)::int as n
       from (${devsIn(f, t)}) x join latest_sections i on i.deviation_id = x.id and i.kind = 'investigation'
-      where i.data ? 'rootCauseCategory' group by 1 order by 2 desc, 1`;
+      -- Signed investigations only: a correction awaiting re-signing does not count yet.
+      where i.data ? 'rootCauseCategory'
+        and exists (select 1 from signatures g where g.object_type = 'section' and g.object_id = i.id and g.meaning = 'investigation_complete')
+      group by 1 order by 2 desc, 1`;
     const pareto = await byCategory(from, to);
     const repeats = (await byCategory(addMonths(to, -5), to)).filter((r) => r.n >= 3);
     return { from, to, by, counts, products, capas, spikes, pareto, repeats };

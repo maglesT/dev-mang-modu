@@ -445,7 +445,8 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
   while (whys.length > 3 && !whys[whys.length - 1]!.answer.trim() && !whys[whys.length - 1]!.evidence.trim()) whys.pop();
   const data = () => ({
     ...f, isIsNot, sixM, fiveWhys: { ...fiveWhys, whys }, barriers, fmea,
-    ...(d.labOos ? { kt } : {}), ...(critical ? { faultTree } : {}),
+    // A tool that applies is sent; one stored earlier is kept (the server keeps it only if valid).
+    ...(d.labOos || start?.kt ? { kt } : {}), ...(critical || start?.faultTree ? { faultTree } : {}),
     // The S7 fishbone text of an older investigation is kept in a correction.
     ...(start?.fishbone ? { fishbone: start.fishbone } : {}),
     otherBatches: rows.filter((r) => r.product.trim() || r.batch.trim()),
