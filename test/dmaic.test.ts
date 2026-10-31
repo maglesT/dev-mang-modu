@@ -10,7 +10,10 @@ describe('DMAIC view (S11)', () => {
     expect(states('approval')).toBe('D:current M:todo A:todo I:todo C:todo');
     expect(states('investigation')).toBe('D:done M:current A:current I:todo C:todo');
     expect(states('investigation', ['open'])).toBe('D:done M:current A:current I:current C:todo');
-    expect(states('closure')).toBe('D:done M:done A:done I:current C:todo');
+    // Awaiting closure: CAPAs are raised (Improve) and QA closes, or records "no CAPA" for a minor one (Control).
+    expect(states('closure')).toBe('D:done M:done A:done I:current C:current');
+    // CAPAs done before the investigation is signed do not move Improve or Control on.
+    expect(states('investigation', ['done'])).toBe('D:done M:current A:current I:current C:todo');
     expect(states('closure', ['done', 'check'])).toBe('D:done M:done A:done I:done C:current');
     expect(states('closed', ['closed', 'check'])).toBe('D:done M:done A:done I:done C:current');
     expect(states('closed', ['closed'])).toBe('D:done M:done A:done I:done C:done');

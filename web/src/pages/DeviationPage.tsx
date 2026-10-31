@@ -121,7 +121,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       </div>
       <DmaicBar d={d} noCapaReason={String((latestOf(d, 'closure')?.data as Record<string, unknown> | undefined)?.noCapaReason ?? '')} />
 
-      <PhaseHead k="D" />
+      <PhaseHead k="D" step={d.step} />
       <section className="card">
         <div className="section-head"><h2>Report{d.planned ? ' (planned deviation)' : ''}</h2>{correctButton('report')}</div>
         {correcting === 'report' ? (
@@ -162,11 +162,11 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       </section>
 
       {d.step !== 'rejected' && <>
-        <PhaseHead k="M" />
+        <PhaseHead k="M" step={d.step} />
         <Signals id={d.id} onOpen={onOpenDeviation} />
       </>}
 
-      <PhaseHead k="A" />
+      <PhaseHead k="A" step={d.step} />
       <section className="card">
         <div className="section-head"><h2>Investigation</h2>{correctButton('investigation')}</div>
         {investigation && correcting !== 'investigation' ? (
@@ -252,14 +252,14 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
   const checksDue = capas.filter((c) => c.step === 'check').length;
   return (
     <>
-    <PhaseHead k="I" />
+    <PhaseHead k="I" step={d.step} />
     <section className="card">
       <h2>CAPAs</h2>
       <CapaTable rows={capas} onOpen={onOpenCapa} showSource={false} />
       {canRaise && !raising && <div><button onClick={() => setRaising(true)}>Raise a CAPA</button></div>}
-      {raising && <RaiseForm deviationId={d.id} onCancel={() => setRaising(false)} onDone={async () => { setRaising(false); setCapas(await api<CapaItem[]>('GET', `/api/capas?deviationId=${d.id}&status=all`)); }} />}
+      {raising && <RaiseForm deviationId={d.id} onCancel={() => setRaising(false)} onDone={async () => { setRaising(false); setCapas(await api<CapaItem[]>('GET', `/api/capas?deviationId=${d.id}&status=all`)); await onChange(); }} />}
     </section>
-    <PhaseHead k="C" />
+    <PhaseHead k="C" step={d.step} />
     <section className="card">
       <h2>Closure and effectiveness</h2>
       {capas.length > 0 && <p>CAPAs closed: <b>{closedCapas} of {capas.length}</b>{checksDue > 0 && <> · effectiveness checks due: <b>{checksDue}</b></>}</p>}

@@ -17,7 +17,8 @@ export function dmaicPhases(step: string, capaSteps: string[], noCapaReason: str
   const investigated = step === 'closure' || step === 'closed';
   const closed = step === 'closed';
   const hasCapas = capaSteps.length > 0;
-  const improved = (hasCapas && capaSteps.every((s) => s !== 'open')) || (closed && !hasCapas && !!noCapaReason);
+  // Improve and Control count only once the investigation is signed.
+  const improved = investigated && ((hasCapas && capaSteps.every((s) => s !== 'open')) || (closed && !hasCapas && !!noCapaReason));
   const controlled = closed && capaSteps.every((s) => s === 'closed');
   const state = (done: boolean, current: boolean): PhaseState => (done ? 'done' : current ? 'current' : 'todo');
   return [
@@ -25,6 +26,6 @@ export function dmaicPhases(step: string, capaSteps: string[], noCapaReason: str
     { key: 'M', ...PHASES.M, where: 'Impact, other batches, "Things to look at"', state: state(investigated, defined) },
     { key: 'A', ...PHASES.A, where: 'Fishbone, AI help and root cause', state: state(investigated, defined) },
     { key: 'I', ...PHASES.I, where: 'CAPAs', state: state(improved, hasCapas || investigated) },
-    { key: 'C', ...PHASES.C, where: 'Effectiveness checks, closure, trends', state: state(controlled, improved || closed) },
+    { key: 'C', ...PHASES.C, where: 'Effectiveness checks, closure, trends', state: state(controlled, improved || investigated) },
   ];
 }

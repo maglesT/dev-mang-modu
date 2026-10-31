@@ -15,7 +15,7 @@ export function DmaicBar({ d, noCapaReason }: { d: Deviation; noCapaReason: stri
         <li key={p.key} className={`phase ${p.state}`}>
           <a href={`#dmaic-${p.key}`} title={`${p.what}. On this page: ${p.where}.`}>
             <span className="letter">{p.key}</span>
-            <span><b>{p.name}</b> <span className="small">· {label[p.state]}</span><br /><span className="muted small">{p.what}</span></span>
+            <span><b>{p.name}</b> <span className="small">· {label[p.state]}</span><br /><span className="muted small">{p.what}</span><span className="sr-only">. On this page: {p.where}.</span></span>
           </a>
         </li>
       ))}
@@ -24,7 +24,9 @@ export function DmaicBar({ d, noCapaReason }: { d: Deviation; noCapaReason: stri
 }
 
 // The band that opens each phase on the deviation page; the bar above links to it.
-export function PhaseHead({ k }: { k: keyof typeof PHASES }) {
+export function PhaseHead({ k, step }: { k: keyof typeof PHASES; step: string }) {
+  // A rejected planned deviation never went through the phases.
+  if (step === 'rejected') return null;
   return (
     <div className="phase-head" id={`dmaic-${k}`}>
       <span className="letter">{k}</span> <b>{PHASES[k].name}</b> <span className="muted small">{PHASES[k].what}</span>
