@@ -208,7 +208,7 @@ describe('user administration', () => {
     const me = (await call(t.app, adminCookie, 'GET', '/api/me')).json();
     const off = await call(t.app, adminCookie, 'PATCH', `/api/users/${me.id}`, { active: false, reason: 'oops' });
     expect(off.statusCode).toBe(400);
-    const grant = await call(t.app, adminCookie, 'PATCH', `/api/users/${me.id}`, { roles: ['admin', 'qa'], reason: 'sign myself' });
+    const grant = await call(t.app, adminCookie, 'PATCH', `/api/users/${me.id}`, { roles: ['qa'], reason: 'sign myself' });
     expect(grant.statusCode).toBe(400);
     expect(grant.json().error).toBe('cannot_change_own_account');
     const roles = await t.owner`select role from user_roles where user_id = ${me.id}`;
@@ -308,5 +308,25 @@ describe('audit trail view', () => {
     expect(rows[0]).toMatchObject({ action: 'login', actor: 'QA1' });
     const plain = (await login(t.app, 'reader1')).cookie;
     expect((await call(t.app, plain, 'GET', '/api/audit')).statusCode).toBe(403);
+  });
+});
+
+describe('review fixes (S1, deviations)', () => {
+  it('DV-18: the Admin role cannot be combined with User or QA', async () => {
+    const res = await call(t.app, adminCookie, 'POST', '/api/users', { username: uniq('mix'), fullName: 'Mixed', roles: ['admin', 'qa'] });
+    expect(res.statusCode).toBe(400);
+    const id = await seedUser(t.owner, uniq('plain'), ['user']);
+    const upd = await call(t.app, adminCookie, 'PATCH', `/api/users/${id}`, { roles: ['admin', 'user'], reason: 'test' });
+    expect(upd.statusCode).toBe(400);
+  });
+
+  it('DV-15: the audit trail shows user IDs, and the user filter includes failed logins against that user', async () => {
+    await seedUser(t.owner, 'target1', ['user']);
+    await login(t.app, 'target1', 'wrong-password');
+    const qa = (await login(t.app, 'qa1')).cookie;
+    const rows = (await call(t.app, qa, 'GET', '/api/audit?user=target1')).json();
+    expect(rows[0]).toMatchObject({ action: 'login.failed', subject: 'target1', actor: null });
+    const own = (await call(t.app, qa, 'GET', '/api/audit?user=qa1')).json();
+    expect(own[0]).toMatchObject({ actorUsername: 'qa1' });
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, plantTime, type Alert, type Me } from '../api.js';
+import { api, ApiError, plantTime, type Alert, type Me } from '../api.js';
 
 // DV-18 / P11 11.300(d): misuse alerts stay on every screen for Admin and QA until acknowledged.
 export function Alerts({ me }: { me: Me }) {
@@ -8,8 +8,13 @@ export function Alerts({ me }: { me: Me }) {
   const load = async (background = false) => setAlerts(await api<Alert[]>('GET', '/api/alerts', undefined, background));
   useEffect(() => {
     if (!watches) return;
-    void load();
-    const timer = setInterval(() => void load(true).catch(() => window.location.reload()), 30_000);
+    // A logged-out session (401) returns to the login screen; a passing network error waits for the next poll.
+    const poll = (background: boolean) =>
+      load(background).catch((e) => {
+        if (e instanceof ApiError && e.status === 401) window.location.reload();
+      });
+    void poll(false);
+    const timer = setInterval(() => void poll(true), 30_000);
     return () => clearInterval(timer);
   }, [watches]);
   const ack = async (id: number) => {

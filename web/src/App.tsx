@@ -30,6 +30,8 @@ export function App() {
 
   const logout = async () => {
     await api('POST', '/api/logout');
+    // The next person starts on Home, not on the previous user's page.
+    setPage('home');
     setMe(null);
   };
   const tab = (p: Page, label: string) => (

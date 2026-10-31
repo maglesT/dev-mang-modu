@@ -9,7 +9,8 @@ function RolePicker({ value, onChange }: { value: Role[]; onChange: (r: Role[]) 
           <input
             type="checkbox"
             checked={value.includes(r)}
-            onChange={(e) => onChange(e.target.checked ? [...value, r] : value.filter((x) => x !== r))}
+            // DV-18: Admin is never combined with another role.
+            onChange={(e) => onChange(!e.target.checked ? value.filter((x) => x !== r) : r === 'admin' ? ['admin'] : [...value.filter((x) => x !== 'admin'), r])}
           />
           {ROLE_LABEL[r]}
         </label>
@@ -66,9 +67,13 @@ export function Users({ me }: { me: Me }) {
   const reset = async (u: User) => {
     const reason = ask(`resetting the password of ${u.username}`);
     if (!reason) return;
-    const res = await api<{ temporaryPassword: string }>('POST', `/api/users/${u.id}/reset-password`, { reason });
-    setNotice(`New temporary password for ${u.username} (shown once): ${res.temporaryPassword}`);
-    await load();
+    try {
+      const res = await api<{ temporaryPassword: string }>('POST', `/api/users/${u.id}/reset-password`, { reason });
+      setNotice(`New temporary password for ${u.username} (shown once): ${res.temporaryPassword}`);
+      await load();
+    } catch (err) {
+      fail(err);
+    }
   };
 
   return (

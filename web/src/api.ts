@@ -64,6 +64,8 @@ export interface AuditRow {
   id: number;
   at: string;
   actor: string | null;
+  actorUsername: string | null;
+  subject: string | null;
   action: string;
   objectType: string;
   objectId: string | null;

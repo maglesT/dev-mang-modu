@@ -5,7 +5,13 @@ import { audit } from '../audit.js';
 import { hashPassword, temporaryPassword } from '../passwords.js';
 import { POLICY, ROLES, parseId, requireRole } from '../auth.js';
 
-const roleList = z.array(z.enum(ROLES)).min(1).transform((r) => [...new Set(r)].sort());
+// DV-18: the Admin role administers the system only; it is never combined with User or QA, so an
+// Admin account can never report, act or sign.
+const roleList = z
+  .array(z.enum(ROLES))
+  .min(1)
+  .transform((r) => [...new Set(r)].sort())
+  .refine((r) => !r.includes('admin') || r.length === 1);
 const createBody = z.object({
   username: z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,40}$/),
   fullName: z.string().trim().min(1).max(120),
