@@ -22,6 +22,9 @@ services:
       # S9: AI-suggested causes (Google Gemini). Set GEMINI_API_KEY in ops/.env to switch it on.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-4-argon}
+      # S17 (D-37): read-only connections to the Logbook and Batchwright report views. Empty = not connected.
+      LOGBOOK_REPORT_URL: ${LOGBOOK_REPORT_URL:-}
+      BATCHWRIGHT_REPORT_URL: ${BATCHWRIGHT_REPORT_URL:-}
     # Localhost only: Docker bypasses host firewalls, so the TLS reverse proxy on this host is the only way in.
     ports: ["127.0.0.1:3000:3000"]
     depends_on: { db: { condition: service_healthy } }
