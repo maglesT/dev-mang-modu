@@ -1,4 +1,4 @@
--- D-39: a read-only view of the CAPA register for the site's QMS product, which checks that a CAPA number it
+-- D-40: a read-only view of the CAPA register for the site's QMS product, which checks that a CAPA number it
 -- references exists here and shows its status (owner decision QMS D-10, relayed by the lead session).
 -- The QMS logs in as capa_report and reads report.capa_v1 and nothing else: no table, no write, no temporary
 -- objects. The view runs with its owner's rights (the migration login), so the role needs no table grants, and

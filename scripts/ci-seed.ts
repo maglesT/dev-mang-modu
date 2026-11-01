@@ -41,7 +41,7 @@ const { id } = await call(user, 'POST', '/api/deviations', {
 await call(qa, 'POST', `/api/deviations/${id}/classify`, { classification: 'minor', typeId, impact: 'x', investigatorId: userId, productBatchChecked: true });
 await call(user, 'POST', `/api/deviations/${id}/investigate`, { data: { ...TOOLS, rootCause: 'x', otherBatches: [], noOtherReason: 'x', conclusion: 'x' }, signature: sig('seeduser') });
 await call(user, 'POST', `/api/deviations/${id}/attachments`, { filename: 'seed.pdf', mime: 'application/pdf', dataBase64: Buffer.from('%PDF-1.4 seed').toString('base64') });
-await call(qa2, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Seed', noCapaReason: 'Seed' }, signature: sig('seedqa2') });
+await call(qa2, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Seed', noCapaReason: 'Seed', finalImpact: { productQuality: 'no', patientSafety: 'no', otherBatches: 'no', notes: 'Seed' } }, signature: sig('seedqa2') });
 const due = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
 const capa = (await call(qa, 'POST', '/api/capas', { source: 'deviation', deviationId: id, type: 'corrective', strength: 'medium', description: 'x', ownerId: userId, dueDate: due })).id;
 await call(user, 'POST', `/api/capas/${capa}/done`, { note: 'x' });

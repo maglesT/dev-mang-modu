@@ -7,7 +7,7 @@ export default async function setup() {
   await sql.unsafe(`do $$ begin
     if not exists (select from pg_roles where rolname = '${APP_ROLE}') then create role ${APP_ROLE} nologin; end if;
   end $$`);
-  // D-39: the CAPA report role and the database-wide TEMPORARY change too, once, so migrations of test files
+  // D-40: the CAPA report role and the database-wide TEMPORARY change too, once, so migrations of test files
   // running in parallel never race on them (migration 0010 then finds both done).
   await sql.unsafe(`do $$ begin
     if not exists (select from pg_roles where rolname = 'capa_report') then create role capa_report nologin; end if;

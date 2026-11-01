@@ -31,7 +31,7 @@ export async function freshDb(): Promise<TestDb> {
     close: async () => {
       await sql.end();
       await owner.unsafe(`drop schema ${schema} cascade`);
-      // Report views of migration 0010 live in <schema>_report (D-39).
+      // Report views of migration 0010 live in <schema>_report (D-40).
       await owner.unsafe(`drop schema if exists ${schema}_report cascade`);
       await owner.end();
     },

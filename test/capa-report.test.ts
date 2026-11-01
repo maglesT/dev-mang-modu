@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { call, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
-// D-39: report.capa_v1 for the QMS product: read-only, CAPA register only.
+// D-40: report.capa_v1 for the QMS product: read-only, CAPA register only.
 let t: TestApp;
 let schema: string;
 const c: Record<string, string> = {};
@@ -17,7 +17,7 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-describe('CAPA report view (D-39)', () => {
+describe('CAPA report view (D-40)', () => {
   it('DV-08: report.capa_v1 lists each CAPA with its status, due date, deviation number and latest description', async () => {
     const r = await call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'audit', sourceRef: 'IA-2026-07 finding 3', type: 'preventive', strength: 'strong', description: 'Interlock the FBD timer', ownerId: ids.us1, dueDate: '2030-01-15' });
     expect(r.statusCode, r.body).toBe(201);

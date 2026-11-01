@@ -31,6 +31,6 @@ else
   MIGRATION_DATABASE_URL="$scratch_url" npx tsx db/migrate.ts
   DATABASE_URL="$scratch_url" npx tsx db/integrity.ts
 fi
-# D-39: the TEMPORARY revoke is a database setting, not in the dump. Remind whoever restores for real.
+# D-40: the TEMPORARY revoke is a database setting, not in the dump. Remind whoever restores for real.
 echo "note: after a real restore into a new database, run: REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO dev_app;"
 echo "restore check passed: $dump"
