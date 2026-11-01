@@ -28,6 +28,7 @@ State on 2026-10-31, for the next working session.
 | S17 data collection from Batchwright and the Logbook, DV-23 (D-37) | #20 | merged |
 | S16 Batchwright report views (ebmr PR #81) | ebmr | merged |
 | S18 reads Batchwright's IPC results, actuals, equipment use, exception details (D-38) | #21 | merged |
+| Final impact assessment at closure (D-39) | — | branch final-impact-assessment |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
 Decisions D-01 to D-38: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
