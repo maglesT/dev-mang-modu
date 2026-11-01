@@ -28,10 +28,12 @@ State on 2026-10-31, for the next working session.
 | S17 data collection from Batchwright and the Logbook, DV-23 (D-37) | #20 | merged |
 | S16 Batchwright report views (ebmr PR #81) | ebmr | merged |
 | S18 reads Batchwright's IPC results, actuals, equipment use, exception details (D-38) | #21 | merged |
-| Final impact assessment at closure (D-39) | — | branch final-impact-assessment |
+| Compose passes the reader connection settings | #22 | merged |
+| CAPA register view `report.capa_v1` for the QMS product (D-40) | #24 | merged |
+| Final impact assessment at closure (D-39) | #23 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-38: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (22/22 rules covered).
+Decisions D-01 to D-40: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
