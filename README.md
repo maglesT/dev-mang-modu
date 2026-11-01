@@ -28,7 +28,11 @@ the trend view and PDF copies support reviews and inspections.
 6. Optional, data from the Logbook and Batchwright (D-37): set `LOGBOOK_REPORT_URL` (role `logbook_report`, database
    `logbook`) and `BATCHWRIGHT_REPORT_URL` (role `ebmr_report`, database `ebmr_tablets`) in `ops/.env`. Both roles are
    read-only; each system's README has its `pg_hba` line. The app container must reach both databases.
-7. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
+7. Optional, the QMS product reads the CAPA register (D-39): give the read-only role `capa_report` a login,
+   `ALTER ROLE capa_report LOGIN PASSWORD '...'` (typed by the site), and a `pg_hba` line for the QMS host only, followed by
+   `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,
+   description, source) and nothing else.
+8. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
    Run `ops/restore-check.sh <dump>` periodically and record the result (CP-03).
 
