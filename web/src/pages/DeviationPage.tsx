@@ -63,8 +63,8 @@ function Versions({ d, kind }: { d: Deviation; kind: Kind }) {
             // The fishbone shows one line per category with text, as in the PDF (D-26).
             k === 'fishbone' && x && typeof x === 'object'
               ? FISHBONE.filter(([c]) => String((x as Record<string, unknown>)[c] ?? '').trim()).map(([c, label]) => [`fishbone: ${label}`, str((x as Record<string, unknown>)[c])])
-              : k === 'initialImpact' && x && typeof x === 'object'
-                ? [['initial impact', <ImpactView v={x as Record<string, string>} />]]
+              : (k === 'initialImpact' || k === 'finalImpact') && x && typeof x === 'object'
+                ? [[k === 'initialImpact' ? 'initial impact' : 'final impact', <ImpactView v={x as Record<string, string>} />]]
                 : [[k, typeof x === 'object' ? JSON.stringify(x) : str(x)]])} />
         </div>
       ))}
@@ -249,6 +249,9 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
   const [capas, setCapas] = useState<CapaItem[]>([]);
   const [raising, setRaising] = useState(false);
   const [f, setF] = useState({ summary: '', disposition: '', noCapaReason: '', weakCapaJustification: '' });
+  // D-39: QA's final impact assessment (yes / no only), shown beside the reporter's initial answers.
+  const [fi, setFi] = useState({ productQuality: '', patientSafety: '', otherBatches: '', notes: '' });
+  const initialImpact = (latestOf(d, 'report')?.data as Record<string, unknown> | undefined)?.initialImpact as Record<string, string> | undefined;
   const [signing, setSigning] = useState<'closed' | 'reopened' | null>(null);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
@@ -265,6 +268,10 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
     e.preventDefault();
     setProblems([]);
     if (!f.summary.trim()) return setProblems(['Write the closure summary.']);
+    const missing = FINAL_QUESTIONS.filter(([k]) => !fi[k]).map(([, q]) => `Final impact: ${q} Answer yes or no.`);
+    if (missing.length) return setProblems(missing);
+    if (!fi.notes.trim()) return setProblems(['Final impact: write the final assessment.']);
+    if ((fi.productQuality === 'yes' || fi.otherBatches === 'yes') && !f.disposition.trim()) return setProblems(['Product quality or other batches are affected: write the batch disposition.']);
     if (capas.length === 0 && d.classification !== 'minor') return setProblems(['A major or critical deviation needs at least one CAPA before closure.']);
     if (noCapaAllowed && !f.noCapaReason.trim()) return setProblems(['Raise a CAPA, or say why the immediate action was enough.']);
     if (allWeak && !f.weakCapaJustification.trim()) return setProblems(['Every CAPA is weak. Raise a strong or medium CAPA, or say why weak CAPAs are enough.']);
@@ -288,6 +295,10 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
       {d.step === 'closed' && closure && (
         <Fields rows={[
           ['Closure summary', str(closure.data.summary)],
+          ...(closure.data.finalImpact ? [
+            ...(initialImpact ? [['Initial impact (report)', <ImpactView v={initialImpact} />] as [string, ReactNode]] : []),
+            ['Final impact (closure)', <ImpactView v={closure.data.finalImpact as Record<string, string>} />] as [string, ReactNode],
+          ] : []),
           ['Batch disposition', str(closure.data.disposition)],
           ...(closure.data.noCapaReason ? [['No CAPA because', str(closure.data.noCapaReason)] as [string, ReactNode]] : []),
           ...(closure.data.weakCapaJustification ? [['Weak CAPAs accepted because', str(closure.data.weakCapaJustification)] as [string, ReactNode]] : []),
@@ -300,7 +311,20 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
           <h3>Close the deviation</h3>
           <p className="muted small">Review the whole record and its history below before closing.</p>
           <label>Closure summary *<textarea rows={3} value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></label>
-          <label>Batch disposition notes<input value={f.disposition} onChange={(e) => setF({ ...f, disposition: e.target.value })} placeholder="e.g. Batch B123 may be released; see QA decision" /></label>
+          <fieldset className="impact">
+            <legend><b>Final impact assessment *</b> <span className="muted small">Now that the investigation is complete. The reporter's first view is shown beside each question.</span></legend>
+            {FINAL_QUESTIONS.map(([k, q]) => (
+              <div className="row" key={k} role="radiogroup" aria-label={`Final: ${q}`}>
+                <span style={{ minWidth: '16em' }}>{q}</span>
+                {(['yes', 'no'] as const).map((a) => (
+                  <label className="check" key={a}><input type="radio" name={`final-${k}`} checked={fi[k] === a} onChange={() => setFi({ ...fi, [k]: a })} /> {ANSWER_LABEL[a]}</label>
+                ))}
+                {initialImpact?.[k] && <span className="muted small">initially: {ANSWER_LABEL[initialImpact[k]!] ?? initialImpact[k]}</span>}
+              </div>
+            ))}
+            <label>Final assessment *<textarea rows={2} value={fi.notes} onChange={(e) => setFi({ ...fi, notes: e.target.value })} placeholder="e.g. Investigation confirmed only the segregated tablets were affected; no impact on released batches." /></label>
+          </fieldset>
+          <label>Batch disposition notes{(fi.productQuality === 'yes' || fi.otherBatches === 'yes') ? ' *' : ''}<input value={f.disposition} onChange={(e) => setF({ ...f, disposition: e.target.value })} placeholder="e.g. Batch B123 may be released; see QA decision" /></label>
           {allWeak && <label>Every CAPA is weak (training, SOP, awareness): why is that enough for a critical deviation? *<textarea rows={2} value={f.weakCapaJustification} onChange={(e) => setF({ ...f, weakCapaJustification: e.target.value })} /></label>}
           {noCapaAllowed && <label>No CAPA: why the immediate action was enough *<input value={f.noCapaReason} onChange={(e) => setF({ ...f, noCapaReason: e.target.value })} /></label>}
           {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
@@ -312,7 +336,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
         <SignDialog meaning="closed" what={`${d.number}: the deviation is reviewed and closed${d.openCapas || capas.some((c) => c.step !== 'closed') ? '; open CAPAs continue in the CAPA list' : ''}.`}
           onCancel={() => setSigning(null)}
           onSign={async (cred) => {
-            await api('POST', `/api/deviations/${d.id}/close`, { data: f, signature: cred });
+            await api('POST', `/api/deviations/${d.id}/close`, { data: { ...f, finalImpact: fi }, signature: cred });
             setSigning(null);
             await onChange();
           }} />
@@ -635,6 +659,9 @@ function ApproveDialog({ d, meaning, onCancel, onDone }: { d: Deviation; meaning
     </SignDialog>
   );
 }
+
+// D-39: the closure's final impact questions, the same three as the initial assessment.
+const FINAL_QUESTIONS = [['productQuality', 'Product quality affected?'], ['patientSafety', 'Patient safety at risk?'], ['otherBatches', 'Other batches affected?']] as const;
 
 // S12: the reporter's initial impact assessment (D-34).
 function ImpactView({ v }: { v: Record<string, string> }) {

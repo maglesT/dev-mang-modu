@@ -41,7 +41,7 @@ const investigate = (id: number, data: object = investigation()) =>
   call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, { data, signature: sig('us2') });
 const raise = (id: number, strength?: string) =>
   call(t.app, c.qa1!, 'POST', '/api/capas', { source: 'deviation', deviationId: id, type: 'corrective', description: 'Fix it', ownerId: ids.us2, dueDate: '2030-01-01', ...(strength ? { strength } : {}) });
-const close = (id: number, data: object) => call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Reviewed.', ...data }, signature: sig('qa1') });
+const close = (id: number, data: object) => call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Reviewed.', finalImpact: { productQuality: 'no', patientSafety: 'no', otherBatches: 'no', notes: 'Only the segregated material was affected.' }, ...data }, signature: sig('qa1') });
 
 describe('investigation tools II (S14)', () => {
   it('S14: barrier analysis and FMEA are required, with named problems', async () => {

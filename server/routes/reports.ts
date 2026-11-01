@@ -134,6 +134,11 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
       const word = (x: unknown) => ({ yes: 'yes', no: 'no', unknown: 'not known' } as Record<string, string>)[String(x)] ?? val(x);
       return [['initial impact', `product quality ${word(a.productQuality)}; patient safety ${word(a.patientSafety)}; other batches ${word(a.otherBatches)}. ${val(a.notes)}`]];
     }
+    // D-39: QA's final impact assessment at closure, readable like the initial one.
+    if (k === 'finalImpact' && v && typeof v === 'object') {
+      const a = v as Row;
+      return [['final impact', `product quality affected: ${val(a.productQuality)}; patient safety at risk: ${val(a.patientSafety)}; other batches affected: ${val(a.otherBatches)}. ${val(a.notes)}`]];
+    }
     const n = NAMED[k];
     return [n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [k, val(v)]];
   });

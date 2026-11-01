@@ -20,12 +20,27 @@ const uploadBody = z.object({
 });
 const reasonBody = z.object({ reason: z.string().trim().min(1).max(2000) });
 // DV-10: QA's closure. "No CAPA" is allowed only for a minor deviation, with a reason pointing to the immediate action (DV-08).
+// D-39: QA's final impact assessment at closure. The same three questions as the reporter's initial one (D-34),
+// now answered yes or no ("not known" is not a final answer), with QA's written assessment.
+const finalAnswer = (q: string) => z.enum(['yes', 'no'], { errorMap: () => ({ message: `Final impact: ${q} Answer yes or no.` }) });
+export const finalImpactData = z.object({
+  productQuality: finalAnswer('product quality affected?'),
+  patientSafety: finalAnswer('patient safety at risk?'),
+  otherBatches: finalAnswer('other batches affected?'),
+  notes: z.string().trim().min(1, 'Final impact: write the final assessment.').max(3000),
+}, { errorMap: (issue, ctx) => (issue.code === 'invalid_type' && ctx.data === undefined ? { message: 'Give the final impact assessment.' } : { message: ctx.defaultError }) });
 const closureData = z.object({
-  summary: z.string().trim().min(1).max(5000),
+  summary: z.string().trim().min(1, 'Write the closure summary.').max(5000),
   disposition: z.string().trim().max(2000).default(''),
   noCapaReason: z.string().trim().max(2000).default(''),
   // S14 (D-33): a critical deviation whose CAPAs are all weak closes only with QA's reason.
   weakCapaJustification: z.string().trim().max(2000).default(''),
+  finalImpact: finalImpactData,
+}).superRefine((d, ctx) => {
+  // D-39: an affected product or other batches must say what happens to the batches.
+  if ((d.finalImpact.productQuality === 'yes' || d.finalImpact.otherBatches === 'yes') && !d.disposition) {
+    ctx.addIssue({ code: 'custom', path: ['disposition'], message: 'Product quality or other batches are affected: write the batch disposition.' });
+  }
 });
 const closeBody = z.object({ data: z.unknown(), signature: credentials });
 const reopenBody = z.object({ reason: z.string().trim().min(1).max(2000), signature: credentials });
@@ -216,7 +231,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     const body = closeBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
     const data = closureData.safeParse(body.data.data);
-    if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Write the closure summary.'] });
+    if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: [...new Set(data.error.issues.map((i) => i.message))] });
     const user = req.user as SessionUser;
     try {
       const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'deviation', objectId: id, meaning: 'closed' });

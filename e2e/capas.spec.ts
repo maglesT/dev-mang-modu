@@ -42,6 +42,11 @@ test('main flow: QA raises a CAPA, closes the deviation with the CAPA still open
   await page.getByRole('button', { name: number }).click();
   await expect(page.locator('.statusbar')).toContainText('Awaiting closure');
 
+  // D-39: QA's final impact assessment, yes or no, beside the reporter's first view.
+  for (const q of ['Product quality affected?', 'Patient safety at risk?', 'Other batches affected?']) {
+    await page.getByRole('radiogroup', { name: `Final: ${q}` }).getByLabel('No').check();
+  }
+  await page.getByLabel('Final assessment *').fill('Only the cartons packed with rev 3 leaflets were affected; all repacked.');
   // DV-08: a major deviation needs a CAPA before closure.
   await page.getByLabel('Closure summary *').fill('Batch repacked with rev 4 leaflets.');
   await page.getByRole('button', { name: 'Sign closed' }).click();
@@ -60,6 +65,7 @@ test('main flow: QA raises a CAPA, closes the deviation with the CAPA still open
   await sign(page, 'qa1');
   await expect(page.locator('.statusbar')).toContainText('Closed');
   await expect(page.getByText('1 still open (followed in the CAPA list)')).toBeVisible();
+  await expect(page.getByText('Final impact (closure)')).toBeVisible();
   const capa = (await page.getByRole('row', { name: /CAPA-/ }).getByRole('button').first().textContent())!;
   await logOut(page);
 

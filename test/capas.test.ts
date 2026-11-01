@@ -39,8 +39,10 @@ const raise = (body: object) => call(t.app, c.qa1!, 'POST', '/api/capas', body);
 const getCapa = async (id: number) => (await call(t.app, c.qa1!, 'GET', `/api/capas/${id}`)).json();
 const latestVersion = async (id: number) => { const k = await getCapa(id); return k.versions[k.versions.length - 1].id as number; };
 const getDev = async (id: number) => (await call(t.app, c.qa1!, 'GET', `/api/deviations/${id}`)).json();
+// D-39: every closure carries QA's final impact assessment (tests that check it pass their own).
+const FINAL = { finalImpact: { productQuality: 'no', patientSafety: 'no', otherBatches: 'no', notes: 'Only the segregated material was affected.' } };
 const close = (id: number, data: object = { summary: 'Batch repacked; CAPA raised.' }, user = 'qa1') =>
-  call(t.app, c[user]!, 'POST', `/api/deviations/${id}/close`, { data, signature: sig(user) });
+  call(t.app, c[user]!, 'POST', `/api/deviations/${id}/close`, { data: { ...FINAL, ...data }, signature: sig(user) });
 
 describe('CAPA register', () => {
   it('DV-08: QA raises a CAPA from a deviation; it gets a number and is linked to the deviation', async () => {
@@ -140,6 +142,32 @@ describe('deviation closure', () => {
     const dev = await awaitingClosure('minor');
     expect((await close(dev, { summary: 'Done.' })).statusCode).toBe(400);
     expect((await close(dev, { summary: 'Done.', noCapaReason: 'Immediate segregation was the appropriate action.' })).statusCode).toBe(200);
+  });
+
+  it('DV-10, D-39: closure needs the final impact assessment: yes or no for each question, and a written assessment', async () => {
+    const dev = await awaitingClosure('minor');
+    const base = { summary: 'Done.', noCapaReason: 'Immediate action enough.' };
+    const none = await call(t.app, c.qa1!, 'POST', `/api/deviations/${dev}/close`, { data: base, signature: sig('qa1') });
+    expect(none.statusCode).toBe(400);
+    expect(none.json().problems).toContain('Give the final impact assessment.');
+    const unknown = await close(dev, { ...base, finalImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'no', notes: 'x' } });
+    expect(unknown.json().problems).toContain('Final impact: product quality affected? Answer yes or no.');
+    const noNotes = await close(dev, { ...base, finalImpact: { productQuality: 'no', patientSafety: 'no', otherBatches: 'no', notes: ' ' } });
+    expect(noNotes.json().problems).toContain('Final impact: write the final assessment.');
+    expect((await getDev(dev)).step).toBe('closure');
+  });
+
+  it('D-39: an affected product or other batches needs the batch disposition; the final impact is kept with the closure', async () => {
+    const dev = await awaitingClosure('minor');
+    const fi = { productQuality: 'yes', patientSafety: 'no', otherBatches: 'no', notes: 'Tablets since the last good check were soft.' };
+    const res = await close(dev, { summary: 'Done.', noCapaReason: 'Immediate action enough.', finalImpact: fi });
+    expect(res.json().problems).toEqual(['Product quality or other batches are affected: write the batch disposition.']);
+    const ok = await close(dev, { summary: 'Done.', noCapaReason: 'Immediate action enough.', disposition: 'Segregated 12 kg rejected; rest released.', finalImpact: fi });
+    expect(ok.statusCode, ok.body).toBe(200);
+    const d = await getDev(dev);
+    const closure = d.sections.filter((x: { kind: string }) => x.kind === 'closure').at(-1);
+    expect(closure.data.finalImpact).toEqual(fi);
+    expect((await t.app.inject({ method: 'GET', url: `/api/deviations/${dev}/pdf`, headers: { cookie: c.qa1! } })).statusCode).toBe(200);
   });
 
   it('DV-19: closure is refused before the investigation is signed', async () => {
