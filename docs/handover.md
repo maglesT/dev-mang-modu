@@ -33,7 +33,7 @@ State on 2026-10-31, for the next working session.
 | Final impact assessment at closure (D-39) | #23 | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-40: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
+Decisions D-01 to D-41: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -41,7 +41,8 @@ Decisions D-01 to D-40: `docs/decisions.md`. Rule → test list: `docs/traceabil
   (server-local override, not in git), no database port on the host. Server details are in the owner's deployment report.
 - It holds **demo data** (42 deviations, 21 CAPAs, 11 demo users, site "Demo Pharma Ltd"). The app cannot delete
   records, so this database is a demo/training copy. Real use needs a fresh, empty database (owner decision pending).
-- **No backups yet** (skipped at the owner's request). The daily `ops/backup.sh` with `OFFSITE_DIR` and one
+- **Live (owner, 2 Nov):** a separate fresh installation `deviations-live` (README), daily backups with the Docker mode, Gemini on.
+- **No backups yet on the demo** (skipped at the owner's request). The daily `ops/backup.sh` with `OFFSITE_DIR` and one
   `ops/restore-check.sh` run are needed before real use (DV-22).
 - Suggested to the owner: a read-only deploy key is enough for `git pull`.
 
