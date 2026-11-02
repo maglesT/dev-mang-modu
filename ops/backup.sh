@@ -5,7 +5,8 @@
 # Usage: DATABASE_URL=postgres://owner:pw@host/deviations BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite ops/backup.sh
 # Docker install (the database has no host port): instead of DATABASE_URL give the compose command, e.g.
 #   COMPOSE="docker compose -p deviations -f /opt/deviations/ops/docker-compose.yml -f /opt/deviations/ops/docker-compose.override.yml"
-# and pg_dump runs inside the db container (same PostgreSQL version as the server).
+# and pg_dump runs inside the db container (same PostgreSQL version as the server). COMPOSE is split on spaces:
+# its paths must not contain spaces.
 # Schedule daily, e.g. cron: 15 1 * * * /opt/deviations/ops/backup.sh
 set -eu
 [ -n "${COMPOSE:-}" ] || : "${DATABASE_URL:?DATABASE_URL or COMPOSE is required}"
@@ -18,6 +19,8 @@ if [ -n "${OFFSITE_DIR:-}" ]; then
 fi
 name="deviations-$(date -u +%Y%m%dT%H%M%SZ).dump"
 # Dump to a temporary name; only a complete dump with its checksum gets the final name.
+# A failed dump leaves no partial file behind.
+trap 'rm -f "$BACKUP_DIR/$name.tmp"' EXIT
 if [ -n "${COMPOSE:-}" ]; then
   # shellcheck disable=SC2086 # COMPOSE is a command line with arguments
   $COMPOSE exec -T db sh -c 'pg_dump --format=custom --no-owner -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_DIR/$name.tmp"

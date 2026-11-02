@@ -5,6 +5,7 @@
 # never touched. Run it periodically (CP-03) and record the result.
 # Usage: COMPOSE="docker compose -p deviations -f /opt/deviations/ops/docker-compose.yml -f /opt/deviations/ops/docker-compose.override.yml" \
 #        ops/docker-restore-check.sh /backups/deviations-....dump
+# COMPOSE is split on spaces: its paths must not contain spaces.
 set -eu
 : "${COMPOSE:?COMPOSE is required (the docker compose command of the installation)}"
 dump="${1:?path to a .dump file}"

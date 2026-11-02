@@ -56,9 +56,9 @@ cd /opt/deviations
 #   DB_PASSWORD=...            GEMINI_API_KEY=...        (GEMINI_MODEL only to change the default)
 #   LOGBOOK_REPORT_URL=...     BATCHWRIGHT_REPORT_URL=...  (only if those systems are connected)
 # ops/live.override.yml: the live port on localhost only, e.g.
-#   services: { app: { ports: !override ["127.0.0.1:3004:3000"] } }
+#   services: { app: { ports: !override ["127.0.0.1:3004:3000"] } }     (!override needs Docker Compose 2.24 or later)
 L="docker compose -p deviations-live --env-file ops/live.env -f ops/docker-compose.yml -f ops/live.override.yml"
-$L config | grep -E 'published|name: deviations-live'     # port only on 127.0.0.1, project deviations-live
+$L config | grep -E 'host_ip|published|name: deviations-live'   # host_ip 127.0.0.1 only, project deviations-live
 $L up -d --build                                          # migrations run on start, on an empty database
 $L exec app node dist/db/create-admin.js admin "Full Name"    # prints a temporary password (24 h)
 ```
