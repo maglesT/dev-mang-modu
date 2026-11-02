@@ -36,11 +36,42 @@ the trend view and PDF copies support reviews and inspections.
    `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO dev_app;`.
 8. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
+   With Docker (no database port on the host), give `COMPOSE="docker compose -p <project> -f ... -f ..."` instead of
+   `DATABASE_URL`: the dump is made inside the db container. The restore check for Docker is `ops/docker-restore-check.sh`.
    Run `ops/restore-check.sh <dump>` periodically and record the result (CP-03).
 
 The integrity check runs nightly inside the server; its last result and a "Run now" button are on
 the Audit trail page. The site's own procedures (validation, training, SOPs, change control,
 business continuity) are listed as CP-01 to CP-11 in `docs/03-compliance-register.md`.
+
+## Live installation next to a demo (Docker, one server)
+
+A live installation starts from an empty database and never receives demo data: the app loads none by itself,
+so a live database contains only what its users enter. Keep it apart from any demo by a separate compose project
+(its own containers and volume), its own env file and its own localhost port. From the same checkout:
+
+```
+cd /opt/deviations
+# ops/live.env (mode 600, typed by the site; never in git or chat):
+#   DB_PASSWORD=...            GEMINI_API_KEY=...        (GEMINI_MODEL only to change the default)
+#   LOGBOOK_REPORT_URL=...     BATCHWRIGHT_REPORT_URL=...  (only if those systems are connected)
+# ops/live.override.yml: the live port on localhost only, e.g.
+#   services: { app: { ports: !override ["127.0.0.1:3004:3000"] } }
+L="docker compose -p deviations-live --env-file ops/live.env -f ops/docker-compose.yml -f ops/live.override.yml"
+$L config | grep -E 'published|name: deviations-live'     # port only on 127.0.0.1, project deviations-live
+$L up -d --build                                          # migrations run on start, on an empty database
+$L exec app node dist/db/create-admin.js admin "Full Name"    # prints a temporary password (24 h)
+```
+
+Then point the TLS reverse proxy at the live port, and add the daily backup and a monthly restore check:
+
+```
+# /etc/cron.d/deviations-live
+15 1 * * * root cd /opt/deviations && COMPOSE="docker compose -p deviations-live --env-file ops/live.env -f ops/docker-compose.yml -f ops/live.override.yml" BACKUP_DIR=/var/backups/deviations-live OFFSITE_DIR=/mnt/offsite/deviations-live ops/backup.sh >> /var/log/deviations-live-backup.log 2>&1
+40 2 1 * * root cd /opt/deviations && COMPOSE="docker compose -p deviations-live --env-file ops/live.env -f ops/docker-compose.yml -f ops/live.override.yml" ops/docker-restore-check.sh "$(ls /var/backups/deviations-live/*.dump | tail -1)" >> /var/log/deviations-live-restore-check.log 2>&1
+```
+
+`OFFSITE_DIR` must be another disk or a network share, not the same disk. Record each restore check result (CP-03).
 
 ## Develop
 
