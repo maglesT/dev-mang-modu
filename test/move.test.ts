@@ -314,6 +314,13 @@ describe('a move that must stop (slice 5)', () => {
     }
   }, 120_000);
 
+  it('PL-13 a person deactivated in Deviations whose linked core person already holds a Deviations code stops the move, found by the dry run', async () => {
+    const p = await platform('blockedheld');
+    await corePerson(p, 'qa.old', ['deviations.deviation.report']);
+    const r = await moveToPlatform({ source, ...p, ...opts, link: ['qa.old'], dryRun: true });
+    expect(r.problems).toContain('--link qa.old: deactivated in Deviations, but core already grants deviations.deviation.report; take these away in core first');
+  }, 120_000);
+
   it('PL-13 a failed check moves nothing', async () => {
     const p = await platform('rollback');
     const was = await count(p);

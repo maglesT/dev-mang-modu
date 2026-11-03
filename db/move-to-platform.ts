@@ -136,6 +136,13 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
       else if (!activeInCore.has(l)) problems.push(`--link ${l}: this core person is not active; reactivate them in core first`);
       else if (!movers.some((m) => m.login === l)) problems.push(`--link ${l}: Deviations has no such login to move`);
     }
+    // Someone deactivated or locked here must hold no Deviations code after the move: a linked core person who already
+    // holds one is found now (the dry run lists it), not only at the final check.
+    for (const m of movers.filter((x) => x.blocked && x.linkTo)) {
+      const held = await o.identity<{ code: string }[]>`
+        select code from current_permission_grant where employee_id = ${m.linkTo} and product = 'deviations'`;
+      if (held.length) problems.push(`--link ${m.login}: ${m.blocked}, but core already grants ${held.map((h) => h.code).join(' ')}; take these away in core first`);
+    }
 
     const did = (u: Mover, what: string) => (u.linkTo ? `linked to existing core person (site-confirmed); ${what}` : what)
       + (u.login !== u.username ? ` (core login ${u.login}: Deviations login ${u.username} starts with a digit)` : '');
