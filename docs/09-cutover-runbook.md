@@ -40,9 +40,9 @@ Deviations has no master data to move (D-42).
      even with the prefix; a linked core person who is inactive in core; a linked core person who already holds
      Deviations codes while deactivated or locked here (take the codes away in core).
 6. **Rehearsal on the owner's own server**: steps 3–6 below on last night's backup of `deviations-live` (the live
-   site keeps running, so steps 1–2 are skipped), the real move and its checks, not only `--dry-run`; then licence
-   Deviations off again (the live site still owns its name) and restore the snapshot of step 4a. The move must end
-   "moved" with no problems. Tell the people with a prefixed login their new login.
+   site keeps running, so steps 1–2 are skipped), the real move and its checks, not only `--dry-run`; then roll
+   back as in "Rollback" steps 1–4 (the live site still runs and owns its name, so step 5 is not needed). The move
+   must end "moved" with no problems. Tell the people with a prefixed login their new login.
 7. Tell users the window, the new address, and that their login and password stay the same.
 8. **Image tag.** `plat` commands that start the Deviations image need the pinned commit as its tag (apply sets it,
    a manual `docker compose` does not):
@@ -117,13 +117,23 @@ superuser (`postgres` by default).
 ## Rollback
 
 Until the owner signs off, the old installation (containers, database volume, `standalone` image) stays as it was at
-the freeze. To go back: licence Deviations off in the config (apply stops it), start the old app (`old start app`),
-give the name back to the old proxy entry. The old database is exactly as frozen, apart from the integrity check's own
-audit row. On the platform: stop core (`plat stop core`; `identity` cannot be dropped while core is connected), restore
-`deviations` and `identity` from the step-4a snapshot (`dropdb --force`, `createdb` with its owner, then `pg_restore`
-its dump as the superuser), then `plat start core`. That takes back the moved rows, people and grants, so the move can
-run again later.
-Record the restore.
+the freeze; its database is exactly as frozen, apart from the integrity check's own audit row. Between the step-4a
+snapshot and a rollback, **no other product's move and no core administration** (people, permissions) may happen:
+the restore would take them back too. To go back, in this order (as the QMS runbook):
+
+1. Stop Deviations and core: `plat stop deviations core` (`identity` cannot be dropped while core is connected).
+2. Restore `deviations` and `identity` from the step-4a snapshot, each as the superuser:
+   `plat exec -T db dropdb -U <superuser> --force <db>`, then
+   `plat exec -T db pg_restore -U <superuser> -d postgres --create < /backups/pre-deviations-move-<db>.dump`.
+   `--create` recreates the database with its owner and its database-level grants (PUBLIC revoked, each app's and
+   linked reader's CONNECT), which a plain restore into a new database would lose. That takes back the moved rows,
+   people and grants, so the move can run again later.
+3. Start core: `plat start core`.
+4. Licence Deviations off in the config and apply (after the restore, so the switch records apply writes, PL-10,
+   are kept).
+5. Give the name back to the old proxy entry and start the old app: `old start app`.
+
+Record each step in the change record.
 
 ## After sign-off
 
