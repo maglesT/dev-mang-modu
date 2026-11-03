@@ -26,10 +26,13 @@ Deviations has no master data to move (D-42).
 4. **Customer config ready, not yet applied**:
    - `licences` gains `deviations`;
    - `links.deviations: { identity: [employee_v1], logbook: [equipment_v1, entry_v1, calibration_v1, logbook_sop_v1] }`;
+   - if Batchwright is licensed (product `ebmr`), the link `ebmr: [batch_fact_v1, step_use_v1, cpp_value_v1, exception_v1,
+     alarm_v1, batch_reference_v1, equipment_use_v1, ipc_result_v1, process_actual_v1, exception_detail_v1]` under
+     `links.deviations` (D-48); without it, Batchwright data shows as "not configured";
    - if the QMS is licensed, `links.qms.deviations: [capa_v1]` (the QMS reads the CAPA register);
    - secrets: `logins.deviations_app`, `oidc.clients.deviations`, and under `env.deviations` the `GEMINI_API_KEY`
-     from the old `ops/live.env` (AI suggestions as today). `BATCHWRIGHT_REPORT_URL` stays unset: Batchwright is not on
-     the platform yet, so its data shows as "not configured" until it moves.
+     from the old `ops/live.env` (AI suggestions as today). `BATCHWRIGHT_REPORT_URL` is not set on the platform: the
+     Batchwright link above gives the app `EBMR_DATABASE_URL`.
 5. **From the site** (keep them with the change record):
    - the **identity verification text** (21 CFR 11.100(b)): who verified the moved people's identity and how;
    - the **link list**: Deviations logins that are the same person as an existing core login (for example someone
@@ -103,7 +106,8 @@ superuser (`postgres` by default).
    - sign in at `https://deviations.187-126-126-5.sslip.io`; open the deviation list, a closed deviation with its history
      and signatures (all valid), the CAPA register, and the batch lookup for a known batch;
    - run the integrity check (Audit screen): passed;
-   - "Fetch related data" on a recent deviation: the Logbook part is read, Batchwright shows "not configured";
+   - "Fetch related data" on a recent deviation: the Logbook part is read, and the Batchwright part too if
+     linked (else "not configured");
    - in core, the people screen shows the moved people with their Deviations permissions;
    - if the QMS is licensed: a CAPA number it references shows its status there.
 7. **Records of the move**: the freeze dump and its SHA-256, the old site's integrity output, both move reports, the

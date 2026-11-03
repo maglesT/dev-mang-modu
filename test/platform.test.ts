@@ -116,7 +116,11 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(loadConfig(env).DATABASE_URL).toBe(url);
     expect(loadConfig(env).DB_APP_ROLE).toBeUndefined();
     expect(loadConfig(env).LOGBOOK_REPORT_URL).toBe('postgres://deviations_app:pw@db:5432/logbook');
-    expect(loadConfig(env).BATCHWRIGHT_REPORT_URL).toBeUndefined();
+    expect(loadConfig(env).BATCHWRIGHT_REPORT_URL).toBeUndefined();   // Batchwright not licensed or not linked
+    // Linked to Batchwright (ebmr, D-48): apply writes EBMR_DATABASE_URL; a standalone BATCHWRIGHT_REPORT_URL still wins.
+    const ebmr = 'postgres://deviations_app:pw@db:5432/ebmr';
+    expect(loadConfig({ ...env, EBMR_DATABASE_URL: ebmr }).BATCHWRIGHT_REPORT_URL).toBe(ebmr);
+    expect(loadConfig({ ...env, EBMR_DATABASE_URL: ebmr, BATCHWRIGHT_REPORT_URL: 'postgres://x:y@h/ebmr' }).BATCHWRIGHT_REPORT_URL).toBe('postgres://x:y@h/ebmr');
     expect(loadConfig(env).OIDC_CLIENT_ID).toBe('deviations');
     expect(loadConfig({ ...env, DATABASE_URL: 'postgres://x:y@h/standalone' }).DATABASE_URL).toBe('postgres://x:y@h/standalone');
     expect(loadConfig({ ...env, DATABASE_URL: '', LOGBOOK_REPORT_URL: ' ' })).toMatchObject({ DATABASE_URL: url, LOGBOOK_REPORT_URL: env.LOGBOOK_DATABASE_URL });

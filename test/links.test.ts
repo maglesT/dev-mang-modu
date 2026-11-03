@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect } from '../server/db.js';
 import { CONNECTION_OFF } from '../server/people.js';
-import { LOGBOOK_OFF, fetchRelated } from '../server/readers/fetch.js';
+import { BATCHWRIGHT_OFF, LOGBOOK_OFF, fetchRelated } from '../server/readers/fetch.js';
 import { APP_ROLE, TEST_DATABASE_URL, call, directory, fakePeople, freshApp, login, seedUser, type FakePeople, type TestApp } from './helpers.js';
 
 // D-42 slice 4 (platform PL-08, recipe §4, A11 5): links to core's employee view and to the Logbook.
@@ -81,6 +81,24 @@ describe('the Logbook link (PL-08)', () => {
       const [row] = await t.owner<{ status: string; error: string; row_count: number }[]>`
         select status, error, row_count from data_fetches where deviation_id = ${id} and source = 'logbook'`;
       expect(row).toMatchObject({ status: 'failed', error: LOGBOOK_OFF, row_count: 0 });
+    } finally {
+      await reader.end();
+      await t.owner.unsafe(`drop schema ${schema} cascade`);
+    }
+  });
+});
+
+describe('the Batchwright link (PL-08, D-48)', () => {
+  it('PL-08 connection off: a Batchwright (ebmr) link without its grant is stored and shown as "Connection to Batchwright is off", nothing else is read', async () => {
+    const schema = `bwcut_${process.pid}`;
+    await t.owner.unsafe(`create schema ${schema}`);
+    const reader = connect(TEST_DATABASE_URL, { role: APP_ROLE }, 1);
+    try {
+      const id = await report();
+      await fetchRelated(t.sql, { batchwright: { sql: reader, schema } }, id, ids.lkus!);
+      const [row] = await t.owner<{ status: string; error: string; row_count: number }[]>`
+        select status, error, row_count from data_fetches where deviation_id = ${id} and source = 'batchwright'`;
+      expect(row).toMatchObject({ status: 'failed', error: BATCHWRIGHT_OFF, row_count: 0 });
     } finally {
       await reader.end();
       await t.owner.unsafe(`drop schema ${schema} cascade`);

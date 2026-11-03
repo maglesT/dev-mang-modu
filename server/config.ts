@@ -33,10 +33,12 @@ export type Config = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // On the Medhanta platform (D-42) apply names the product's own database DEVIATIONS_DATABASE_URL and the linked
-  // Logbook database LOGBOOK_DATABASE_URL. Batchwright is not on the platform yet: BATCHWRIGHT_REPORT_URL as today.
+  // Logbook and Batchwright databases LOGBOOK_DATABASE_URL and EBMR_DATABASE_URL (D-48); standalone keeps the
+  // *_REPORT_URL settings.
   return schema.parse({
     ...env,
     DATABASE_URL: env.DATABASE_URL || env.DEVIATIONS_DATABASE_URL,
     LOGBOOK_REPORT_URL: env.LOGBOOK_REPORT_URL?.trim() || env.LOGBOOK_DATABASE_URL,
+    BATCHWRIGHT_REPORT_URL: env.BATCHWRIGHT_REPORT_URL?.trim() || env.EBMR_DATABASE_URL,
   });
 }

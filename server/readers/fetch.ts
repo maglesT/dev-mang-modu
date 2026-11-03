@@ -43,6 +43,7 @@ export function plainError(e: unknown): string {
 // On the platform the Logbook is a link (D-42 slice 4, PL-08): a revoked grant (42501) or a login switched off (28000)
 // means the link is cut. The fetch stores this, reads nothing else, and never serves older data.
 export const LOGBOOK_OFF = 'Connection to Logbook is off. Ask your administrator.';
+export const BATCHWRIGHT_OFF = 'Connection to Batchwright is off. Ask your administrator.';   // its link to ebmr (D-48)
 const linkCut = (e: unknown) => ['42501', '28000'].includes((e as { code?: string }).code ?? '');
 
 type Outcome = { source: 'logbook' | 'batchwright'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
@@ -63,7 +64,7 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
       outcomes.push({ source: 'batchwright', status: 'ok', data: { ...d, findings: batchwrightFindings(d) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: d.viewsRead });
     } catch (e) {
       log(`Batchwright read failed: ${e instanceof Error ? e.message : String(e)}`);
-      outcomes.push({ source: 'batchwright', status: 'failed', data: {}, rows: 0, error: plainError(e), views: BATCHWRIGHT_VIEWS });
+      outcomes.push({ source: 'batchwright', status: 'failed', data: {}, rows: 0, error: linkCut(e) ? BATCHWRIGHT_OFF : plainError(e), views: BATCHWRIGHT_VIEWS });
     }
   }
   const lq = { ...q, equipment: [...new Set([...q.equipment, ...usedEquipment])] };

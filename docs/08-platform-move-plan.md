@@ -25,8 +25,8 @@ written, not run.
 - Reads the Logbook: `links.deviations.logbook: [equipment_v1, entry_v1, calibration_v1, logbook_sop_v1]`;
   `LOGBOOK_DATABASE_URL` from apply (`LOGBOOK_REPORT_URL` still accepted). A cut link shows "Connection to Logbook is off".
 - Reads identity: `links.deviations.identity: [employee_v1]` for the write-time check.
-- Batchwright is not on the platform yet: `BATCHWRIGHT_REPORT_URL` as today (secrets `env.deviations`), unset on the
-  platform ("not configured") until Batchwright moves.
+- Reads Batchwright (product `ebmr`, D-48): `links.deviations.ebmr: [the 10 report views]`; `EBMR_DATABASE_URL` from
+  apply (standalone keeps `BATCHWRIGHT_REPORT_URL`). A cut link shows "Connection to Batchwright is off".
 - Publishes `report.capa_v1` unchanged for the QMS: `links.qms.deviations: [capa_v1]`. The `capa_report` role is
   standalone only (0010 creates it only where the migration login may create roles).
 
