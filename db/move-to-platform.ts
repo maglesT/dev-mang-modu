@@ -28,6 +28,10 @@ const CORE_LOGIN = /^[a-z][a-z0-9._-]{1,39}$/;
 const SKIP = new Set(['schema_migrations', 'sessions']);
 // Migration 0003 seeds the settings row; the move replaces it with the site's own.
 const SEEDED = new Set(['settings']);
+// The platform app checks integrity once at its first start, on the still empty database, and audits that run
+// (server/integrity.ts). Those rows are about the empty platform database, not the site's records: the move lists them
+// in its report (so the change record keeps them) and removes them before the copy, as the seeded settings row.
+const STARTUP = `object_type = 'system' and object_id = 'integrity' and actor_id is null`;
 const REASON = 'Moved from the standalone Deviations & CAPA (slice 5)';
 // The id map is filled by the move itself: not copied, not compared.
 const MAPPED: Record<string, string[]> = { users: ['employee_id'] };
@@ -43,7 +47,7 @@ export interface MoveOptions {
   dryRun?: boolean;
 }
 
-export interface MoveRow { type: 'source' | 'user' | 'table'; localId: string; code: string; employeeId: string; note: string }
+export interface MoveRow { type: 'source' | 'user' | 'table' | 'removed'; localId: string; code: string; employeeId: string; note: string }
 export interface MoveResult { rows: MoveRow[]; problems: string[]; moved: boolean }
 
 interface User { id: number; username: string; full_name: string; password_hash: string; must_change_password: boolean;
@@ -92,7 +96,7 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
       if (!target) { problems.push(`table ${t} is not in the platform's deviations database`); continue; }
       const lost = cols.filter((c) => !target.includes(c));
       if (lost.length) problems.push(`table ${t}: columns ${lost.join(', ')} are not in the platform's deviations database`);
-      const [{ n }] = (await o.deviations.unsafe(`select count(*)::int as n from ${ident(t)}`)) as unknown as [{ n: number }];
+      const [{ n }] = (await o.deviations.unsafe(`select count(*)::int as n from ${ident(t)}${t === 'audit_log' ? ` where not (${STARTUP})` : ''}`)) as unknown as [{ n: number }];
       if (n > (SEEDED.has(t) ? 1 : 0)) problems.push(`table ${t} on the platform is not empty (${n} rows): the move needs a freshly migrated database`);
       copy.push([t, cols]);
     }
@@ -168,6 +172,10 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
       await o.identity.begin(async (id) => {
         // --- 1. Rows, data only (PL-13). Rows travel as JSON text, never parsed on the way, in small batches. ---
         for (const t of SEEDED) await dv.unsafe(`delete from ${ident(t)}`);
+        for (const r of await dv.unsafe<{ id: string; at: string; action: string }[]>(
+          `delete from audit_log where ${STARTUP} returning id::text, at::text, action`))
+          rows.push({ type: 'removed', localId: 'audit_log', code: `${r.action} at ${r.at}`, employeeId: '',
+            note: `removed before the copy: the platform app's own startup integrity check on the empty database (row ${r.id})` });
         for (const [t, cols] of copy) {
           const list = cols.map(ident).join(', ');
           const cursor = src.unsafe<{ r: string }[]>(`select row_to_json(x)::text as r from ${ident(t)} x`).cursor(20);

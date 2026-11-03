@@ -6,7 +6,7 @@ import { connect, type Sql } from '../server/db.js';
 import { migrate, MIGRATIONS_DIR } from '../db/migrate.js';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../server/auth.js';
 import { contentHash } from '../server/signatures.js';
-import { check } from '../server/integrity.js';
+import { check, runIntegrityCheck } from '../server/integrity.js';
 import { moveToPlatform, reportCsv, type MoveOptions, type MoveResult } from '../db/move-to-platform.js';
 import { APP_ROLE, TEST_DATABASE_URL } from './helpers.js';
 
@@ -50,6 +50,8 @@ async function platform(t: string): Promise<Platform> {
   await deviations.begin((tx) => tx.unsafe(init));
   for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => /^\d{4}_[a-z0-9_]+\.sql$/.test(x)).sort())
     await deviations.begin(async (tx) => { await tx.unsafe(`set local role ${db}_owner`); await tx.unsafe(readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8')); });
+  // Apply starts the app, which checks integrity once at its first start and audits it (server/integrity.ts).
+  await runIntegrityCheck(deviations);
 
   await role('core_app');
   await createDb(`${db}_identity`, `${db}_owner`);
@@ -222,6 +224,9 @@ describe('the move of the standalone Deviations (slice 5)', () => {
     expect(tables).toEqual(['alerts', 'areas', 'attachment_withdrawals', 'attachments', 'audit_log', 'batches', 'capa_versions', 'capas',
       'data_fetches', 'deviation_types', 'deviations', 'sections', 'settings', 'signatures', 'user_roles', 'users']);
     expect(await target.deviations`select 1 from sessions union all select 1 from signing_proofs`).toEqual([]);
+    // The platform app's own startup integrity row on the empty database is listed, then removed before the copy.
+    expect(r.rows).toContainEqual(expect.objectContaining({ type: 'removed', localId: 'audit_log',
+      note: expect.stringContaining("the platform app's own startup integrity check on the empty database") }));
     expect(await target.deviations`select site_name, target_days_major from settings`).toEqual([{ site_name: 'Plant 1 (live)', target_days_major: 45 }]);
     expect((await target.deviations`select data from attachments`)[0]!.data).toEqual((await source`select data from attachments`)[0]!.data);
     expect(await target.deviations`select data from data_fetches`).toEqual(await source`select data from data_fetches`);
