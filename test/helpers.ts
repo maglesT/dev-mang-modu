@@ -6,6 +6,7 @@ import { MEANINGS, makeProof } from '../server/signatures.js';
 import { randomUUID } from 'node:crypto';
 import { permissionsOf, type Role } from '../server/auth.js';
 import type { Identity, SignOn } from '../server/signon.js';
+import { ConnectionOff as PeopleOff, type People } from '../server/people.js';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://dev_owner:dev@localhost:5432/dev_test';
@@ -46,7 +47,7 @@ export interface TestApp extends TestDb {
 
 export async function freshApp(opts: Partial<AppOptions> = {}): Promise<TestApp> {
   const db = await freshDb();
-  const app = await buildApp({ sql: db.sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', ...opts });
+  const app = await buildApp({ sql: db.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', ...opts });
   return {
     ...db,
     app,
@@ -73,6 +74,19 @@ export function fakeSignOn(people = directory): SignOn {
     refresh: async (token) => who(token),
     logoutUrl: (idToken) => `/?signed-out=${idToken ?? ''}`,
   };
+}
+
+// Stand-in for identity's employee view (D-42 slice 4): active people of the directory; `cut` cuts the link.
+export interface FakePeople extends People { cut: boolean }
+export function fakePeople(people = directory): FakePeople {
+  const f: FakePeople = {
+    cut: false,
+    active: async (ids) => {
+      if (f.cut) throw new PeopleOff();
+      return new Set([...people.values()].filter((p) => p.active && ids.includes(p.sub)).map((p) => p.sub));
+    },
+  };
+  return f;
 }
 
 // Seeds a person as core knows them, with the codes of the old roles (D-42), and their id-map row (no local password).

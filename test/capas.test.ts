@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp, directory } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
@@ -64,7 +64,7 @@ describe('CAPA register', () => {
   it('DV-08: only holders of deviations.capa.raise raise CAPAs; the owner must be active; the due date cannot be past', async () => {
     expect((await call(t.app, c.us1!, 'POST', '/api/capas', capa({ source: 'other', sourceRef: 'x' }))).statusCode).toBe(403);
     const gone = await seedUser(t.owner, 'gone1', ['user']);
-    await t.owner`update users set active = false where id = ${gone}`;
+    directory.get('gone1')!.active = false;   // deactivated in core (PL-08)
     expect((await raise(capa({ source: 'other', sourceRef: 'x', ownerId: gone }))).statusCode).toBe(400);
     expect((await raise(capa({ source: 'other', sourceRef: 'x', dueDate: inDays(-1) }))).statusCode).toBe(400);
   });

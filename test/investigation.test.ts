@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp, directory } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
@@ -271,7 +271,7 @@ describe('review fixes (S3)', () => {
   it('DV-03: a classification correction checks the investigator and type like the first classification', async () => {
     const id = await inInvestigation();
     const gone = await seedUser(t.owner, 'gone1', ['user']);
-    await t.owner`update users set active = false where id = ${gone}`;
+    directory.get('gone1')!.active = false;   // deactivated in core (PL-08)
     const data = { classification: 'major', typeId, impact: 'x', investigatorId: gone, productBatchChecked: true };
     const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/correct`, { kind: 'classification', data, reason: 'swap' });
     expect(res.statusCode).toBe(400);

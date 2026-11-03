@@ -4,7 +4,8 @@ import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
-import { PLANT_TZ, assignable } from '../deviations.js';
+import { PLANT_TZ } from '../deviations.js';
+import { assignable, type People } from '../people.js';
 
 export type CapaStep = 'open' | 'done' | 'check' | 'closed';
 
@@ -61,7 +62,7 @@ async function addVersion(tx: Tx, capaId: number, action: string, data: unknown,
   return row!.id;
 }
 
-const okOwner = async (tx: Tx, ownerId: number) => (await assignable(tx, ownerId)).length > 0;
+const okOwner = (tx: Tx, people: People, ownerId: number) => assignable(tx, people, ownerId);
 const pastDate = async (tx: Tx, d: string) =>
   (await tx<{ past: boolean }[]>`select ${d}::date < (now() at time zone ${PLANT_TZ})::date as past`)[0]!.past;
 
@@ -91,7 +92,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
         if (!d) return { status: 400, problems: ['Unknown deviation.'] };
         if (d.step === 'rejected' || d.step === 'classification' || d.step === 'approval') return { status: 409, problems: ['CAPAs are raised once the deviation is classified (and approved, if planned).'] };
       }
-      if (!(await okOwner(tx, fields.ownerId))) return { status: 400, problems: ['Choose an active owner from the list.'] };
+      if (!(await okOwner(tx, app.people, fields.ownerId))) return { status: 400, problems: ['Choose an active owner from the list.'] };
       if (await pastDate(tx, fields.dueDate)) return { status: 400, problems: ['The due date cannot be in the past.'] };
       await tx`select pg_advisory_xact_lock(hashtext('capa_number'))`;
       const [y] = await tx<{ year: number }[]>`select extract(year from now() at time zone ${PLANT_TZ})::int as year`;
@@ -244,7 +245,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
       const c = await lockCapa(tx, id);
       if (!c) return 404;
       if (c.step !== 'open' && c.step !== 'done') return 409;
-      if (!(await okOwner(tx, fields.ownerId))) return 400;
+      if (!(await okOwner(tx, app.people, fields.ownerId))) return 400;
       if (await pastDate(tx, fields.dueDate)) return 400;
       const prev = await latestData(tx, id);
       await addVersion(tx, id, 'corrected', { ...prev.data, ...fields }, req.user!.id, reason);

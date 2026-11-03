@@ -283,4 +283,3 @@ export async function recomputeStep(tx: Tx, d: { id: number; planned: boolean; s
 
 // People who can investigate or own a CAPA: active people in the id map. Their permission is checked when they act;
 // the write-time check against core's employee view comes with the platform links (slice 4).
-export const assignable = (q: Sql | Tx, id: number) => q`select 1 from users where id = ${id} and active`;

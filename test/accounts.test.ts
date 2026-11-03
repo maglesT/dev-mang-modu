@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { POLICY, ROLE_PERMISSIONS, sessionKey } from '../server/auth.js';
 import { buildApp } from '../server/app.js';
 import { oidcSignOn } from '../server/signon.js';
-import { call, directory, fakeSignOn, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, directory, fakePeople, fakeSignOn, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 // D-43: people, passwords, lockout and the permission register are Medhanta core's; Deviations signs people on
 // through core (stand-in: helpers.fakeSignOn) and keeps sessions, per-action authority checks and its audit trail.
@@ -128,7 +128,7 @@ describe('sign-on through core (PL-01)', () => {
 
   it('PL-01 a renewal without a new refresh token keeps the old one, so the session lives on (RFC 6749 6)', async () => {
     const inner = fakeSignOn();
-    const app = await buildApp({ sql: t.sql, signOn: { ...inner, refresh: async (tok) => ({ ...(await inner.refresh(tok)), refreshToken: undefined }) }, webRoot: '/nonexistent' });
+    const app = await buildApp({ sql: t.sql, signOn: { ...inner, refresh: async (tok) => ({ ...(await inner.refresh(tok)), refreshToken: undefined }) }, people: fakePeople(), webRoot: '/nonexistent' });
     try {
       await seedUser(t.owner, uniq('us'), ['user']);
       const { cookie } = await login(app, `us${n}`);
