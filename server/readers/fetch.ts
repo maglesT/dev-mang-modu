@@ -40,6 +40,11 @@ export function plainError(e: unknown): string {
   return 'The data could not be read.';
 }
 
+// On the platform the Logbook is a link (D-42 slice 4, PL-08): a revoked grant (42501) or a login switched off (28000)
+// means the link is cut. The fetch stores this, reads nothing else, and never serves older data.
+export const LOGBOOK_OFF = 'Connection to Logbook is off. Ask your administrator.';
+const linkCut = (e: unknown) => ['42501', '28000'].includes((e as { code?: string }).code ?? '');
+
 type Outcome = { source: 'logbook' | 'batchwright'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
 // Rows read from the other system (not the bookkeeping lists).
 const count = (d: Record<string, unknown>) => Object.entries(d).reduce<number>((n, [k, v]) => n + (Array.isArray(v) && !['viewsRead', 'equipmentUsed', 'findings'].includes(k) ? v.length : 0), 0);
@@ -69,7 +74,7 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
       outcomes.push({ source: 'logbook', status: 'ok', data: { ...d, findings: logbookFindings(d, lq) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: LOGBOOK_VIEWS });
     } catch (e) {
       log(`Logbook read failed: ${e instanceof Error ? e.message : String(e)}`);
-      outcomes.push({ source: 'logbook', status: 'failed', data: {}, rows: 0, error: plainError(e), views: LOGBOOK_VIEWS });
+      outcomes.push({ source: 'logbook', status: 'failed', data: {}, rows: 0, error: linkCut(e) ? LOGBOOK_OFF : plainError(e), views: LOGBOOK_VIEWS });
     }
   }
   const params = { batches: q.batches, equipment: lq.equipment, eventAt: q.eventAt, from: q.from, to: q.to };

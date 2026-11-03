@@ -3,7 +3,7 @@
 import { buildApp } from '../server/app.js';
 import { connect } from '../server/db.js';
 import { TOOLS } from '../test/fixtures.js';
-import { TEST_PROOF_KEY, fakeSignOn, login as signOn, seedUser, sig } from '../test/helpers.js';
+import { TEST_PROOF_KEY, fakePeople, fakeSignOn, login as signOn, seedUser, sig } from '../test/helpers.js';
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is required');
@@ -13,7 +13,7 @@ for (const [u, role] of [['seedadmin', 'admin'], ['seedqa', 'qa'], ['seedqa2', '
 await owner.end();
 
 const sql = connect(url, { role: 'deviations_app' });
-const app = await buildApp({ sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', cookieSecure: false });
+const app = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', cookieSecure: false });
 const login = async (u: string) => (await signOn(app, u)).cookie;
 const call = async (cookie: string, method: 'GET' | 'POST', path: string, payload?: object) => {
   const res = await app.inject({ method, url: path, headers: { cookie }, ...(method === 'POST' ? { payload: payload ?? {} } : {}) });

@@ -393,7 +393,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
   const [problems, setProblems] = useState<string[]>([]);
   useEffect(() => {
     void api<NamedItem[]>('GET', '/api/deviation-types').then((t) => setTypes(t.filter((x) => x.active)));
-    void api<Person[]>('GET', '/api/people').then(setPeople);
+    api<Person[]>('GET', '/api/people').then(setPeople, (err: Error) => setProblems([err.message]));
   }, []);
   const submit = async (e: FormEvent) => {
     e.preventDefault();

@@ -6,7 +6,9 @@ import {
 import { SignDialog } from '../components/SignDialog.js';
 
 interface Person { id: number; fullName: string; username: string }
-const problemsOf = (err: unknown) => (err instanceof ApiError && err.problems.length ? err.problems : ['Please fill in every field.']);
+// A 503 is a cut link ("Connection to core is off", D-44): its message is shown as it is.
+const problemsOf = (err: unknown) => (err instanceof ApiError && err.problems.length ? err.problems
+  : err instanceof ApiError && err.status === 503 ? [err.message] : ['Please fill in every field.']);
 const today = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
 
 export function CapaTable({ rows, onOpen, showSource = true }: { rows: CapaItem[]; onOpen: (id: number) => void; showSource?: boolean }) {
@@ -81,7 +83,7 @@ export function RaiseForm({ deviationId, onDone, onCancel, initial }: {
   });
   const [problems, setProblems] = useState<string[]>([]);
   useEffect(() => {
-    void api<Person[]>('GET', '/api/people').then(setPeople);
+    api<Person[]>('GET', '/api/people').then(setPeople, (err: Error) => setProblems([err.message]));
   }, []);
   const submit = async (e: FormEvent) => {
     e.preventDefault();

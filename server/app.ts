@@ -18,6 +18,7 @@ import { signalRoutes } from './routes/signals.js';
 import { aiRoutes, type AiOptions } from './routes/ai.js';
 import { dataRoutes } from './routes/data.js';
 import type { Sources } from './readers/fetch.js';
+import type { People } from './people.js';
 import { capaRoutes } from './routes/capas.js';
 import { reportRoutes } from './routes/reports.js';
 import { integrityRoutes } from './routes/integrity.js';
@@ -39,12 +40,15 @@ export interface AppOptions {
   ai?: AiOptions;
   // S17: read-only sources (Logbook, Batchwright); each is optional.
   sources?: Sources;
+  // Core's employee view, for the write-time check of investigators and CAPA owners (D-42 slice 4, PL-08).
+  people: People;
 }
 
-export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger = false, webRoot, cookieSecure = true, ai, sources = {} }: AppOptions): Promise<FastifyInstance> {
+export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger = false, webRoot, cookieSecure = true, ai, sources = {}, people }: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger, trustProxy: true });
   app.decorate('cookieSecure', cookieSecure);
   app.decorate('proofKey', proofKey);
+  app.decorate('people', people);
   await app.register(fastifyCookie);
 
   app.addHook('onRequest', async (req, reply) => {
@@ -96,5 +100,6 @@ declare module 'fastify' {
   interface FastifyInstance {
     cookieSecure: boolean;
     proofKey: Buffer;
+    people: People;
   }
 }

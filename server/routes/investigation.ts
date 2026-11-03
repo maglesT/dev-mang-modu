@@ -3,10 +3,11 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
+import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, applyContext, assignable, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
+  addSection, applyContext, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -203,7 +204,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         // The same checks as the first classification (DV-03).
         const c = data.data as ClassificationData;
         const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
-        const [inv] = await assignable(tx, c.investigatorId);
+        const inv = await assignable(tx, app.people, c.investigatorId);
         if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
       }
       const section = await addSection(tx, id, kind, content, user.id, reason);

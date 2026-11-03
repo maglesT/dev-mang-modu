@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runIntegrityCheck } from '../server/integrity.js';
 import { buildApp } from '../server/app.js';
 import { plainError } from '../server/readers/fetch.js';
-import { TEST_PROOF_KEY, call, fakeSignOn, freshApp, freshDb, login, seedUser, type TestApp } from './helpers.js';
+import { TEST_PROOF_KEY, call, fakePeople, fakeSignOn, freshApp, freshDb, login, seedUser, type TestApp } from './helpers.js';
 
 // S17 (D-37, DV-23): "Fetch related data" from the Logbook and Batchwright. In CI the two systems are stood in
 // for by schemas with exactly the contract's columns (docs/07-data-contracts.md), filled with the shared scenario.
@@ -88,7 +88,7 @@ beforeAll(async () => {
   const db = await freshDb();
   await standIns(db.owner);
   // The app reads the stand-ins through the owner connection, as it reads the real views through a read-only role.
-  const app = await buildApp({ sql: db.sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { logbook: { sql: db.owner, schema: LB }, batchwright: { sql: db.owner, schema: BW } } });
+  const app = await buildApp({ sql: db.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { logbook: { sql: db.owner, schema: LB }, batchwright: { sql: db.owner, schema: BW } } });
   t = { ...db, app, close: async () => { await app.close(); await db.close(); } };
   for (const [u, roles] of [['admin1', ['admin']], ['qa1', ['qa', 'user']], ['us1', ['user']]] as const) {
     ids[u] = await seedUser(t.owner, u, [...roles]);
@@ -152,7 +152,7 @@ describe('data collection (S17)', () => {
     for (const v of ['equipment_use_v1', 'ipc_result_v1', 'process_actual_v1', 'exception_detail_v1']) {
       await t.owner.unsafe(`create function ${FN}.${v}_for(b text[]) returns setof ${FN}.${v} language sql stable as 'select * from ${FN}.${v} where batch_number = any(b)'`);
     }
-    const app = await buildApp({ sql: t.sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: FN } } });
+    const app = await buildApp({ sql: t.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: FN } } });
     try {
       const ck = (await login(app, 'us1')).cookie;
       const id = (await report()).json().id as number;
@@ -170,7 +170,7 @@ describe('data collection (S17)', () => {
   it('DV-23: a Batchwright without the newer views is still read; the record says which views were read', async () => {
     const OLD = `${BW}_old`;
     await t.owner.unsafe(`create schema ${OLD}; ${['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1'].map((v) => `create table ${OLD}.${v} as table ${BW}.${v}`).join('; ')}`);
-    const older = await buildApp({ sql: t.sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: OLD } } });
+    const older = await buildApp({ sql: t.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: OLD } } });
     try {
       const ck = (await login(older, 'us1')).cookie;
       const id = (await report()).json().id as number;
@@ -244,7 +244,7 @@ describe('data collection (S17)', () => {
     const g = (await call(off.app, ck, 'GET', `/api/deviations/${dev}/fetches`)).json() as { status: string }[];
     expect(g.map((x) => x.status)).toEqual(['not_configured', 'not_configured']);
     // A failing source is recorded with its error; the other source still gives its data.
-    const bad = await buildApp({ sql: t.sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { logbook: { sql: t.owner, schema: 'no_such_schema' }, batchwright: { sql: t.owner, schema: BW } } });
+    const bad = await buildApp({ sql: t.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { logbook: { sql: t.owner, schema: 'no_such_schema' }, batchwright: { sql: t.owner, schema: BW } } });
     const bc = (await login(bad, 'us1')).cookie;
     const id2 = (await report()).json().id as number;
     await call(bad, bc, 'POST', `/api/deviations/${id2}/fetch`, {});

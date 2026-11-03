@@ -278,9 +278,9 @@ describe('review fixes (S2)', () => {
     expect((await call(t.app, c.admin1!, 'POST', '/api/areas', { name: 'COATING' })).statusCode).toBe(409);
   });
 
-  it('an inactive person in the id map cannot be chosen as investigator', async () => {
+  it('PL-08 refuses an inactive or unknown item: a person core lists as inactive is not offered or accepted as investigator', async () => {
     const locked = await seedUser(t.owner, 'lockedinv', ['user']);
-    await t.owner`update users set active = false where id = ${locked}`;
+    directory.get('lockedinv')!.active = false;   // deactivated in core (PL-08)
     const people = (await call(t.app, c.qa1!, 'GET', '/api/people')).json() as { id: number }[];
     expect(people.map((p) => p.id)).not.toContain(locked);
     const { id } = await reportAs('us1');

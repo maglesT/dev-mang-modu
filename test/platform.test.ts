@@ -111,7 +111,8 @@ describe('Deviations on a platform database (D-42)', () => {
   it('DV-15 on the platform the app reads its own database from DEVIATIONS_DATABASE_URL, and the Logbook from LOGBOOK_DATABASE_URL', () => {
     const url = 'postgres://deviations_app:pw@db:5432/deviations';
     const env = { DEVIATIONS_DATABASE_URL: url, LOGBOOK_DATABASE_URL: 'postgres://deviations_app:pw@db:5432/logbook',
-      OIDC_ISSUER: 'https://site.test/oidc', OIDC_CLIENT_SECRET: 'x', OIDC_REDIRECT_URI: 'https://deviations.site.test/cb' };
+      OIDC_ISSUER: 'https://site.test/oidc', OIDC_CLIENT_SECRET: 'x', OIDC_REDIRECT_URI: 'https://deviations.site.test/cb',
+      IDENTITY_DATABASE_URL: 'postgres://deviations_app:pw@db:5432/identity' };
     expect(loadConfig(env).DATABASE_URL).toBe(url);
     expect(loadConfig(env).DB_APP_ROLE).toBeUndefined();
     expect(loadConfig(env).LOGBOOK_REPORT_URL).toBe('postgres://deviations_app:pw@db:5432/logbook');

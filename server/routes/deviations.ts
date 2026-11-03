@@ -2,12 +2,13 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
+import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
 import {
   PLANT_TZ, addSection, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
-  assignable, investigationContext,
+  investigationContext,
 } from '../deviations.js';
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
@@ -179,9 +180,15 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     };
   });
 
-  // People who can investigate or own a CAPA (see assignable), for the pick lists.
-  app.get('/api/people', reader, async () =>
-    sql`select u.id::int, u.full_name as "fullName", u.username from users u where u.active order by u.full_name`);
+  // People who can investigate or own a CAPA, for the pick lists: people who signed on here with a Deviations code
+  // (or were moved), and whom core lists as active now (PL-08; a cut link gives "Connection to core is off").
+  app.get('/api/people', reader, async () => {
+    const rows = await sql<{ id: number; fullName: string; username: string; employee_id: string }[]>`
+      select u.id::int, u.full_name as "fullName", u.username, u.employee_id::text from users u
+      where u.employee_id is not null order by u.full_name`;
+    const active = await app.people.active(rows.map((r) => r.employee_id));
+    return rows.filter((r) => active.has(r.employee_id)).map(({ employee_id: _, ...r }) => r);
+  });
 
   // DV-03, DV-20: QA classifies; the reporter cannot classify their own deviation (independent check).
   app.post<{ Params: { id: string } }>('/api/deviations/:id/classify', { preHandler: requirePermission('deviations.deviation.classify') }, async (req, reply) => {
@@ -196,7 +203,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
       if (d.step !== 'classification') return { status: 409, error: 'wrong_step' };
       if (d.reporter_id === req.user!.id) return { status: 403, error: 'reporter_cannot_classify' };
       const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
-      const [inv] = await assignable(tx, c.investigatorId);
+      const inv = await assignable(tx, app.people, c.investigatorId);
       if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
       const section = await addSection(tx, id, 'classification', c, req.user!.id);
       const target = await targetDate(tx, id, c.classification);
