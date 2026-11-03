@@ -36,7 +36,7 @@ export async function runIntegrityCheck(sql: Sql, actorId: number | null = null)
 
 type Version = { id: number; parent: number; kind: string; version: number; data: unknown; supersedes?: number | null; saved_at?: Date };
 
-async function check(sql: Sql): Promise<IntegrityResult> {
+export async function check(sql: Sql): Promise<IntegrityResult> {
   const problems: string[] = [];
 
   const sections = await sql<Version[]>`
