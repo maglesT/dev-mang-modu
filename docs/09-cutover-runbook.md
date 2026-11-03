@@ -96,7 +96,8 @@ superuser (`postgres` by default).
    Then the same without `--dry-run`, the report again to `/tmp/move.csv`, then
    `docker cp deviations-move:/tmp/move.csv ./deviations-move.csv && docker rm deviations-move`. Exit 0 and "moved"
    are required. A failed check writes nothing: both platform databases commit only after every check passed. They
-   commit one after the other; should a commit itself fail, the report says "the move stopped", and the step-4a
+   commit one after the other, `deviations` first and `identity` last, so core never keeps people or grants from a
+   move whose product data did not commit; should a commit itself fail, the report says "the move stopped", and the step-4a
    snapshot is restored before any new run. Keep both reports.
 6. **Check on the platform** (as a moved QA person, with their own password):
    - sign in at `https://deviations.187-126-126-5.sslip.io`; open the deviation list, a closed deviation with its history

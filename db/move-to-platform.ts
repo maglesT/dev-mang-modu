@@ -143,33 +143,37 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
       else if (!activeInCore.has(l)) problems.push(`--link ${l}: this core person is not active; reactivate them in core first`);
       else if (!movers.some((m) => m.login === l)) problems.push(`--link ${l}: Deviations has no such login to move`);
     }
-    // Someone deactivated or locked here must hold no Deviations code after the move: a linked core person who already
-    // holds one is found now (the dry run lists it), not only at the final check.
+    // Someone deactivated or locked here must hold no Deviations code after the move: codes a linked core person already
+    // holds are revoked by the move (the dry run lists them).
     // Codes core already grants a linked person beyond their old roles were given in core on purpose: they stay, and
     // the report lists them so the site sees them.
     const extra = new Map<number, string[]>();
+    const revoke = new Map<number, string[]>();
     for (const m of movers.filter((x) => x.linkTo)) {
       const held = (await o.identity<{ code: string }[]>`
         select code from current_permission_grant where employee_id = ${m.linkTo} and product = 'deviations' order by code`).map((h) => h.code);
-      if (m.blocked && held.length) problems.push(`--link ${m.login}: ${m.blocked}, but core already grants ${held.join(' ')}; take these away in core first`);
+      if (m.blocked && held.length) revoke.set(m.id, held);
       const beyond = held.filter((c) => !m.codes.includes(c));
       if (!m.blocked && beyond.length) extra.set(m.id, beyond);
     }
 
     const did = (u: Mover, what: string) => (u.linkTo ? `linked to existing core person (site-confirmed); ${what}` : what)
       + (extra.has(u.id) ? `; core already grants beyond the old roles: ${extra.get(u.id)!.join(' ')} (kept, given in core)` : '')
+      + (revoke.has(u.id) ? `; revokes ${revoke.get(u.id)!.join(' ')} (core held them)` : '')
       + (u.login !== u.username ? ` (core login ${u.login}: Deviations login ${u.username} starts with a digit)` : '');
     if (problems.length || o.dryRun) return { rows: [...rows,
       ...movers.map((u): MoveRow => ({ type: 'user', localId: String(u.id), code: u.username, employeeId: u.linkTo ?? '',
         note: `planned: ${did(u, u.blocked ? `granted nothing: ${u.blocked}` : `codes ${u.codes.join(' ')}`)}` }))], problems, moved: false };
 
-    // The whole move is one unit: both platform databases commit only after every check below has passed (the commits
-    // follow one another: identity first; a failure between them is reported by the run and leaves the old site live).
+    // The whole move is one unit: both platform databases commit only after every check below has passed. The commits
+    // follow one another, the product database first: should identity's commit then fail, core keeps nothing (its
+    // employees and grants are insert-only and could not be taken back), and the product database, which nothing else
+    // uses yet, is dropped and migrated again before a new run.
     const employee = new Map<number, string>();
-    await o.deviations.begin(async (dv) => {
-      await pin(dv);
-      await dv`set local session_replication_role = replica`;   // as pg_restore --disable-triggers (foreign keys too)
-      await o.identity.begin(async (id) => {
+    await o.identity.begin(async (id) => {
+      await o.deviations.begin(async (dv) => {
+        await pin(dv);
+        await dv`set local session_replication_role = replica`;   // as pg_restore --disable-triggers (foreign keys too)
         // --- 1. Rows, data only (PL-13). Rows travel as JSON text, never parsed on the way, in small batches. ---
         for (const t of SEEDED) await dv.unsafe(`delete from ${ident(t)}`);
         for (const r of await dv.unsafe<{ id: string; at: string; action: string }[]>(
@@ -218,6 +222,12 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
           for (const code of grant)
             await id`insert into permission_grant (employee_id, product, code, granted, by_id, by_name, reason)
               values (${eid}, ${code.split('.')[0]!}, ${code}, true, ${me!.id}, ${me!.full_name}, ${`${REASON}: roles ${u.roles.join(', ')}`})`;
+          // Deactivated or locked here: the Deviations codes core already held for a linked person are taken back.
+          for (const code of revoke.get(u.id) ?? []) {
+            await id`insert into permission_grant (employee_id, product, code, granted, by_id, by_name, reason)
+              values (${eid}, 'deviations', ${code}, false, ${me!.id}, ${me!.full_name}, ${`${REASON}: ${u.blocked}`})`;
+            note += `; revoked ${code}`;
+          }
           employee.set(u.id, eid);
           rows.push({ type: 'user', localId: String(u.id), code: u.username, employeeId: eid, note });
         }
@@ -242,6 +252,11 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
           if (!ok) problems.push(`user ${u.username}: core holds ${got.join(' ') || 'nothing'}, expected ${u.blocked ? 'no Deviations code' : `${u.linkTo ? 'at least ' : ''}${u.codes.join(' ')}`}`);
         }
         await dv`set local session_replication_role = origin`;
+        // Passwords live only in core now: the id map keeps no hash the app login could read.
+        await dv`update users set password_hash = '-'`;
+        const hashes = (await dv<{ n: number }[]>`select count(*)::int as n from users where password_hash <> '-'`)[0]!.n;
+        if (hashes) problems.push(`${hashes} password hash(es) left in the Deviations users table`);
+        rows.push({ type: 'removed', localId: 'users.password_hash', code: '', employeeId: '', note: 'blanked after the copy: passwords are in core only' });
         const integrity = await checkIntegrity(dv as unknown as Sql);
         problems.push(...integrity.problems.map((p) => `integrity: ${p}`));
         if (problems.length) throw new Rollback();
@@ -272,8 +287,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     const r = await moveToPlatform({ ...o, by: a.by, verifiedBy: a['verified-by'] ?? '', verifiedHow: a['verified-how'] ?? '',
       link: (a.link ?? '').split(',').map((s) => s.trim()).filter(Boolean), dryRun: a['dry-run'] })
-      .catch((e: unknown): MoveResult => ({ rows: [], moved: false, problems: [`the move stopped: ${(e as Error).message}. identity may `
-        + 'already have committed: restore both platform databases from the pre-move snapshot before running it again'] }));
+      .catch((e: unknown): MoveResult => ({ rows: [], moved: false, problems: [`the move stopped: ${(e as Error).message}. The deviations `
+        + 'database may already have committed (identity commits last): restore both platform databases from the pre-move snapshot before running it again'] }));
     writeFileSync(a.report, reportCsv(r));
     console.log(`${r.moved ? 'moved' : a['dry-run'] ? 'dry run' : 'not moved'}: source "${r.rows[0]?.code ?? '?'}" with ${r.rows[1]?.code ?? '?'} deviations; `
       + `${r.rows.length} rows in ${a.report}, ${r.problems.length} problems`);

@@ -231,6 +231,8 @@ describe('the move of the standalone Deviations (slice 5)', () => {
     expect((await target.deviations`select data from attachments`)[0]!.data).toEqual((await source`select data from attachments`)[0]!.data);
     expect(await target.deviations`select data from data_fetches`).toEqual(await source`select data from data_fetches`);
     expect(await target.deviations`select username from users where employee_id is null`).toEqual([]);
+    // Passwords live only in core: no hash is left in the Deviations users table the app login can read.
+    expect(await target.deviations`select username from users where password_hash <> '-'`).toEqual([]);
     // Ids continue after the moved ones.
     const seq = async (q: Sql) => q`select (select last_value from users_id_seq) as u, (select last_value from sections_id_seq) as s, (select last_value from audit_log_id_seq) as a`;
     expect(await seq(target.deviations)).toEqual(await seq(source));
@@ -319,11 +321,27 @@ describe('a move that must stop (slice 5)', () => {
     }
   }, 120_000);
 
-  it('PL-13 a person deactivated in Deviations whose linked core person already holds a Deviations code stops the move, found by the dry run', async () => {
+  it('PL-13 a person deactivated in Deviations whose linked core person already holds Deviations codes has them revoked (listed by the dry run)', async () => {
     const p = await platform('blockedheld');
-    await corePerson(p, 'qa.old', ['deviations.deviation.report']);
-    const r = await moveToPlatform({ source, ...p, ...opts, link: ['qa.old'], dryRun: true });
-    expect(r.problems).toContain('--link qa.old: deactivated in Deviations, but core already grants deviations.deviation.report; take these away in core first');
+    await corePerson(p, 'qa.old', ['deviations.deviation.report', 'core.masterdata.view']);
+    const dry = await moveToPlatform({ source, ...p, ...opts, link: ['qa.old'], dryRun: true });
+    expect(dry.problems).toEqual([]);
+    expect(dry.rows).toContainEqual(expect.objectContaining({ code: 'qa.old', note: expect.stringContaining('revokes deviations.deviation.report (core held them)') }));
+    const r = await moveToPlatform({ source, ...p, ...opts, link: ['qa.old'] });
+    expect(r.problems).toEqual([]);
+    expect(await codes(p, 'qa.old')).toEqual(['core.masterdata.view']);   // other products' codes stay
+    expect(r.rows).toContainEqual(expect.objectContaining({ code: 'qa.old', note: expect.stringContaining('revoked deviations.deviation.report') }));
+  }, 120_000);
+
+  it('PL-13 commit order: if the Deviations commit fails, core keeps no employee or grant from the move', async () => {
+    const p = await platform('commitfail');
+    const was = await count(p);
+    // A deferred trigger fails the Deviations database at COMMIT, after every check has passed.
+    await p.deviations.unsafe(`create function fail_at_commit() returns trigger language plpgsql as $$ begin raise exception 'forced commit failure'; end $$;
+      create constraint trigger fail_at_commit after update on users deferrable initially deferred for each row execute function fail_at_commit()`);
+    await expect(moveToPlatform({ source, ...p, ...opts })).rejects.toThrow(/forced commit failure/);
+    expect(await count(p)).toEqual(was);
+    expect(await p.deviations`select 1 from sections`).toEqual([]);
   }, 120_000);
 
   it('PL-13 codes core already grants a linked person beyond their old roles stay and are listed on the report', async () => {
