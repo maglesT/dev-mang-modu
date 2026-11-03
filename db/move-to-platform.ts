@@ -100,6 +100,9 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
     const [me] = await o.identity<{ id: string; full_name: string }[]>`
       select id, full_name from employee_current where login = ${o.by} and active`;
     if (!me) problems.push(`no active core employee with login ${o.by} (--by)`);
+    // information_schema lists only tables the login may use: a weaker login would skip tables silently.
+    if (!(await src<{ su: boolean }[]>`select rolsuper as su from pg_roles where rolname = current_user`)[0]?.su)
+      problems.push('the source must be read as a superuser (SOURCE_DATABASE_URL), so that no table is skipped');
     if (!o.verifiedBy.trim() || !o.verifiedHow.trim()) problems.push('the identity verification (--verified-by, --verified-how) is required (11.100(b))');
 
     // People. A login that starts with a digit gets a "u" in front (core needs a letter first, Logbook D-31 2); others
@@ -138,13 +141,19 @@ export async function moveToPlatform(o: MoveOptions): Promise<MoveResult> {
     }
     // Someone deactivated or locked here must hold no Deviations code after the move: a linked core person who already
     // holds one is found now (the dry run lists it), not only at the final check.
-    for (const m of movers.filter((x) => x.blocked && x.linkTo)) {
-      const held = await o.identity<{ code: string }[]>`
-        select code from current_permission_grant where employee_id = ${m.linkTo} and product = 'deviations'`;
-      if (held.length) problems.push(`--link ${m.login}: ${m.blocked}, but core already grants ${held.map((h) => h.code).join(' ')}; take these away in core first`);
+    // Codes core already grants a linked person beyond their old roles were given in core on purpose: they stay, and
+    // the report lists them so the site sees them.
+    const extra = new Map<number, string[]>();
+    for (const m of movers.filter((x) => x.linkTo)) {
+      const held = (await o.identity<{ code: string }[]>`
+        select code from current_permission_grant where employee_id = ${m.linkTo} and product = 'deviations' order by code`).map((h) => h.code);
+      if (m.blocked && held.length) problems.push(`--link ${m.login}: ${m.blocked}, but core already grants ${held.join(' ')}; take these away in core first`);
+      const beyond = held.filter((c) => !m.codes.includes(c));
+      if (!m.blocked && beyond.length) extra.set(m.id, beyond);
     }
 
     const did = (u: Mover, what: string) => (u.linkTo ? `linked to existing core person (site-confirmed); ${what}` : what)
+      + (extra.has(u.id) ? `; core already grants beyond the old roles: ${extra.get(u.id)!.join(' ')} (kept, given in core)` : '')
       + (u.login !== u.username ? ` (core login ${u.login}: Deviations login ${u.username} starts with a digit)` : '');
     if (problems.length || o.dryRun) return { rows: [...rows,
       ...movers.map((u): MoveRow => ({ type: 'user', localId: String(u.id), code: u.username, employeeId: u.linkTo ?? '',

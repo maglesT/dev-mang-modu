@@ -321,6 +321,25 @@ describe('a move that must stop (slice 5)', () => {
     expect(r.problems).toContain('--link qa.old: deactivated in Deviations, but core already grants deviations.deviation.report; take these away in core first');
   }, 120_000);
 
+  it('PL-13 codes core already grants a linked person beyond their old roles stay and are listed on the report', async () => {
+    const p = await platform('extra');
+    await corePerson(p, 'us1', ['deviations.deviation.close']);
+    const r = await moveToPlatform({ source, ...p, ...opts, link: ['us1'], dryRun: true });
+    expect(r.rows).toContainEqual(expect.objectContaining({ code: 'us1',
+      note: expect.stringContaining('core already grants beyond the old roles: deviations.deviation.close (kept, given in core)') }));
+  }, 120_000);
+
+  it('PL-13 the source must be read as a superuser, so that no table is skipped', async () => {
+    const p = await platform('notsuper');
+    const weak = conn(TEST_DATABASE_URL.replace(/^.*\//, ''), { searchPath: schema, role: 'dev_app' });
+    try {
+      const r = await moveToPlatform({ source: weak, ...p, ...opts, dryRun: true });
+      expect(r.problems).toContain('the source must be read as a superuser (SOURCE_DATABASE_URL), so that no table is skipped');
+    } finally {
+      await weak.end();
+    }
+  }, 120_000);
+
   it('PL-13 a failed check moves nothing', async () => {
     const p = await platform('rollback');
     const was = await count(p);
