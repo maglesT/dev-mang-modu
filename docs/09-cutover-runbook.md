@@ -39,9 +39,10 @@ Deviations has no master data to move (D-42).
    - what the rehearsal's dry run lists **to correct before the freeze** (each stops the move): a login core refuses
      even with the prefix; a linked core person who is inactive in core; a linked core person who already holds
      Deviations codes while deactivated or locked here (take the codes away in core).
-6. **Rehearsal on the owner's own server**: steps 2–6 below on last night's backup of `deviations-live`, the real
-   move and its checks, not only `--dry-run`; then restore the snapshot of step 4a. The move must end "moved" with no
-   problems. Tell the people with a prefixed login their new login.
+6. **Rehearsal on the owner's own server**: steps 3–6 below on last night's backup of `deviations-live` (the live
+   site keeps running, so steps 1–2 are skipped), the real move and its checks, not only `--dry-run`; then licence
+   Deviations off again (the live site still owns its name) and restore the snapshot of step 4a. The move must end
+   "moved" with no problems. Tell the people with a prefixed login their new login.
 7. Tell users the window, the new address, and that their login and password stay the same.
 8. **Image tag.** `plat` commands that start the Deviations image need the pinned commit as its tag (apply sets it,
    a manual `docker compose` does not):
@@ -52,7 +53,8 @@ Deviations has no master data to move (D-42).
 Record every step's time, who did it, and its output in the change record, with the customer's change reference.
 `old` below is the live project's command from the README, run in `/opt/deviations`:
 `docker compose -p deviations-live --env-file ops/live.env -f ops/docker-compose.yml -f ops/live.override.yml`.
-`plat` is `docker compose -f /opt/medhanta/current/deploy/compose.yml`.
+`plat` is `docker compose -f /opt/medhanta/current/deploy/compose.yml`. `<superuser>` is the platform's PostgreSQL
+superuser (`postgres` by default).
 
 1. **Freeze.** Stop the old app and leave its database running: `old stop app`. From here nobody can add records.
    Remove the old TLS proxy entries for the Deviations name (demo and live) and reload that proxy, so the name is free
@@ -72,8 +74,9 @@ Record every step's time, who did it, and its output in the change record, with 
    the move reads the copy as the superuser.
 4. **Licence on.** Commit the prepared config; apply runs Deviations' migrations and starts it. **Nobody opens the
    Deviations address until step 6**: a sign-on writes a `users` and an audit row, and the move needs an empty
-   database. Check:
-   `plat exec -T db psql -U <superuser> -d deviations -Atc "select (select count(*) from users) + (select count(*) from audit_log)"` → `0`.
+   database. The app's own integrity check at its first start writes one audit row; the move lists it in its report and
+   removes it before the copy, so it is not counted here. Check:
+   `plat exec -T db psql -U <superuser> -d deviations -Atc "select (select count(*) from users) + (select count(*) from audit_log where not (object_type = 'system' and object_id = 'integrity' and actor_id is null))"` → `0`.
    If it is not, note the rows in the change record, licence Deviations off, drop the `deviations` database and apply again.
 4a. **Snapshot the platform databases before the move**: `deviations` (still empty) and `identity`, each with
    `plat exec -T db pg_dump -U <superuser> --format=custom <db> > /backups/pre-deviations-move-<db>.dump`, plus
@@ -114,9 +117,11 @@ Record every step's time, who did it, and its output in the change record, with 
 
 Until the owner signs off, the old installation (containers, database volume, `standalone` image) stays as it was at
 the freeze. To go back: licence Deviations off in the config (apply stops it), start the old app (`old start app`),
-give the name back to the old proxy entry. The old database is exactly as frozen, apart from the integrity check's own audit row. On the
-platform: restore `deviations` and `identity` from the step-4a snapshot (drop and recreate each, then `pg_restore`
-its dump as the superuser); that takes back the moved rows, people and grants, so the move can run again later.
+give the name back to the old proxy entry. The old database is exactly as frozen, apart from the integrity check's own
+audit row. On the platform: stop core (`plat stop core`; `identity` cannot be dropped while core is connected), restore
+`deviations` and `identity` from the step-4a snapshot (`dropdb --force`, `createdb` with its owner, then `pg_restore`
+its dump as the superuser), then `plat start core`. That takes back the moved rows, people and grants, so the move can
+run again later.
 Record the restore.
 
 ## After sign-off
