@@ -16,9 +16,11 @@ Deviations has no master data to move (D-42).
 1. **Live commit.** Check that the live project runs `standalone` at 2b49b4a or a later `standalone` fix:
    `git -C /opt/deviations log -1 --format=%H`. The move was tested against that schema.
 2. **Platform installed** on the owner's server, with the first core administrator, and the Logbook already moved
-   (Deviations reads the Logbook's views). The platform Deviations runs at `deviations.<platform domain>`. Apply
-   registers `https://deviations.<domain>/cb` with core as its sign-on return address, so it can only be signed in to
-   there. The old site keeps its address until step 9.
+   (Deviations reads the Logbook's views). **Domain** (lead decision for all runbooks): the platform `domain` is
+   `187-126-126-5.sslip.io`, so the platform Deviations runs at `deviations.187-126-126-5.sslip.io`, the name used
+   today; no redirect is needed. Apply registers `https://deviations.187-126-126-5.sslip.io/cb` with core as its
+   sign-on return address. The old proxy entries (the demo's and `deviations-live`'s) give up that name at the freeze
+   (step 1), so the platform's Caddy can take it.
 3. **Platform release with the Deviations pin** at the latest Deviations merge (`apps/deviations/manifest.json` in
    databsee).
 4. **Customer config ready, not yet applied**:
@@ -53,6 +55,8 @@ Record every step's time, who did it, and its output in the change record, with 
 `plat` is `docker compose -f /opt/medhanta/current/deploy/compose.yml`.
 
 1. **Freeze.** Stop the old app and leave its database running: `old stop app`. From here nobody can add records.
+   Remove the old TLS proxy entries for the Deviations name (demo and live) and reload that proxy, so the name is free
+   for the platform.
 2. **Check, then back up the frozen data.** First the integrity check (it adds its own audit row, so it runs before
    the dump): `old run --rm app node dist/db/integrity.js` (exit 0 required). Then the dump and its checksum:
    `old exec -T db pg_dump -U dev_owner --format=custom deviations > /backups/deviations-freeze.dump && sha256sum /backups/deviations-freeze.dump`.
@@ -92,7 +96,7 @@ Record every step's time, who did it, and its output in the change record, with 
    commit one after the other; should a commit itself fail, the report says "the move stopped", and the step-4a
    snapshot is restored before any new run. Keep both reports.
 6. **Check on the platform** (as a moved QA person, with their own password):
-   - sign in at `https://deviations.<platform domain>`; open the deviation list, a closed deviation with its history
+   - sign in at `https://deviations.187-126-126-5.sslip.io`; open the deviation list, a closed deviation with its history
      and signatures (all valid), the CAPA register, and the batch lookup for a known batch;
    - run the integrity check (Audit screen): passed;
    - "Fetch related data" on a recent deviation: the Logbook part is read, Batchwright shows "not configured";
@@ -101,8 +105,8 @@ Record every step's time, who did it, and its output in the change record, with 
 7. **Records of the move**: the freeze dump and its SHA-256, the old site's integrity output, both move reports, the
    platform's integrity result, the checks of step 6, with times and names.
 8. **Owner go / no-go.** On "no-go": rollback below.
-9. **Switch.** Redirect the old address to `https://deviations.<platform domain>` in the TLS proxy; tell users.
-   Remove the old `/etc/cron.d/deviations-live` lines (backups are now the platform's, PL-11). The app's own daily
+9. **Switch.** Nothing to redirect: the platform already answers at the old name. Tell users. Remove the old
+   `/etc/cron.d/deviations-live` lines (backups are now the platform's, PL-11). The app's own daily
    integrity check runs inside the platform Deviations as before. Drop the scratch database:
    `plat exec -T db dropdb -U <superuser> deviations_move_source`.
 
@@ -110,7 +114,7 @@ Record every step's time, who did it, and its output in the change record, with 
 
 Until the owner signs off, the old installation (containers, database volume, `standalone` image) stays as it was at
 the freeze. To go back: licence Deviations off in the config (apply stops it), start the old app (`old start app`),
-remove the redirect. The old database is exactly as frozen, apart from the integrity check's own audit row. On the
+give the name back to the old proxy entry. The old database is exactly as frozen, apart from the integrity check's own audit row. On the
 platform: restore `deviations` and `identity` from the step-4a snapshot (drop and recreate each, then `pg_restore`
 its dump as the superuser); that takes back the moved rows, people and grants, so the move can run again later.
 Record the restore.
