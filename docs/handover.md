@@ -1,6 +1,6 @@
 # Handover
 
-State on 2026-10-31, for the next working session.
+State on 2026-11-03, for the next working session (platform move: Phase B, D-42 to D-46).
 
 ## Where things stand
 
@@ -32,10 +32,28 @@ State on 2026-10-31, for the next working session.
 | CAPA register view `report.capa_v1` for the QMS product (D-40) | #24 | merged |
 | Final impact assessment at closure (D-39) | #23 | merged |
 | Platform slice 1: wiring, `deviations_app`, platform-safe migrations (D-42) | #26 | merged |
-| Platform slices 2+3: sign-on and e-signature through core, permission codes (D-43) | branch `platform-signon` | open |
+| Platform slices 2+3: sign-on and e-signature through core, permission codes (D-43) | #27 | merged |
+| Platform slice 4: links, write-time person check, connection off (D-44) | #28 | merged |
+| Platform slice 5: data move with PL-13 checks (D-45) | #29 | merged |
+| Platform slice 6: cutover runbook `docs/09-cutover-runbook.md`, written, not run (D-46) | #30 | merged |
+| databsee: `apps/deviations` manifest, compose service, templates; pin moves with each slice | databsee #25 + pin PR | merged |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-43: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
+Decisions D-01 to D-46: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
+
+## Platform move (Phase B) — where it stands
+
+- Plan `docs/08-platform-move-plan.md` (D-42), all six slices merged. Live code frozen on branch `standalone` (2b49b4a);
+  fixes for the live site before go-live go there. `main` runs only on the platform (core sign-on, `IDENTITY_DATABASE_URL`).
+- **No go-live yet**: all products go live together, with the owner's approval; the runbook is written, not run.
+  Platform domain on the owner's server: `187-126-126-5.sslip.io` (lead decision), so the address stays
+  `deviations.187-126-126-5.sslip.io`.
+- databsee (`maglesT/databsee`): `apps/deviations/manifest.json` pins a commit of this repo. After any later change to
+  the app, update that pin in a databsee PR (rebase on its main first; other products merge there too).
+- Lead session: `session_01PybpFurhHU4ktqworXhVvF` (report with the remote `send_message` tool). Emails to the owner
+  were refused by this session's permission check; reports went to the lead.
+- Known, accepted (as MMS): the move's two commits (identity, then deviations) are sequential; the runbook restores the
+  pre-move snapshot if the second fails. Signing proofs are bound to person, code and meaning, not to the record.
 
 ## Deployment (server report of 31 Oct 2026)
 
@@ -83,7 +101,7 @@ Decisions D-01 to D-43: `docs/decisions.md`. Rule → test list: `docs/traceabil
 
 ## Design notes worth knowing
 
-- Record tables are insert-only for the app role `dev_app` (sections, batches, signatures, capa_versions,
+- Record tables are insert-only for the app role `deviations_app` (`dev_app` on `standalone`) (sections, batches, signatures, capa_versions,
   attachments, audit_log). Headers (`deviations`, `capas`) cache the step and dates; the same transaction updates them.
 - `recomputeStep` in `server/deviations.ts` derives a deviation's step from the latest section versions and
   signatures. A planned approval is valid only while the report + classification hash matches its signature.
