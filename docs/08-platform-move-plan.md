@@ -68,7 +68,7 @@ Old role → permissions (for the move):
 4. **Links (PL-08, PL-07).** Pools to identity and the Logbook, "connection off", write-time person check.
 5. **Data move (PL-13).** `db/move-to-platform.ts` after MMS: dry run, `--link` list, `u` prefix, mapping CSV, one
    commit only if every check passes. Reads the `deviations-live` installation, not the demo. **Done** (D-45; deactivated or locked people get no codes, also when linked).
-6. **Cutover runbook** `docs/09-cutover-runbook.md` after MMS `docs/07` (written, not run).
+6. **Cutover runbook** `docs/09-cutover-runbook.md` after MMS `docs/07` (written, not run). Done (D-46).
 
 ## Risks
 1. People already in core from the Logbook or MMS: linked only through the site-confirmed `--link` list.
