@@ -39,7 +39,7 @@ create table capa_versions (
 create view latest_capa_versions as
   select distinct on (capa_id) * from capa_versions order by capa_id, version desc;
 
-grant select on capas, capa_versions, latest_capa_versions to dev_app;
-grant insert (year, seq, number, source, deviation_id, source_ref, owner_id, due_date, raised_by) on capas to dev_app;
-grant update (step, owner_id, due_date, check_due) on capas to dev_app;
-grant insert (capa_id, version, action, data, saved_by, reason) on capa_versions to dev_app;
+grant select on capas, capa_versions, latest_capa_versions to deviations_app;
+grant insert (year, seq, number, source, deviation_id, source_ref, owner_id, due_date, raised_by) on capas to deviations_app;
+grant update (step, owner_id, due_date, check_due) on capas to deviations_app;
+grant insert (capa_id, version, action, data, saved_by, reason) on capa_versions to deviations_app;

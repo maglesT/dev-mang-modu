@@ -83,17 +83,17 @@ create table signatures (
   unique (object_type, object_id, meaning)
 );
 
-grant select on settings, areas, deviation_types, deviations, sections, batches, signatures to dev_app;
-grant update (site_name, target_days_minor, target_days_major, target_days_critical) on settings to dev_app;
-grant insert, update (name, active) on areas, deviation_types to dev_app;
-grant insert (year, seq, number, planned, reporter_id) on deviations to dev_app;
-grant update (step, classification, target_date, investigator_id) on deviations to dev_app;
+grant select on settings, areas, deviation_types, deviations, sections, batches, signatures to deviations_app;
+grant update (site_name, target_days_minor, target_days_major, target_days_critical) on settings to deviations_app;
+grant insert, update (name, active) on areas, deviation_types to deviations_app;
+grant insert (year, seq, number, planned, reporter_id) on deviations to deviations_app;
+grant update (step, classification, target_date, investigator_id) on deviations to deviations_app;
 -- Insert-only for the record tables (DV-14, DV-22); times come from the database.
-grant insert (deviation_id, kind, version, data, saved_by, reason, supersedes) on sections to dev_app;
-grant insert (section_id, deviation_id, role, product, batch, batch_norm, outcome) on batches to dev_app;
-grant insert (object_type, object_id, user_id, printed_name, meaning, content_hash) on signatures to dev_app;
+grant insert (deviation_id, kind, version, data, saved_by, reason, supersedes) on sections to deviations_app;
+grant insert (section_id, deviation_id, role, product, batch, batch_norm, outcome) on batches to deviations_app;
+grant insert (object_type, object_id, user_id, printed_name, meaning, content_hash) on signatures to deviations_app;
 
 -- The latest version of each section of each deviation.
 create view latest_sections as
   select distinct on (deviation_id, kind) * from sections order by deviation_id, kind, version desc;
-grant select on latest_sections to dev_app;
+grant select on latest_sections to deviations_app;

@@ -17,7 +17,7 @@ for (const [u, role] of [['seedadmin', 'admin'], ['seedqa', 'qa'], ['seedqa2', '
 }
 await owner.end();
 
-const sql = connect(url, { role: 'dev_app' });
+const sql = connect(url, { role: 'deviations_app' });
 const app = await buildApp({ sql, webRoot: '/nonexistent', cookieSecure: false });
 const login = async (u: string) => {
   const res = await app.inject({ method: 'POST', url: '/api/login', payload: { username: u, password: pw } });

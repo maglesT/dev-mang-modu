@@ -14,20 +14,24 @@ declare
   base text := current_schema();
   rep text := case when current_schema() = 'public' then 'report' else current_schema() || '_report' end;
 begin
-  -- The site gives this role LOGIN and a password at install (README).
-  if not exists (select from pg_roles where rolname = 'capa_report') then
+  -- The site gives this role LOGIN and a password at install (README). On the Medhanta platform the migration
+  -- login cannot create roles and the QMS reads capa_v1 through a platform link instead (D-42): no capa_report.
+  if not exists (select from pg_roles where rolname = 'capa_report')
+     and exists (select from pg_roles where rolname = current_user and (rolcreaterole or rolsuper)) then
     create role capa_report nologin;
   end if;
   execute format('create schema if not exists %I', rep);
   execute format('revoke all on schema %I from public', rep);
-  execute format('grant usage on schema %I to capa_report', rep);
+  if exists (select from pg_roles where rolname = 'capa_report') then
+    execute format('grant usage on schema %I to capa_report', rep);
+  end if;
   -- PUBLIC may create temporary objects by default; take that from everyone but the app role, so the report
   -- role cannot define functions of its own. Only while PUBLIC still has it (one catalog row per database:
   -- repeated changes from parallel test runs would collide).
   if exists (select from pg_database d, aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
              where d.datname = current_database() and a.grantee = 0 and a.privilege_type = 'TEMPORARY') then
     execute format('revoke temporary on database %I from public', current_database());
-    execute format('grant temporary on database %I to dev_app', current_database());
+    execute format('grant temporary on database %I to deviations_app', current_database());
   end if;
   perform set_config('search_path', format('%I, %I', rep, base), true);
 end $$;
@@ -42,6 +46,8 @@ left join deviations d on d.id = c.deviation_id
 join latest_capa_versions l on l.capa_id = c.id;
 
 revoke all on capa_v1 from public;
-grant select on capa_v1 to capa_report;
+do $$ begin
+  if exists (select from pg_roles where rolname = 'capa_report') then grant select on capa_v1 to capa_report; end if;
+end $$;
 
 reset search_path;

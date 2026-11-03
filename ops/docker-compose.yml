@@ -18,7 +18,7 @@ services:
     environment:
       DATABASE_URL: postgres://dev_owner:${DB_PASSWORD:-change-me}@db:5432/deviations
       # Single-box setup: the owner login switches to the restricted role for all app queries.
-      DB_APP_ROLE: dev_app
+      DB_APP_ROLE: deviations_app
       # S9: AI-suggested causes (Google Gemini). Set GEMINI_API_KEY in ops/.env to switch it on.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-4-argon}

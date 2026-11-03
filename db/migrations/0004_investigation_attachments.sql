@@ -21,6 +21,6 @@ create table attachment_withdrawals (
   withdrawn_at timestamptz not null default now()
 );
 
-grant select on attachments, attachment_withdrawals to dev_app;
-grant insert (deviation_id, filename, mime, size, sha256, data, uploaded_by) on attachments to dev_app;
-grant insert (attachment_id, reason, withdrawn_by) on attachment_withdrawals to dev_app;
+grant select on attachments, attachment_withdrawals to deviations_app;
+grant insert (deviation_id, filename, mime, size, sha256, data, uploaded_by) on attachments to deviations_app;
+grant insert (attachment_id, reason, withdrawn_by) on attachment_withdrawals to deviations_app;
