@@ -128,7 +128,7 @@ the restore would take them back too. To go back, in this order (as the QMS runb
    the moved rows, people and grants, so the move can run again later.
 3. Start core: `plat start core`.
 4. Licence Deviations off in the config and apply (after the restore, so the switch records apply writes, PL-10,
-   are kept).
+   are kept; apply's init also sets the database-level grants again, which a dump does not carry).
 5. Give the name back to the old proxy entry and start the old app: `old start app`.
 
 Record each step in the change record.
