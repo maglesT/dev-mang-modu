@@ -28,7 +28,11 @@ export function sqlPeople(identity: Sql): People {
     active: async (ids) => {
       if (!ids.length) return new Set();
       try {
-        const rows = await identity<{ id: string }[]>`select id::text from report.employee_v1 where id = any(${ids}::uuid[]) and active`;
+        // Read while a deviation or CAPA row is locked: a slow core answers "connection off" after 5 s, never hangs.
+        const rows = await identity.begin('read only', async (tx) => {
+          await tx`set local statement_timeout = '5s'`;
+          return tx<{ id: string }[]>`select id::text from report.employee_v1 where id = any(${ids}::uuid[]) and active`;
+        });
         return new Set(rows.map((r) => r.id));
       } catch (e) {
         if (isCut(e)) throw new ConnectionOff();
