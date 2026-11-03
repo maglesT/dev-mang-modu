@@ -24,5 +24,5 @@ db "pg_restore --no-owner --exit-on-error -U \"\$POSTGRES_USER\" -d $scratch" < 
 # DATABASE_URL in the app container names the live database: point the same login at the scratch one.
 app "MIGRATION_DATABASE_URL=\"\${DATABASE_URL%/*}/$scratch\" node dist/db/migrate.js"
 app "DATABASE_URL=\"\${DATABASE_URL%/*}/$scratch\" DB_APP_ROLE= node dist/db/integrity.js"
-echo "note: after a real restore into a new database, run: REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO dev_app;"
+echo "note: after a real restore into a new database, run: REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO deviations_app;"
 echo "restore check passed: $dump"

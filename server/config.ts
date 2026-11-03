@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const schema = z.object({
-  // The app connects as the restricted role dev_app (DV-14, DV-15); migrations use MIGRATION_DATABASE_URL.
+  // The app connects as the restricted role deviations_app (DV-14, DV-15); migrations use MIGRATION_DATABASE_URL.
   DATABASE_URL: z.string().url(),
   MIGRATION_DATABASE_URL: z.string().url().optional(),
   // Set only when DATABASE_URL logs in as the owner (single-box setup): the app then switches role.
@@ -17,6 +17,7 @@ const schema = z.object({
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-4-argon'),
   // S17 (D-37): read-only connections to the Logbook and Batchwright report views. Without one, that
   // source shows as "not configured" and nothing else changes.
+  // On the Medhanta platform (D-42) apply writes LOGBOOK_DATABASE_URL for the link to the Logbook's views instead.
   LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
   BATCHWRIGHT_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
 });
@@ -24,5 +25,11 @@ const schema = z.object({
 export type Config = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  return schema.parse(env);
+  // On the Medhanta platform (D-42) apply names the product's own database DEVIATIONS_DATABASE_URL and the linked
+  // Logbook database LOGBOOK_DATABASE_URL. Batchwright is not on the platform yet: BATCHWRIGHT_REPORT_URL as today.
+  return schema.parse({
+    ...env,
+    DATABASE_URL: env.DATABASE_URL ?? env.DEVIATIONS_DATABASE_URL,
+    LOGBOOK_REPORT_URL: env.LOGBOOK_REPORT_URL || env.LOGBOOK_DATABASE_URL,
+  });
 }

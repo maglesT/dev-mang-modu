@@ -7,7 +7,7 @@ import type { Role } from '../server/auth.js';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://dev_owner:dev@localhost:5432/dev_test';
-export const APP_ROLE = 'dev_app';
+export const APP_ROLE = 'deviations_app';
 
 export interface TestDb {
   // Owner connection: migrations and test setup only.

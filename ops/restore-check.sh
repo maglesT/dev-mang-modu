@@ -32,5 +32,5 @@ else
   DATABASE_URL="$scratch_url" npx tsx db/integrity.ts
 fi
 # D-40: the TEMPORARY revoke is a database setting, not in the dump. Remind whoever restores for real.
-echo "note: after a real restore into a new database, run: REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO dev_app;"
+echo "note: after a real restore into a new database, run: REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO deviations_app;"
 echo "restore check passed: $dump"

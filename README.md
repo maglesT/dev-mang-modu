@@ -3,6 +3,10 @@
 Deviation management and CAPA register for one pharmaceutical plant that exports
 (US FDA, EU GMP, India Revised Schedule M). Plan, compliance register and decisions: `docs/`.
 
+**Moving onto the Medhanta platform** (D-42, `docs/08-platform-move-plan.md`): `main` is being rewired for the
+platform. The live installations run branch `standalone`, which keeps the old app role name `dev_app`; install and
+fix the live site from that branch until the joint go-live.
+
 **What it does:** anyone reports a deviation; QA classifies it (minor / major / critical, an
 independent check of product and batch); the investigator finds the root cause, checks other
 batches and signs; QA raises CAPAs and closes the deviation with an e-signature. CAPAs from
@@ -33,7 +37,7 @@ the trend view and PDF copies support reviews and inspections.
    `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,
    description, source) and nothing else. Migration 0010 also takes TEMPORARY from PUBLIC on the database; that is a
    database setting, not in a backup, so after restoring into a new database run
-   `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO dev_app;`.
+   `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO deviations_app;`.
 8. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
    With Docker (no database port on the host), give `COMPOSE="docker compose -p <project> -f ... -f ..."` instead of

@@ -1,5 +1,5 @@
 // Runs the integrity check (DV-22) from the command line, e.g. after restoring a backup.
-// Exit code 1 when problems are found. Usage: DATABASE_URL=... [DB_APP_ROLE=dev_app] npm run integrity
+// Exit code 1 when problems are found. Usage: DATABASE_URL=... [DB_APP_ROLE=deviations_app] npm run integrity
 import { connect } from '../server/db.js';
 import { runIntegrityCheck } from '../server/integrity.js';
 

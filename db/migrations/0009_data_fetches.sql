@@ -17,5 +17,5 @@ create table data_fetches (
   fetched_at timestamptz not null default now()
 );
 create index data_fetches_deviation on data_fetches (deviation_id);
-grant select on data_fetches to dev_app;
-grant insert (deviation_id, source, status, params, views, data, row_count, sha256, error, fetched_by) on data_fetches to dev_app;
+grant select on data_fetches to deviations_app;
+grant insert (deviation_id, source, status, params, views, data, row_count, sha256, error, fetched_by) on data_fetches to deviations_app;
