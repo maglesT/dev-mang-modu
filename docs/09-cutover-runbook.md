@@ -123,12 +123,14 @@ the restore would take them back too. To go back, in this order (as the QMS runb
 
 1. Stop Deviations and core: `plat stop deviations core` (`identity` cannot be dropped while core is connected).
 2. Restore `deviations` and `identity` from the step-4a snapshot, each as the superuser:
-   `plat exec -T db dropdb -U <superuser> --force <db>`, `plat exec -T db createdb -U <superuser> -O <db>_owner <db>`,
-   then `plat exec -T db pg_restore -U <superuser> -d <db> < /backups/pre-deviations-move-<db>.dump`. That takes back
-   the moved rows, people and grants, so the move can run again later.
+   `plat exec -T db dropdb -U <superuser> --force <db>`, then
+   `plat exec -T db pg_restore -U <superuser> -d postgres --create < /backups/pre-deviations-move-<db>.dump`.
+   `--create` recreates the database with its owner and its database-level grants (PUBLIC revoked, each app's and
+   linked reader's CONNECT), which a plain restore into a new database would lose. That takes back the moved rows,
+   people and grants, so the move can run again later.
 3. Start core: `plat start core`.
 4. Licence Deviations off in the config and apply (after the restore, so the switch records apply writes, PL-10,
-   are kept; apply's init also sets the database-level grants again, which a dump does not carry).
+   are kept).
 5. Give the name back to the old proxy entry and start the old app: `old start app`.
 
 Record each step in the change record.
