@@ -53,12 +53,19 @@ describe('sign-on through core (PL-01)', () => {
   });
 
   it('PL-01 a person without a Deviations permission is refused at sign-in, and the refusal is audited', async () => {
-    const id = await seedUser(t.owner, uniq('nobody'), []);
-    const { res, cookie } = await login(t.app, `nobody${n}`);
+    const login_ = uniq('nobody');
+    directory.set(login_, { sub: randomUUID(), name: 'Nobody', permissions: [], active: true });
+    const { res, cookie } = await login(t.app, login_);
     expect(res.statusCode).toBe(403);
     expect(res.body).toContain('no right to use Deviations');
     expect(cookie).toBe('');
-    expect(await auditRows('login.failed', id)).toHaveLength(1);
+    expect(await t.owner`select 1 from audit_log where action = 'login.failed' and object_id = ${login_}`).toHaveLength(1);
+    // No id-map row, so they are never offered as an investigator or CAPA owner.
+    expect(await t.owner`select 1 from users where username = ${login_}`).toHaveLength(0);
+    await seedUser(t.owner, uniq('qa'), ['qa']);
+    const { cookie: qa } = await login(t.app, `qa${n}`);
+    const people = (await call(t.app, qa, 'GET', '/api/people')).json() as { username?: string }[];
+    expect(JSON.stringify(people)).not.toContain(login_);
   });
 
   it('DV-18 PL-01: codes come from core only; a role in the old local table or a code of another product gives no right', async () => {

@@ -73,7 +73,7 @@ export function authRoutes(app: FastifyInstance, sql: Sql, signOn: SignOn) {
       if (!who.authTime || who.authTime * 1000 < Number(startedAt) - 1000) {
         return reply.header('cache-control', 'no-store').type('text/html').send(signPage({ signError: 'Your password was not asked for again. Try again.' }));
       }
-      return reply.header('cache-control', 'no-store').type('text/html').send(signPage({ signProof: makeProof(app.proofKey, who, (meanings ?? '').split(',')) }));
+      return reply.header('cache-control', 'no-store').type('text/html').send(signPage({ signProof: makeProof(app.proofKey, who, (meanings ?? '').split(',').filter((m) => (MEANINGS as readonly string[]).includes(m))) }));
     }
     const permissions = asPermissions(who.permissions);
     const name = who.name.trim() || who.login;
@@ -82,16 +82,17 @@ export function authRoutes(app: FastifyInstance, sql: Sql, signOn: SignOn) {
       // A login the id map cannot take: one a local account not yet moved still holds, or outside its pattern.
       const [taken] = await tx`select 1 from users where username = ${who.login} and employee_id is distinct from ${who.sub}`;
       if (taken || !/^[a-z0-9._-]{3,40}$/.test(who.login)) return { refused: 'login' as const };
+      // Someone without a Deviations code gets no id-map row, so they never show up as an investigator or CAPA owner.
+      if (!permissions.length) {
+        await audit(tx, { actorId: null, action: 'login.failed', objectType: 'user', objectId: who.login, reason: 'no Deviations permission' });
+        return { refused: 'permission' as const };
+      }
       const [u] = await tx<{ id: number }[]>`
         insert into users (employee_id, username, full_name, password_hash, must_change_password)
         values (${who.sub}, ${who.login}, ${name}, '-', false)
         on conflict (employee_id) do update set full_name = excluded.full_name
         returning id::int`;
       if (!u) return { refused: 'login' as const };
-      if (!permissions.length) {
-        await audit(tx, { actorId: u.id, action: 'login.failed', objectType: 'user', objectId: u.id, reason: 'no Deviations permission' });
-        return { refused: 'permission' as const };
-      }
       const sessionId = newSessionId();
       await tx`insert into sessions (id, user_id, permissions, refresh_token, id_token)
                values (${sessionKey(sessionId)}, ${u.id}, ${permissions}, ${who.refreshToken ?? null}, ${who.idToken ?? null})`;
