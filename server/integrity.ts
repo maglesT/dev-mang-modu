@@ -19,7 +19,7 @@ export interface IntegrityResult {
 export async function runIntegrityCheck(sql: Sql, actorId: number | null = null): Promise<IntegrityResult> {
   // All reads from one snapshot, so records saved during the check cannot look inconsistent.
   const result = await sql.begin('isolation level repeatable read read only', (tx) => check(tx as unknown as Sql));
-  // A failed check is raised as an on-screen alert for Admin and QA, like a lockout (DV-18), until acknowledged.
+  // A failed check is raised as an on-screen alert for holders of deviations.audit.read until acknowledged.
   if (result.problems.length) {
     await sql`insert into alerts (kind, message)
       values ('integrity_failed', ${`Integrity check found ${result.problems.length} problem(s). See the Audit trail page.`})`;

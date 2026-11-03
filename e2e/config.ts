@@ -6,5 +6,4 @@ export const USERS = {
   qa2: ['qa', 'user'],
   us1: ['user'],
   us2: ['user'],
-  locky: ['user'],
 } as const;

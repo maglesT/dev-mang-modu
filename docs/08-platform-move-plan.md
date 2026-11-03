@@ -62,8 +62,9 @@ Old role → permissions (for the move):
    `standalone` keeps the old name); `0000_platform_defaults`; `capa_report` only where it can be created;
    `DEVIATIONS_DATABASE_URL`, `LOGBOOK_DATABASE_URL`; `test/platform.test.ts`. databsee: `apps/deviations/manifest.json`,
    compose service, config and secrets template entries.
-2. **Sign-on through core and permissions (PL-01).** `requirePermission(code)` replaces `requireRole`; `users` becomes an id map.
-3. **E-signature through core (PL-05).**
+2. **Sign-on through core and permissions (PL-01)** and 3. **E-signature through core (PL-05)**, built together as one
+   slice (D-43), so the app signs end to end: `requirePermission(code)` replaces `requireRole`; `users` becomes an id
+   map; signatures re-authenticate at core with a one-use proof.
 4. **Links (PL-08, PL-07).** Pools to identity and the Logbook, "connection off", write-time person check.
 5. **Data move (PL-13).** `db/move-to-platform.ts` after MMS: dry run, `--link` list, `u` prefix, mapping CSV, one
    commit only if every check passes. Reads the `deviations-live` installation, not the demo.

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { FAULT_TREE, KT, TOOLS } from './fixtures.js';
 
 // S14 (D-33, D-36): barrier analysis, FMEA, KT for lab / OOS types, fault tree when critical, CAPA strength,
@@ -23,7 +23,6 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-const sig = (u: string) => ({ username: u, password: PASSWORD });
 async function classified(classification = 'major', type = typeId) {
   const r = await call(t.app, c.us1!, 'POST', '/api/deviations', {
     planned: false, title: 'Hardness low', description: 'Hardness 2 kg/cm².', areaId, eventAt: new Date(Date.now() - 600_000).toISOString(),

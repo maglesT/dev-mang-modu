@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { PASSWORD, logIn, logOut, owner } from './helpers.js';
+import { logIn, logOut, owner, sign } from './helpers.js';
 
 async function report(page: Page, title: string, batch: string, planned = false) {
   await page.getByRole('button', { name: 'Report a deviation' }).click();
@@ -83,10 +83,7 @@ test('DV-02: a planned deviation shows "do not proceed" until QA signs the appro
   await classify(page, number, 'Minor');
   await expect(page.locator('.statusbar')).toContainText('Do not proceed before approval');
   await page.getByRole('button', { name: 'Approve planned deviation' }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('User ID').fill('qa1');
-  await dialog.getByLabel('Password').fill(PASSWORD);
-  await dialog.getByRole('button', { name: 'Sign' }).click();
+  await sign(page);
   await expect(page.locator('.statusbar')).toContainText('Investigation');
   await expect(page.locator('.signature')).toContainText('Approved (planned deviation may proceed) · QA1');
 });

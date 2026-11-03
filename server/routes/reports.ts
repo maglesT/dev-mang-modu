@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Content } from 'pdfmake/interfaces.js';
 import { z } from 'zod';
 import type { Sql } from '../db.js';
-import { parseId, requireRole } from '../auth.js';
+import { parseId, requirePermission } from '../auth.js';
 import { FISHBONE, PLANT_TZ, normaliseBatch } from '../deviations.js';
 import { fields, heading, plant, render, t, table } from '../pdf.js';
 
@@ -152,7 +152,7 @@ async function loadNames(sql: Sql): Promise<Names> {
 }
 
 export function reportRoutes(app: FastifyInstance, sql: Sql) {
-  const reader = { preHandler: requireRole() };
+  const reader = { preHandler: requirePermission() };
 
   // DV-11: every deviation that names a batch, as its own batch or as an "other batch" checked, with status.
   app.get<{ Querystring: { batch?: string } }>('/api/batch-lookup', reader, async (req, reply) => {

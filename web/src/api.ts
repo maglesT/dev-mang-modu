@@ -26,31 +26,32 @@ export async function api<T>(method: 'GET' | 'POST' | 'PATCH' | 'PUT', url: stri
   return data as T;
 }
 
-// D-08: three fixed roles.
-export type Role = 'user' | 'qa' | 'admin';
-export const ROLES: Role[] = ['user', 'qa', 'admin'];
-export const ROLE_LABEL: Record<Role, string> = {
-  user: 'User',
-  qa: 'QA',
-  admin: 'Admin',
-};
-
 export interface Me {
   id: number;
   username: string;
   fullName: string;
-  roles: Role[];
-  passwordChangeRequired: boolean;
+  // This product's permission codes from core (D-43); the server checks them on every action.
+  permissions: string[];
 }
 
-export interface User {
-  id: number;
-  username: string;
-  fullName: string;
-  roles: Role[];
-  active: boolean;
-  locked: boolean;
-  lastLoginAt: string | null;
+// Whether the signed-in person holds a code (the server decides; this only hides buttons they could not use).
+export const can = (me: Me, code: string) => me.permissions.includes(code);
+
+// PL-05 (D-43): opens the window where core asks for the password again; resolves with core's signing proof.
+export function getSignProof(meaning: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const w = window.open(`/sign?meanings=${meaning}`, 'medhanta-sign', 'width=480,height=640');
+    if (!w) return reject(new Error('Allow pop-up windows for this site to sign.'));
+    const done = (fn: () => void) => { window.removeEventListener('message', onMessage); clearInterval(timer); fn(); };
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || e.source !== w) return;
+      const m = e.data as { signProof?: string; signError?: string };
+      if (m.signProof) done(() => resolve(m.signProof!));
+      else if (m.signError) done(() => reject(new Error(m.signError)));
+    };
+    window.addEventListener('message', onMessage);
+    const timer = setInterval(() => { if (w.closed) done(() => reject(new Error('Signing was cancelled.'))); }, 500);
+  });
 }
 
 export interface Alert {

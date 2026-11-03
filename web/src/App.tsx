@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Me } from './api.js';
-import { Login, ChangePassword } from './pages/Login.js';
-import { Users } from './pages/Users.js';
+import { api, ApiError, can, type Me } from './api.js';
+import { Login } from './pages/Login.js';
 import { AuditTrail } from './pages/AuditTrail.js';
 import { Home } from './pages/Home.js';
 import { ReportForm } from './pages/ReportForm.js';
@@ -11,7 +10,7 @@ import { CapaList, CapaPage } from './pages/Capas.js';
 import { BatchTrends } from './pages/BatchTrends.js';
 import { Alerts } from './components/Alerts.js';
 
-type Page = 'home' | 'report' | 'deviation' | 'capas' | 'capa' | 'batch' | 'admin' | 'users' | 'audit' | 'password';
+type Page = 'home' | 'report' | 'deviation' | 'capas' | 'capa' | 'batch' | 'admin' | 'audit';
 
 export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
@@ -32,14 +31,15 @@ export function App() {
   }, [refresh]);
 
   if (me === undefined) return <main className="page">Loading…</main>;
-  if (me === null) return <Login onLoggedIn={refresh} />;
-  if (me.passwordChangeRequired) return <ChangePassword me={me} forced onDone={refresh} />;
+  if (me === null) return <Login />;
 
   const logout = async () => {
-    await api('POST', '/api/logout');
+    const r = await api<{ logoutUrl: string | null }>('POST', '/api/logout');
     // The next person starts on Home, not on the previous user's page.
     setPage('home');
     setMe(null);
+    // Ends the core session too (shared terminals).
+    if (r.logoutUrl) window.location.assign(r.logoutUrl);
   };
   const open = (id: number) => {
     setOpenId(id);
@@ -52,7 +52,9 @@ export function App() {
   const tab = (p: Page, label: string) => (
     <button className={page === p ? 'tab on' : 'tab'} onClick={() => setPage(p)}>{label}</button>
   );
-  const isAdmin = me.roles.includes('admin');
+  // Holders of only the old Admin codes (settings, audit) start on the Admin page, as before (D-43).
+  const isAdmin = can(me, 'deviations.settings.manage')
+    && me.permissions.every((p) => p === 'deviations.audit.read' || p === 'deviations.settings.manage');
 
   return (
     <>
@@ -62,13 +64,11 @@ export function App() {
           {!isAdmin && tab('home', 'Deviations')}
           {!isAdmin && tab('capas', 'CAPAs')}
           {!isAdmin && tab('batch', 'Batch check & trends')}
-          {me.roles.some((r) => r === 'qa' || r === 'admin') && tab('audit', 'Audit trail')}
-          {isAdmin && tab('admin', 'Admin')}
-          {isAdmin && tab('users', 'Users')}
+          {can(me, 'deviations.audit.read') && tab('audit', 'Audit trail')}
+          {can(me, 'deviations.settings.manage') && tab('admin', 'Admin')}
         </nav>
         <span className="who">
           {me.fullName}
-          <button className="link" onClick={() => setPage('password')}>Change password</button>
           <button className="link" onClick={logout}>Log out</button>
         </span>
       </header>
@@ -82,8 +82,6 @@ export function App() {
         {page === 'capa' && <CapaPage key={openId} me={me} id={openId} onBack={() => setPage('capas')} onOpenDeviation={open} onOpenCapa={openCapa} />}
         {page === 'admin' && <Admin />}
         {page === 'audit' && <AuditTrail />}
-        {page === 'users' && <Users me={me} />}
-        {page === 'password' && <ChangePassword me={me} onDone={() => setPage('home')} />}
       </main>
     </>
   );

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Sql } from '../db.js';
 import { audit } from '../audit.js';
-import { parseId, requireRole, type SessionUser } from '../auth.js';
+import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { FISHBONE } from '../deviations.js';
 import { computeSignals } from './signals.js';
 
@@ -58,7 +58,7 @@ Only use the facts given. If something important is missing, say what to find ou
 const PER_HOUR = 10;
 
 export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
-  const actor = { preHandler: requireRole('user', 'qa') };
+  const actor = { preHandler: requirePermission('deviations.investigation.write') };
 
   // Lets the screen show or hide the button.
   app.get('/api/ai/status', actor, async () => ({ enabled: !!ai, model: ai?.model ?? null }));
@@ -78,7 +78,7 @@ export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
     if (!d) return reply.code(404).send({ error: 'not_found' });
     // The person investigating (or QA) asks while the investigation is open.
     if (d.step !== 'investigation') return reply.code(409).send({ error: 'wrong_step' });
-    if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
+    if (d.investigator_id !== user.id && !can(user, 'deviations.qa.oversee')) return reply.code(403).send({ error: 'not_investigator' });
 
     const [used] = await sql<{ n: number }[]>`
       select count(*)::int as n from audit_log where action = 'ai.suggested' and actor_id = ${user.id} and at > now() - interval '1 hour'`;

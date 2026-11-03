@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { connect } from './db.js';
 import { scheduleIntegrityCheck } from './integrity.js';
+import { oidcSignOn } from './signon.js';
 
 const config = loadConfig();
 const sql = connect(config.DATABASE_URL, { role: config.DB_APP_ROLE });
@@ -12,7 +14,11 @@ const sources = {
   ...(config.LOGBOOK_REPORT_URL ? { logbook: reader(config.LOGBOOK_REPORT_URL) } : {}),
   ...(config.BATCHWRIGHT_REPORT_URL ? { batchwright: reader(config.BATCHWRIGHT_REPORT_URL) } : {}),
 };
-const app = await buildApp({ sql, logger: true, cookieSecure: config.COOKIE_SECURE, ai, sources });
+const signOn = oidcSignOn({ issuer: config.OIDC_ISSUER, clientId: config.OIDC_CLIENT_ID, clientSecret: config.OIDC_CLIENT_SECRET,
+  redirectUri: config.OIDC_REDIRECT_URI });
+// The signing-proof key is derived from the OIDC client secret, so every instance of the app agrees on it.
+const proofKey = createHash('sha256').update(`deviations-signing-proof:${config.OIDC_CLIENT_SECRET}`).digest();
+const app = await buildApp({ sql, signOn, proofKey, logger: true, cookieSecure: config.COOKIE_SECURE, ai, sources });
 
 await app.listen({ port: config.PORT, host: config.HOST });
 const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));

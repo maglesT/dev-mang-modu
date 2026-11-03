@@ -1,15 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import type { Sql } from '../db.js';
-import { parseId, requireRole, type SessionUser } from '../auth.js';
+import { parseId, requirePermission, type SessionUser } from '../auth.js';
 import { fetchRelated, type Sources } from '../readers/fetch.js';
 
 // S17 (D-37, DV-23): data collection for a deviation from the Logbook and Batchwright (read-only).
 export function dataRoutes(app: FastifyInstance, sql: Sql, sources: Sources) {
-  const actor = { preHandler: requireRole('user', 'qa') };
+  const actor = { preHandler: requirePermission('deviations.investigation.write') };
 
   app.get('/api/data/status', actor, async () => ({ logbook: !!sources.logbook, batchwright: !!sources.batchwright }));
 
-  // Anyone working on the deviation (User, QA) may fetch while it is open; each fetch is kept.
+  // Anyone working on the deviation (deviations.investigation.write) may fetch while it is open; each fetch is kept.
   app.post<{ Params: { id: string } }>('/api/deviations/:id/fetch', actor, async (req, reply) => {
     const id = parseId(req.params.id);
     if (id === null) return reply.code(400).send({ error: 'invalid_request' });

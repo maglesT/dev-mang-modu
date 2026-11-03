@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { Sql } from '../db.js';
-import { requireRole } from '../auth.js';
+import { requirePermission } from '../auth.js';
 import { runIntegrityCheck } from '../integrity.js';
 
-// DV-22: latest integrity-check result, and a manual run for QA/Admin.
+// DV-22: latest integrity-check result, and a manual run (deviations.audit.read).
 export function integrityRoutes(app: FastifyInstance, sql: Sql) {
-  const allowed = { preHandler: requireRole('qa', 'admin') };
+  const allowed = { preHandler: requirePermission('deviations.audit.read') };
 
   app.get('/api/integrity', allowed, async () => {
     const [last] = await sql`

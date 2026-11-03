@@ -9,7 +9,7 @@ import { AiSuggest } from '../components/AiSuggest.js';
 import { DataCollection } from '../components/DataCollection.js';
 import { DmaicBar, PhaseHead } from '../components/DmaicBar.js';
 import {
-  api, ApiError, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
+  api, ApiError, can as holds, CLASS_LABEL, MEANING_LABEL, plantDate, plantTime, STEP_CHIP, STEP_LABEL,
   type Deviation, type Me, type NamedItem, type SectionVersion,
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
@@ -95,17 +95,19 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
   }, [id]);
   if (!d) return <p>Loading…</p>;
 
-  const isQa = me.roles.includes('qa');
+  // UI flags from the permission codes (D-43); the server checks them again on every action.
+  const oversee = holds(me, 'deviations.qa.oversee');
+  const classifier = holds(me, 'deviations.deviation.classify') && d.reporterId !== me.id;
   const open = d.step !== 'closed' && d.step !== 'rejected';
   const report = latestOf(d, 'report')!.data as Record<string, unknown>;
   const classification = latestOf(d, 'classification');
   const investigation = latestOf(d, 'investigation');
   const own = d.batches.filter((b) => b.role === 'own');
   const other = d.batches.filter((b) => b.role === 'other');
-  const isInvestigator = d.investigatorId === me.id || isQa;
+  const isInvestigator = d.investigatorId === me.id || oversee;
   const can: Record<Kind, boolean> = {
-    report: open && (d.reporterId === me.id || isQa),
-    classification: open && !!classification && isQa && d.reporterId !== me.id,
+    report: open && (d.reporterId === me.id || oversee),
+    classification: open && !!classification && classifier,
     investigation: open && !!investigation && isInvestigator,
   };
   const correct = (kind: Kind) => async (data: object, reason: string) => {
@@ -153,15 +155,15 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         <div className="section-head"><h2>Classification</h2>{correctButton('classification')}</div>
         {classification && correcting !== 'classification' ? (
           <Classified d={d} c={classification} />
-        ) : (classification && correcting === 'classification') || (d.step === 'classification' && isQa && d.reporterId !== me.id) ? (
+        ) : (classification && correcting === 'classification') || (d.step === 'classification' && classifier) ? (
           <ClassifyForm id={d.id} initial={classification?.data} correct={classification ? correct('classification') : undefined}
             onDone={async () => { setCorrecting(null); await load(); }} onCancel={() => setCorrecting(null)} />
         ) : (
-          <p className="muted">{d.reporterId === me.id && isQa ? 'You reported this deviation, so another QA person classifies it.' : 'Waiting for QA.'}</p>
+          <p className="muted">{d.reporterId === me.id && holds(me, 'deviations.deviation.classify') ? 'You reported this deviation, so another QA person classifies it.' : 'Waiting for QA.'}</p>
         )}
         <Versions d={d} kind="classification" />
         <Signatures d={d} kind="classification" />
-        {d.step === 'approval' && isQa && d.reporterId !== me.id && (
+        {d.step === 'approval' && holds(me, 'deviations.deviation.approve') && d.reporterId !== me.id && (
           <div className="actions">
             <button onClick={() => setSigning('rejected')}>Reject</button>
             <button className="primary" onClick={() => setSigning('approved')}>Approve planned deviation</button>
@@ -172,7 +174,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       {d.step !== 'rejected' && <>
         <PhaseHead k="M" step={d.step} />
         <Signals id={d.id} onOpen={onOpenDeviation} />
-        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && (me.roles.includes('user') || me.roles.includes('qa'))} />
+        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && holds(me, 'deviations.investigation.write')} />
         <Attachments d={d} me={me} open={open} onChange={load} />
         </>}
       {d.step === 'rejected' && <Attachments d={d} me={me} open={open} onChange={load} />}
@@ -258,9 +260,9 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
   useEffect(() => {
     void api<CapaItem[]>('GET', `/api/capas?deviationId=${d.id}&status=all`).then(setCapas);
   }, [d]);
-  const isQa = me.roles.includes('qa');
+  const closer = holds(me, 'deviations.deviation.close');
   const closure = latestOf(d, 'closure');
-  const canRaise = isQa && ['investigation', 'closure', 'closed'].includes(d.step);
+  const canRaise = holds(me, 'deviations.capa.raise') && ['investigation', 'closure', 'closed'].includes(d.step);
   const noCapaAllowed = capas.length === 0 && d.classification === 'minor';
   // S14 (D-33): a critical deviation with only weak CAPAs needs QA's reason to close.
   const allWeak = d.classification === 'critical' && capas.length > 0 && capas.every((c) => (c.strength ?? 'weak') === 'weak');
@@ -306,7 +308,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
         ]} />
       )}
       <Signatures d={d} kind={'closure' as Kind} />
-      {d.step === 'closure' && isQa && (
+      {d.step === 'closure' && closer && (
         <form className="form" onSubmit={submit}>
           <h3>Close the deviation</h3>
           <p className="muted small">Review the whole record and its history below before closing.</p>
@@ -331,7 +333,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
           <div className="actions"><button className="primary" type="submit">Sign closed</button></div>
         </form>
       )}
-      {d.step === 'closed' && isQa && <div className="actions"><button onClick={() => setSigning('reopened')}>Reopen</button></div>}
+      {d.step === 'closed' && closer && <div className="actions"><button onClick={() => setSigning('reopened')}>Reopen</button></div>}
       {signing === 'closed' && (
         <SignDialog meaning="closed" what={`${d.number}: the deviation is reviewed and closed${d.openCapas || capas.some((c) => c.step !== 'closed') ? '; open CAPAs continue in the CAPA list' : ''}.`}
           onCancel={() => setSigning(null)}
@@ -622,7 +624,7 @@ function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: bo
       setError('Only the person who attached the file or QA can withdraw it.');
     }
   };
-  const canAct = open && !me.roles.includes('admin');
+  const canAct = open && holds(me, 'deviations.investigation.write');
   return (
     <section className="card">
       <h2>Attachments</h2>
@@ -633,7 +635,7 @@ function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: bo
             {a.withdrawnAt ? <s>{a.filename}</s> : <a href={`/api/attachments/${a.id}`}>{a.filename}</a>}
             <span className="muted"> · {Math.ceil(a.size / 1024)} KB · {a.uploadedBy} · {plantTime(a.uploadedAt)}</span>
             {a.withdrawnAt ? <span className="muted"> · withdrawn: {a.withdrawnReason}</span>
-              : canAct && (a.uploaderId === me.id || me.roles.includes('qa')) && <button className="link small" onClick={() => withdraw(a.id)}>Withdraw</button>}
+              : canAct && (a.uploaderId === me.id || holds(me, 'deviations.qa.oversee')) && <button className="link small" onClick={() => withdraw(a.id)}>Withdraw</button>}
           </li>
         ))}
       </ul>

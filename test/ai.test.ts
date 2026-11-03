@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 // S9 (D-29): AI-suggested causes. The Gemini API is replaced by a fake, so tests never call Google.
 let t: TestApp;

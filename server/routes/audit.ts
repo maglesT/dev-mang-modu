@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Sql } from '../db.js';
-import { requireRole } from '../auth.js';
+import { requirePermission } from '../auth.js';
 
 export interface AuditRow {
   id: number;
@@ -17,11 +17,11 @@ export interface AuditRow {
   reason: string | null;
 }
 
-// DV-15, CP-10: QA and Admin read the audit trail; filters by object, user and time. At most the latest
+// DV-15, CP-10: holders of deviations.audit.read read the audit trail; filters by object, user and time. At most the latest
 // AUDIT_LIMIT rows are returned; the screen says so and asks for a narrower period.
 export const AUDIT_LIMIT = 1000;
 export function auditRoutes(app: FastifyInstance, sql: Sql) {
-  app.get<{ Querystring: Record<string, string> }>('/api/audit', { preHandler: requireRole('qa', 'admin') }, async (req, reply) => {
+  app.get<{ Querystring: Record<string, string> }>('/api/audit', { preHandler: requirePermission('deviations.audit.read') }, async (req, reply) => {
     const f = z
       .object({
         objectType: z.string().max(40).optional(),

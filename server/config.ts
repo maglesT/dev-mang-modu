@@ -10,6 +10,11 @@ const schema = z.object({
   COOKIE_SECURE: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default('0.0.0.0'),
+  // Sign-on through Medhanta core (D-43): written by the platform's apply.
+  OIDC_ISSUER: z.string().url(),
+  OIDC_CLIENT_ID: z.string().default('deviations'),
+  OIDC_CLIENT_SECRET: z.string().min(1),
+  OIDC_REDIRECT_URI: z.string().url(),
   // Plant-local display time zone (DV-16); storage is always UTC.
   DISPLAY_TZ: z.string().default('Asia/Kolkata'),
   // S9 (D-29): AI-suggested causes through Google Gemini. Without a key the feature is off.

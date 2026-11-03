@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, CLASS_LABEL, plantDate, STEP_CHIP, STEP_LABEL, type DeviationItem, type Me } from '../api.js';
+import { api, can, CLASS_LABEL, plantDate, STEP_CHIP, STEP_LABEL, type DeviationItem, type Me } from '../api.js';
 
 type View = 'mine' | 'open' | 'overdue' | 'all';
 const VIEWS: [View, string][] = [['mine', 'Waiting for me'], ['open', 'Open'], ['overdue', 'Overdue'], ['all', 'All']];
@@ -11,7 +11,7 @@ export function Home({ me, onReport, onOpen, onCapas }: { me: Me; onReport: () =
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<DeviationItem[]>([]);
   const [counts, setCounts] = useState<Record<View, number>>({ mine: 0, open: 0, overdue: 0, all: 0 });
-  const canReport = me.roles.includes('user') || me.roles.includes('qa');
+  const canReport = can(me, 'deviations.deviation.report');
 
   const load = async (v = view, search = q) => {
     const params = new URLSearchParams({ view: search ? 'all' : v, ...(search ? { q: search } : {}) });

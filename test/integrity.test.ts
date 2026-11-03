@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runIntegrityCheck } from '../server/integrity.js';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
@@ -8,7 +8,6 @@ const c: Record<string, string> = {};
 const ids: Record<string, number> = {};
 let dev: number;
 let capa: number;
-const sig = (u: string) => ({ username: u, password: PASSWORD });
 
 // One deviation taken through every signed step (planned, approved, corrected, re-approved, investigated, closed)
 // and one CAPA through verification, so the check sees every kind of signature.

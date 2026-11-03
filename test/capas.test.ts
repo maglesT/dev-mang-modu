@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
@@ -8,7 +8,6 @@ const ids: Record<string, number> = {};
 let areaId: number;
 let typeId: number;
 const inDays = (n: number) => new Date(Date.now() + n * 86400_000 + 5.5 * 3600_000).toISOString().slice(0, 10);
-const sig = (u: string) => ({ username: u, password: PASSWORD });
 
 beforeAll(async () => {
   t = await freshApp();
@@ -62,9 +61,11 @@ describe('CAPA register', () => {
     expect(list.map((x: { sourceRef: string }) => x.sourceRef)).toContain('Internal audit IA-2026-07, finding 3');
   });
 
-  it('DV-08: only QA raises CAPAs; owner must be an active User or QA; the due date cannot be past', async () => {
+  it('DV-08: only holders of deviations.capa.raise raise CAPAs; the owner must be active; the due date cannot be past', async () => {
     expect((await call(t.app, c.us1!, 'POST', '/api/capas', capa({ source: 'other', sourceRef: 'x' }))).statusCode).toBe(403);
-    expect((await raise(capa({ source: 'other', sourceRef: 'x', ownerId: ids.admin1 }))).statusCode).toBe(400);
+    const gone = await seedUser(t.owner, 'gone1', ['user']);
+    await t.owner`update users set active = false where id = ${gone}`;
+    expect((await raise(capa({ source: 'other', sourceRef: 'x', ownerId: gone }))).statusCode).toBe(400);
     expect((await raise(capa({ source: 'other', sourceRef: 'x', dueDate: inDays(-1) }))).statusCode).toBe(400);
   });
 

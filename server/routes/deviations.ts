@@ -2,12 +2,12 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
-import { parseId, requireRole, type SessionUser } from '../auth.js';
+import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
 import {
   PLANT_TZ, addSection, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
-  investigationContext,
+  assignable, investigationContext,
 } from '../deviations.js';
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
@@ -45,19 +45,15 @@ async function approvalContent(q: Sql | Tx, id: number) {
 }
 
 const signFail = (reply: FastifyReply, e: unknown) => {
-  if (e instanceof SignError) {
-    const status = e.code === 'wrong_credentials' ? 401 : e.code === 'not_allowed' ? 403 : 409;
-    return reply.code(status).send({ error: e.code });
-  }
+  if (e instanceof SignError) return reply.code(e.code === 'wrong_credentials' ? 401 : 409).send({ error: e.code });
   throw e;
 };
 
 export function deviationRoutes(app: FastifyInstance, sql: Sql) {
-  const reporter = { preHandler: requireRole('user', 'qa') };
-  const qa = { preHandler: requireRole('qa') };
-  const reader = { preHandler: requireRole() };
+  const reader = { preHandler: requirePermission() };
 
-  // DV-01: anyone (except an Admin-only account) reports a deviation and gets its number at once.
+  // DV-01: anyone holding deviations.deviation.report reports a deviation and gets its number at once.
+  const reporter = { preHandler: requirePermission('deviations.deviation.report') };
   app.post('/api/deviations', reporter, async (req, reply) => {
     const body = reportData.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(body.error) });
@@ -89,10 +85,11 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     const user = req.user!;
     const view = req.query.view ?? 'open';
     const q = (req.query.q ?? '').trim().slice(0, 100);
-    const isQa = user.roles.includes('qa');
     const mine = sql`(
       (d.step = 'investigation' and d.investigator_id = ${user.id})
-      or (${isQa} and d.step in ('classification', 'approval', 'closure') and not (d.step = 'classification' and d.reporter_id = ${user.id}))
+      or (${can(user, 'deviations.deviation.classify')} and d.step = 'classification' and d.reporter_id <> ${user.id})
+      or (${can(user, 'deviations.deviation.approve')} and d.step = 'approval')
+      or (${can(user, 'deviations.deviation.close')} and d.step = 'closure')
     )`;
     const filter =
       view === 'all' ? sql`true`
@@ -182,14 +179,12 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     };
   });
 
-  // People who can investigate or own a CAPA (active, role User or QA), for the pick lists.
+  // People who can investigate or own a CAPA (see assignable), for the pick lists.
   app.get('/api/people', reader, async () =>
-    sql`select u.id::int, u.full_name as "fullName", u.username from users u
-        where u.active and u.locked_at is null and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))
-        order by u.full_name`);
+    sql`select u.id::int, u.full_name as "fullName", u.username from users u where u.active order by u.full_name`);
 
   // DV-03, DV-20: QA classifies; the reporter cannot classify their own deviation (independent check).
-  app.post<{ Params: { id: string } }>('/api/deviations/:id/classify', qa, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/classify', { preHandler: requirePermission('deviations.deviation.classify') }, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = classificationData.safeParse(req.body);
     if (id === null) return reply.code(400).send({ error: 'invalid_request' });
@@ -201,8 +196,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
       if (d.step !== 'classification') return { status: 409, error: 'wrong_step' };
       if (d.reporter_id === req.user!.id) return { status: 403, error: 'reporter_cannot_classify' };
       const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
-      const [inv] = await tx`select 1 from users u where u.id = ${c.investigatorId} and u.active and u.locked_at is null
-        and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))`;
+      const [inv] = await assignable(tx, c.investigatorId);
       if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
       const section = await addSection(tx, id, 'classification', c, req.user!.id);
       const target = await targetDate(tx, id, c.classification);
@@ -219,12 +213,13 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
 
   // DV-02: a planned deviation is approved (or rejected) by QA with an e-signature before it proceeds.
   for (const [path, meaning] of [['approve', 'approved'], ['reject', 'rejected']] as const) {
-    app.post<{ Params: { id: string } }>(`/api/deviations/:id/${path}`, qa, async (req, reply) => {
+    app.post<{ Params: { id: string } }>(`/api/deviations/:id/${path}`, { preHandler: requirePermission('deviations.deviation.approve') }, async (req, reply) => {
       const id = parseId(req.params.id);
       const body = (meaning === 'rejected' ? reasonSign : signBody).safeParse(req.body);
       if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
       try {
-        const signer = await authenticateSigner(sql, req.user as SessionUser, body.data, { objectType: 'deviation', objectId: id, meaning: meaning as Meaning });
+        const signer = await authenticateSigner(sql, app.proofKey, req.user as SessionUser, body.data,
+          { objectType: 'deviation', objectId: id, meaning: meaning as Meaning, needs: 'deviations.deviation.approve' });
         return await sql.begin(async (tx) => {
           const d = await lockHeader(tx, id);
           if (!d) return reply.code(404).send({ error: 'not_found' });
@@ -247,7 +242,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
   }
 
   // QA moves a target closure date, with a reason; the old date stays in the history (D-15).
-  app.post<{ Params: { id: string } }>('/api/deviations/:id/target-date', qa, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/target-date', { preHandler: requirePermission('deviations.deviation.classify') }, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = targetBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
