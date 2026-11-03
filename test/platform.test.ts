@@ -23,7 +23,7 @@ const init = () => su.begin((tx) => tx.unsafe(fixture('database.sql').replace(/^
 
 const files = readdirSync(MIGRATIONS_DIR).filter((f) => /^\d{4}_[a-z0-9_]+\.sql$/.test(f)).sort();
 // What a platform install of the live Deviations runs at once; later migrations come with later applies.
-const FIRST_INSTALL = files.filter((f) => f <= '0010');
+const FIRST_INSTALL = files.filter((f) => f < '0011');
 
 let admin: Sql;
 let su: Sql;
@@ -116,5 +116,6 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(loadConfig(env).LOGBOOK_REPORT_URL).toBe('postgres://deviations_app:pw@db:5432/logbook');
     expect(loadConfig(env).BATCHWRIGHT_REPORT_URL).toBeUndefined();
     expect(loadConfig({ ...env, DATABASE_URL: 'postgres://x:y@h/standalone' }).DATABASE_URL).toBe('postgres://x:y@h/standalone');
+    expect(loadConfig({ ...env, DATABASE_URL: '', LOGBOOK_REPORT_URL: ' ' })).toMatchObject({ DATABASE_URL: url, LOGBOOK_REPORT_URL: env.LOGBOOK_DATABASE_URL });
   });
 });

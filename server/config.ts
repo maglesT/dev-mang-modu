@@ -29,7 +29,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Logbook database LOGBOOK_DATABASE_URL. Batchwright is not on the platform yet: BATCHWRIGHT_REPORT_URL as today.
   return schema.parse({
     ...env,
-    DATABASE_URL: env.DATABASE_URL ?? env.DEVIATIONS_DATABASE_URL,
-    LOGBOOK_REPORT_URL: env.LOGBOOK_REPORT_URL || env.LOGBOOK_DATABASE_URL,
+    DATABASE_URL: env.DATABASE_URL || env.DEVIATIONS_DATABASE_URL,
+    LOGBOOK_REPORT_URL: env.LOGBOOK_REPORT_URL?.trim() || env.LOGBOOK_DATABASE_URL,
   });
 }
