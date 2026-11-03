@@ -2,33 +2,24 @@
 // database at DATABASE_URL, so the backup → restore → integrity round-trip runs on real JSONB and bytea data.
 import { buildApp } from '../server/app.js';
 import { connect } from '../server/db.js';
-import { hashPassword } from '../server/passwords.js';
 import { TOOLS } from '../test/fixtures.js';
+import { TEST_PROOF_KEY, fakeSignOn, login as signOn, seedUser, sig } from '../test/helpers.js';
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is required');
 const owner = connect(url);
-const pw = 'Seed-Password-77';
-const hash = await hashPassword(pw);
-for (const [u, role] of [['seedadmin', 'admin'], ['seedqa', 'qa'], ['seedqa2', 'qa'], ['seeduser', 'user']] as const) {
-  const [row] = await owner<{ id: number }[]>`insert into users (username, full_name, password_hash, must_change_password)
-    values (${u}, ${u.toUpperCase()}, ${hash}, false) returning id::int`;
-  await owner`insert into user_roles (user_id, role) values (${row!.id}, ${role})`;
-}
+// People as core knows them, through the test stand-in for core's sign-on (D-43).
+for (const [u, role] of [['seedadmin', 'admin'], ['seedqa', 'qa'], ['seedqa2', 'qa'], ['seeduser', 'user']] as const) await seedUser(owner, u, [role]);
 await owner.end();
 
 const sql = connect(url, { role: 'deviations_app' });
-const app = await buildApp({ sql, webRoot: '/nonexistent', cookieSecure: false });
-const login = async (u: string) => {
-  const res = await app.inject({ method: 'POST', url: '/api/login', payload: { username: u, password: pw } });
-  return `sid=${res.cookies.find((c) => c.name === 'sid')!.value}`;
-};
+const app = await buildApp({ sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', cookieSecure: false });
+const login = async (u: string) => (await signOn(app, u)).cookie;
 const call = async (cookie: string, method: 'GET' | 'POST', path: string, payload?: object) => {
   const res = await app.inject({ method, url: path, headers: { cookie }, ...(method === 'POST' ? { payload: payload ?? {} } : {}) });
   if (res.statusCode >= 300) throw new Error(`${path}: ${res.statusCode} ${res.body}`);
   return res.json();
 };
-const sig = (u: string) => ({ username: u, password: pw });
 const [admin, qa, qa2, user] = [await login('seedadmin'), await login('seedqa'), await login('seedqa2'), await login('seeduser')];
 const areaId = (await call(admin, 'POST', '/api/areas', { name: 'Seed area' })).id;
 const typeId = (await call(admin, 'POST', '/api/deviation-types', { name: 'Seed type' })).id;

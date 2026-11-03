@@ -5,7 +5,10 @@ Deviation management and CAPA register for one pharmaceutical plant that exports
 
 **Moving onto the Medhanta platform** (D-42, `docs/08-platform-move-plan.md`): `main` is being rewired for the
 platform. The live installations run branch `standalone`, which keeps the old app role name `dev_app`; install and
-fix the live site from that branch until the joint go-live.
+fix the live site from that branch until the joint go-live. Since D-43 `main` signs people on and re-authenticates
+signatures through Medhanta core (OIDC: `OIDC_ISSUER`, `OIDC_CLIENT_ID` default `deviations`, `OIDC_CLIENT_SECRET`,
+`OIDC_REDIRECT_URI`, written by the platform's apply); permissions are ticked in core's people screen. The install
+steps below (including `create-admin`) apply to branch `standalone` only.
 
 **What it does:** anyone reports a deviation; QA classifies it (minor / major / critical, an
 independent check of product and batch); the investigator finds the root cause, checks other

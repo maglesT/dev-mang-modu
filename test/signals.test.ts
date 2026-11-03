@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 // S8 (D-27): rule-based hints on a deviation. Each test uses its own area, so tests do not see each other's data.
@@ -36,7 +36,7 @@ const classify = (id: number, type = typeId) =>
 const investigate = (id: number, over: object = {}) =>
   call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, {
     data: { ...TOOLS, rootCause: 'Feeder speed not reset after maintenance.', otherBatches: [], noOtherReason: 'Single batch on the press.', conclusion: 'Only this batch.', ...over },
-    signature: { username: 'us2', password: PASSWORD },
+    signature: sig('us2'),
   });
 const signals = async (id: number) => {
   const r = await call(t.app, c.us1!, 'GET', `/api/deviations/${id}/signals`);

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { PROOF_SECONDS } from '../server/signatures.js';
+import { call, directory, proofFor, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 let t: TestApp;
 const c: Record<string, string> = {};
@@ -84,7 +85,7 @@ describe('report', () => {
     expect(Math.abs(new Date(d.reportedAt).getTime() - Date.now())).toBeLessThan(60_000);
   });
 
-  it('DV-18: an Admin-only account cannot report a deviation', async () => {
+  it('DV-18 PL-01: reporting needs deviations.deviation.report; the old Admin codes (audit, settings) do not give it', async () => {
     expect((await call(t.app, c.admin1!, 'POST', '/api/deviations', report())).statusCode).toBe(403);
   });
 });
@@ -142,9 +143,9 @@ describe('planned deviations', () => {
     await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ classification: 'minor' }));
     let d = await get(id);
     expect(d.step).toBe('approval');
-    const bad = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/approve`, { username: 'qa1', password: 'wrong', contentHash: d.approvalHash });
+    const bad = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/approve`, { proof: 'not-a-proof', contentHash: d.approvalHash });
     expect(bad.statusCode).toBe(401);
-    const ok = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/approve`, { username: 'qa1', password: PASSWORD, contentHash: d.approvalHash });
+    const ok = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/approve`, { ...sig('qa1'), contentHash: d.approvalHash });
     expect(ok.statusCode, ok.body).toBe(200);
     d = await get(id);
     expect(d.step).toBe('investigation');
@@ -155,8 +156,8 @@ describe('planned deviations', () => {
     const { id } = await planned();
     await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ classification: 'minor' }));
     const d = await get(id);
-    expect((await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/approve`, { username: 'us2', password: PASSWORD, contentHash: d.approvalHash })).statusCode).toBe(403);
-    const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/reject`, { username: 'qa2', password: PASSWORD, contentHash: d.approvalHash, reason: 'Use the spare sieve instead.' });
+    expect((await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/approve`, { ...sig('us2'), contentHash: d.approvalHash })).statusCode).toBe(403);
+    const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/reject`, { ...sig('qa2'), contentHash: d.approvalHash, reason: 'Use the spare sieve instead.' });
     expect(res.statusCode).toBe(200);
     expect((await get(id)).step).toBe('rejected');
   });
@@ -164,20 +165,24 @@ describe('planned deviations', () => {
   it('DV-16: a signature is refused when the content changed since it was shown', async () => {
     const { id } = await planned();
     await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ classification: 'minor' }));
-    const res = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/approve`, { username: 'qa1', password: PASSWORD, contentHash: 'a'.repeat(64) });
+    const res = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/approve`, { ...sig('qa1'), contentHash: 'a'.repeat(64) });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe('content_changed');
   });
 
-  it('DV-18: failed signing attempts count towards lockout', async () => {
-    const lock = await seedUser(t.owner, 'qa9', ['qa']);
-    const cookie = (await login(t.app, 'qa9')).cookie;
+  it('DV-18 PL-05: an approval signature needs deviations.deviation.approve at core; a refused one is audited', async () => {
     const { id } = await planned();
     await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ classification: 'minor' }));
     const hash = (await get(id)).approvalHash;
-    for (let i = 0; i < 5; i++) await call(t.app, cookie, 'POST', `/api/deviations/${id}/approve`, { username: 'qa9', password: 'nope', contentHash: hash });
-    const [u] = await t.owner`select locked_at from users where id = ${lock}`;
-    expect(u!.locked_at).not.toBeNull();
+    // Revoked at core since sign-on: the session still holds the code, the fresh proof does not.
+    const p = directory.get('qa2')!;
+    const before = p.permissions;
+    p.permissions = before.filter((x) => x !== 'deviations.deviation.approve');
+    const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/approve`, { ...sig('qa2'), contentHash: hash });
+    p.permissions = before;
+    expect(res.statusCode).toBe(401);
+    const [row] = await t.owner`select reason from audit_log where action = 'signature.failed' and object_id = ${String(id)}`;
+    expect(row!.reason).toContain('no deviations.deviation.approve at core');
   });
 });
 
@@ -253,7 +258,7 @@ describe('review fixes (S2)', () => {
     const p = await reportAs('qa1', { planned: true, plannedReason: 'Trial' });
     await call(t.app, c.qa2!, 'POST', `/api/deviations/${p.id}/classify`, classify({ classification: 'minor' }));
     const hash = (await get(p.id)).approvalHash;
-    const res = await call(t.app, c.qa1!, 'POST', `/api/deviations/${p.id}/approve`, { username: 'qa1', password: PASSWORD, contentHash: hash });
+    const res = await call(t.app, c.qa1!, 'POST', `/api/deviations/${p.id}/approve`, { ...sig('qa1'), contentHash: hash });
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toBe('reporter_cannot_approve');
   });
@@ -273,12 +278,78 @@ describe('review fixes (S2)', () => {
     expect((await call(t.app, c.admin1!, 'POST', '/api/areas', { name: 'COATING' })).statusCode).toBe(409);
   });
 
-  it('a locked account cannot be chosen as investigator', async () => {
+  it('an inactive person in the id map cannot be chosen as investigator', async () => {
     const locked = await seedUser(t.owner, 'lockedinv', ['user']);
-    await t.owner`update users set locked_at = now() where id = ${locked}`;
+    await t.owner`update users set active = false where id = ${locked}`;
     const people = (await call(t.app, c.qa1!, 'GET', '/api/people')).json() as { id: number }[];
     expect(people.map((p) => p.id)).not.toContain(locked);
     const { id } = await reportAs('us1');
     expect((await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ investigatorId: locked }))).statusCode).toBe(400);
+  });
+});
+
+describe('e-signatures through core re-authentication (DV-16, DV-17, PL-05)', () => {
+  const awaitingApproval = async () => {
+    const { id } = await reportAs('us1', { planned: true, plannedReason: 'Alternate sieve size while the 1.0 mm sieve is repaired.' });
+    await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify({ classification: 'minor' }));
+    return { id, hash: (await get(id)).approvalHash as string };
+  };
+  const approve = (id: number, hash: string, proof: string) =>
+    call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/approve`, { proof, contentHash: hash });
+  const failures = (id: number) => t.owner`select reason from audit_log where action = 'signature.failed' and object_id = ${String(id)}`;
+
+  it('PL-05 a signature needs a fresh password at core and is the signed-in person; a bad proof is audited and signs nothing', async () => {
+    const cases: [string, string][] = [
+      ['invalid proof', 'not-a-proof'],
+      ['proof expired', proofFor('qa2', Date.now() - (PROOF_SECONDS + 5) * 1000)],
+      ['signed by another person', proofFor('qa1')],
+      ['proof for another meaning', proofFor('qa2', undefined, ['closed'])],
+    ];
+    for (const [why, proof] of cases) {
+      const { id, hash } = await awaitingApproval();
+      expect((await approve(id, hash, proof)).statusCode, why).toBe(401);
+      expect((await failures(id))[0]!.reason).toContain(why);
+      expect((await get(id)).step).toBe('approval');
+    }
+  });
+
+  it('PL-05 a signing proof is spent by the save that used it; content that changed does not spend it', async () => {
+    const first = await awaitingApproval();
+    const proof = proofFor('qa2');
+    expect((await approve(first.id, 'a'.repeat(64), proof)).statusCode).toBe(409);
+    expect((await approve(first.id, first.hash, proof)).statusCode).toBe(200);
+    const again = await awaitingApproval();
+    expect((await approve(again.id, again.hash, proof)).statusCode).toBe(401);
+    expect((await failures(again.id))[0]!.reason).toContain('proof already used');
+  });
+
+  it('PL-05 /sign asks core for the signed-in person\'s password again and hands the sign window a signing proof', async () => {
+    const start = await call(t.app, c.qa2!, 'GET', '/sign?meanings=approved');
+    expect(start.statusCode).toBe(302);
+    const pending = start.cookies.find((x) => x.name === 'signon');
+    const page = await t.app.inject({ method: 'GET', url: String(start.headers.location), headers: { cookie: `signon=${pending!.value}` } });
+    expect(page.headers['cache-control']).toBe('no-store');
+    const proof = /"signProof":"([^"]+)"/.exec(page.body)?.[1];
+    const { id, hash } = await awaitingApproval();
+    expect((await approve(id, hash, proof!)).statusCode).toBe(200);
+    expect((await call(t.app, c.qa2!, 'GET', '/sign?meanings=reviewed')).statusCode).toBe(400);
+    expect((await t.app.inject({ method: 'GET', url: '/sign?meanings=approved' })).statusCode).toBe(401);
+  });
+
+  it('PL-05 a signature is refused when core did not ask for the password again after it started (auth_time)', async () => {
+    const start = await call(t.app, c.qa2!, 'GET', '/sign?meanings=approved');
+    const [state, verifier] = start.cookies.find((x) => x.name === 'signon')!.value.split('.');
+    const late = `${state}.${verifier}.sign.${Date.now() + 60_000}.approved`;
+    const page = await t.app.inject({ method: 'GET', url: String(start.headers.location), headers: { cookie: `signon=${late}` } });
+    expect(page.body).toContain('not asked for again');
+    expect(page.body).not.toContain('signProof');
+  });
+
+  it('PL-01 (D-43) the old Admin block is gone: a person holding deviations.deviation.approve signs, whatever else they hold', async () => {
+    await seedUser(t.owner, 'adminqa', ['admin', 'qa']);
+    const cookie = (await login(t.app, 'adminqa')).cookie;
+    const { id, hash } = await awaitingApproval();
+    const res = await call(t.app, cookie, 'POST', `/api/deviations/${id}/approve`, { proof: proofFor('adminqa'), contentHash: hash });
+    expect(res.statusCode, res.body).toBe(200);
   });
 });

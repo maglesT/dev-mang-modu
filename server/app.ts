@@ -1,13 +1,14 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import type { Sql } from './db.js';
+import type { SignOn } from './signon.js';
 import { BACKGROUND_HEADER, SESSION_COOKIE, loadSession } from './auth.js';
 import { authRoutes } from './routes/auth.js';
-import { userRoutes } from './routes/users.js';
 import { alertRoutes } from './routes/alerts.js';
 import { auditRoutes } from './routes/audit.js';
 import { listRoutes } from './routes/lists.js';
@@ -28,6 +29,10 @@ export interface AppOptions {
   sql: Sql;
   logger?: boolean;
   webRoot?: string;
+  // Sign-on through Medhanta core (D-43); tests pass a stand-in.
+  signOn: SignOn;
+  // Key for the short signing proofs made after core re-authenticated a signer (D-43, PL-05).
+  proofKey?: Buffer;
   // Secure flag on the session cookie; off only for plain-HTTP development.
   cookieSecure?: boolean;
   // S9: Gemini settings; the AI suggestions are off without them.
@@ -36,9 +41,10 @@ export interface AppOptions {
   sources?: Sources;
 }
 
-export async function buildApp({ sql, logger = false, webRoot, cookieSecure = true, ai, sources = {} }: AppOptions): Promise<FastifyInstance> {
+export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger = false, webRoot, cookieSecure = true, ai, sources = {} }: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger, trustProxy: true });
   app.decorate('cookieSecure', cookieSecure);
+  app.decorate('proofKey', proofKey);
   await app.register(fastifyCookie);
 
   app.addHook('onRequest', async (req, reply) => {
@@ -48,7 +54,8 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
       return reply.code(415).send({ error: 'json_required' });
     }
     const sid = req.cookies[SESSION_COOKIE];
-    if (sid) req.user = (await loadSession(sql, sid, !req.headers[BACKGROUND_HEADER])) ?? undefined;
+    // Logout works from the cookie itself, so an ended session still ends core's session too (shared terminals).
+    if (sid && req.url !== '/api/logout') req.user = (await loadSession(sql, signOn, sid, !req.headers[BACKGROUND_HEADER])) ?? undefined;
   });
 
   app.get('/api/health', async (_req, reply) => {
@@ -60,8 +67,7 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
     }
   });
 
-  authRoutes(app, sql);
-  userRoutes(app, sql);
+  authRoutes(app, sql, signOn);
   alertRoutes(app, sql);
   auditRoutes(app, sql);
   listRoutes(app, sql);
@@ -89,5 +95,6 @@ export async function buildApp({ sql, logger = false, webRoot, cookieSecure = tr
 declare module 'fastify' {
   interface FastifyInstance {
     cookieSecure: boolean;
+    proofKey: Buffer;
   }
 }

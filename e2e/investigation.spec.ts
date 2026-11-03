@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { PASSWORD, apiAs, logIn, post } from './helpers.js';
+import { apiAs, logIn, post, sign } from './helpers.js';
 
 // A deviation reported by us1 and classified by qa1 with us2 as investigator, set up through the API.
 async function inInvestigation(batch: string) {
@@ -49,13 +49,6 @@ async function fillTools(page: Page) {
   await page.getByLabel('FMEA: risk to the patient').fill('Soft tablets could break.');
 }
 
-async function sign(page: Page, username: string) {
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('User ID').fill(username);
-  await dialog.getByLabel('Password').fill(PASSWORD);
-  await dialog.getByRole('button', { name: 'Sign' }).click();
-}
-
 test('DV-04 to DV-07: the investigator writes the root cause, checks other batches and signs', async ({ page }) => {
   const number = await inInvestigation(`WT-${Date.now().toString(36)}`);
   await logIn(page, 'us2');
@@ -72,7 +65,7 @@ test('DV-04 to DV-07: the investigator writes the root cause, checks other batch
   await page.getByLabel('Other batch 1').fill('PCM-OLD-1');
   await page.getByLabel('Conclusion *').fill('Only this batch affected; tablets since last good IPC rejected.');
   await page.getByRole('button', { name: 'Sign investigation complete' }).click();
-  await sign(page, 'us2');
+  await sign(page);
   await expect(page.locator('.statusbar')).toContainText('Awaiting closure');
   await expect(page.locator('.signature')).toContainText('Investigation complete · US2');
   await expect(page.getByText('PCM-OLD-1: not affected')).toBeVisible();

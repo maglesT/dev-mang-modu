@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
-  api, ApiError, CAPA_STEP_CHIP, CAPA_STEP_LABEL, MEANING_LABEL, plantDate, plantTime, SOURCE_LABEL,
+  api, ApiError, can, CAPA_STEP_CHIP, CAPA_STEP_LABEL, MEANING_LABEL, plantDate, plantTime, SOURCE_LABEL,
   type Capa, type CapaItem, type Me,
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
@@ -49,7 +49,7 @@ export function CapaList({ me, onOpen }: { me: Me; onOpen: (id: number) => void 
     <>
       <div className="home-head">
         <h1>CAPAs</h1>
-        {me.roles.includes('qa') && <button className="primary big" onClick={() => setRaising(true)}>New CAPA (audit, complaint, other)</button>}
+        {can(me, 'deviations.capa.raise') && <button className="primary big" onClick={() => setRaising(true)}>New CAPA (audit, complaint, other)</button>}
       </div>
       {raising && <RaiseForm onCancel={() => setRaising(false)} onDone={(id) => { setRaising(false); onOpen(id); }} />}
       <div className="row filters">
@@ -147,7 +147,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
   }, [id]);
   if (!c) return <p>Loading…</p>;
   const data = c.versions[c.versions.length - 1]!.data as Record<string, unknown>;
-  const isQa = me.roles.includes('qa');
+  const verifier = can(me, 'deviations.capa.verify');
   const effectiveness = data.effectiveness as { mode: string; checkDue?: string; how?: string; reason?: string } | undefined;
   const result = data.checkResult as { effective: boolean; note: string } | undefined;
 
@@ -185,7 +185,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         {c.signatures.map((s) => <p key={s.id} className="signature">✔ {MEANING_LABEL[s.meaning] ?? s.meaning} · {s.printedName} · {plantTime(s.signedAt)}</p>)}
       </section>
 
-      {c.step === 'open' && (c.ownerId === me.id || isQa) && (
+      {c.step === 'open' && ((c.ownerId === me.id && can(me, 'deviations.capa.complete')) || can(me, 'deviations.qa.oversee')) && (
         <form className="card form" onSubmit={done}>
           <h2>Mark as done</h2>
           <label>What was done (with record references)<textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></label>
@@ -193,7 +193,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         </form>
       )}
 
-      {c.step === 'done' && isQa && (
+      {c.step === 'done' && verifier && (
         <form className="card form" onSubmit={(e) => { e.preventDefault(); setSigning('verify'); }}>
           <h2>Verify and decide on effectiveness</h2>
           <label className="check"><input type="radio" checked={eff.mode === 'check'} onChange={() => setEff({ ...eff, mode: 'check' })} /> Dedicated effectiveness check</label>
@@ -209,7 +209,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         </form>
       )}
 
-      {c.step === 'check' && isQa && (
+      {c.step === 'check' && verifier && (
         <form className="card form" onSubmit={(e) => { e.preventDefault(); setSigning('check'); }}>
           <h2>Effectiveness check result</h2>
           <fieldset className="choice">
@@ -221,7 +221,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         </form>
       )}
 
-      {c.step === 'closed' && result && !result.effective && isQa && (
+      {c.step === 'closed' && result && !result.effective && can(me, 'deviations.capa.raise') && (
         followUp
           ? <RaiseForm deviationId={c.deviationId ?? undefined} initial={{ source: c.source, sourceRef: c.sourceRef || c.number, description: `Follow-up of ${c.number}: ` }}
               onCancel={() => setFollowUp(false)} onDone={(newId) => { setFollowUp(false); onOpenCapa(newId); }} />

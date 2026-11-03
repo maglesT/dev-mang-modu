@@ -3,10 +3,10 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
-import { parseId, requireRole, type SessionUser } from '../auth.js';
+import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, applyContext, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
+  addSection, applyContext, assignable, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -53,13 +53,19 @@ const lockHeader = async (tx: Tx, id: number) =>
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
 const signFail = (reply: FastifyReply, e: unknown) => {
-  if (e instanceof SignError) return reply.code(e.code === 'wrong_credentials' ? 401 : e.code === 'not_allowed' ? 403 : 409).send({ error: e.code });
+  if (e instanceof SignError) return reply.code(e.code === 'wrong_credentials' ? 401 : 409).send({ error: e.code });
   throw e;
 };
 const otherRows = (d: InvestigationData) => d.otherBatches.map((b) => ({ product: b.product, batch: b.batch, outcome: b.outcome, role: 'other' as const }));
 
 export function investigationRoutes(app: FastifyInstance, sql: Sql) {
-  const actor = { preHandler: requireRole('user', 'qa') };
+  const actor = { preHandler: requirePermission('deviations.investigation.write') };
+  const closer = { preHandler: requirePermission('deviations.deviation.close') };
+  // The investigator, or whoever holds deviations.qa.oversee, acts on an investigation.
+  const investigates = (user: SessionUser, d: Header) => d.investigator_id === user.id || can(user, 'deviations.qa.oversee');
+  const signer = (user: SessionUser, proof: { proof: string }, id: number, meaning: 'investigation_complete' | 'closed' | 'reopened') =>
+    authenticateSigner(sql, app.proofKey, user, proof, { objectType: 'deviation', objectId: id, meaning,
+      needs: meaning === 'investigation_complete' ? 'deviations.investigation.write' : 'deviations.deviation.close' });
 
   // DV-04 to DV-07: the investigator (or QA) writes and signs the investigation in one step.
   app.post<{ Params: { id: string } }>('/api/deviations/:id/investigate', actor, async (req, reply) => {
@@ -70,12 +76,12 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(data.error) });
     const user = req.user as SessionUser;
     try {
-      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'deviation', objectId: id, meaning: 'investigation_complete' });
+      const signed = await signer(user, body.data.signature, id, 'investigation_complete');
       return await sql.begin(async (tx) => {
         const d = await lockHeader(tx, id);
         if (!d) return reply.code(404).send({ error: 'not_found' });
         if (d.step !== 'investigation') return reply.code(409).send({ error: 'wrong_step' });
-        if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
+        if (!investigates(user, d)) return reply.code(403).send({ error: 'not_investigator' });
         if (await latestId(tx, id, 'investigation')) return reply.code(409).send({ error: 'already_investigated' });
         // D-33: the KT checklist for lab / OOS types and the fault tree for critical deviations.
         const ctx = applyContext(data.data, await investigationContext(tx, id));
@@ -85,7 +91,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         await writeBatches(tx, id, section.id, otherRows(content));
         // The signer submitted this content in the same request, so the hash shown is the hash of what was sent.
         const shown = contentHash('section', section.id, content);
-        await sign(tx, { signer, shownHash: shown, objectType: 'section', objectId: section.id, meaning: 'investigation_complete', content });
+        await sign(tx, { signer: signed, shownHash: shown, objectType: 'section', objectId: section.id, meaning: 'investigation_complete', content });
         await tx`update deviations set step = 'closure' where id = ${id}`;
         await audit(tx, { actorId: user.id, action: 'deviation.investigated', objectType: 'section', objectId: section.id, new: content });
         return { step: 'closure' };
@@ -119,7 +125,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
       const d = await lockHeader(tx, id);
       if (!d) return reply.code(404).send({ error: 'not_found' });
       if (d.step !== 'investigation' || (await latestId(tx, id, 'investigation'))) return reply.code(409).send({ error: 'wrong_step' });
-      if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
+      if (!investigates(user, d)) return reply.code(403).send({ error: 'not_investigator' });
       const prev = await latestId(tx, id, 'investigation_draft');
       const section = await addSection(tx, id, 'investigation_draft', body.data.data, user.id, prev ? 'Draft saved' : null);
       await audit(tx, { actorId: user.id, action: 'investigation.draft_saved', objectType: 'section', objectId: section.id });
@@ -134,18 +140,18 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
     const user = req.user as SessionUser;
     try {
-      const signer = await authenticateSigner(sql, user, body.data, { objectType: 'deviation', objectId: id, meaning: 'investigation_complete' });
+      const signed = await signer(user, body.data, id, 'investigation_complete');
       return await sql.begin(async (tx) => {
         const d = await lockHeader(tx, id);
         if (!d) return reply.code(404).send({ error: 'not_found' });
         if (d.step !== 'investigation') return reply.code(409).send({ error: 'wrong_step' });
-        if (d.investigator_id !== user.id && !user.roles.includes('qa')) return reply.code(403).send({ error: 'not_investigator' });
+        if (!investigates(user, d)) return reply.code(403).send({ error: 'not_investigator' });
         const [s] = await tx<{ id: number; data: unknown }[]>`select id::int, data from latest_sections where deviation_id = ${id} and kind = 'investigation'`;
         if (!s) return reply.code(409).send({ error: 'wrong_step' });
         // The classification or type may have changed since the correction (D-33).
         const missingNow = contextProblems(s.data as InvestigationData, await investigationContext(tx, id));
         if (missingNow.length) return reply.code(409).send({ error: 'tools_missing', problems: [...missingNow, 'Correct the investigation to add them, then sign.'] });
-        await sign(tx, { signer, shownHash: body.data.contentHash, objectType: 'section', objectId: s.id, meaning: 'investigation_complete', content: s.data });
+        await sign(tx, { signer: signed, shownHash: body.data.contentHash, objectType: 'section', objectId: s.id, meaning: 'investigation_complete', content: s.data });
         const step = await recomputeStep(tx, d);
         await tx`update deviations set step = ${step} where id = ${id}`;
         return { step };
@@ -155,8 +161,10 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     }
   });
 
-  // DV-14: a correction is a new version with a reason; the audit trail records who and when.
-  app.post<{ Params: { id: string } }>('/api/deviations/:id/correct', actor, async (req, reply) => {
+  // DV-14: a correction is a new version with a reason; the audit trail records who and when. Each kind needs the
+  // code of the action it corrects (report, classify, investigation.write); checked per kind below.
+  const corrector = { preHandler: requirePermission('deviations.deviation.report', 'deviations.deviation.classify', 'deviations.investigation.write') };
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/correct', corrector, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = correctBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: body.success ? [] : ['Give the reason for the correction.'] });
@@ -165,7 +173,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     const data = schema.safeParse(body.data.data);
     if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(data.error) });
     const user = req.user as SessionUser;
-    const isQa = user.roles.includes('qa');
+    const oversee = can(user, 'deviations.qa.oversee');
     const out = await sql.begin(async (tx) => {
       const d = await lockHeader(tx, id);
       if (!d) return { status: 404, error: 'not_found' };
@@ -174,9 +182,9 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
       const before = await tx<{ id: number; data: unknown }[]>`select id::int, data from latest_sections where deviation_id = ${id} and kind = ${kind}`;
       if (!before[0]) return { status: 409, error: 'nothing_to_correct' };
       const allowed =
-        kind === 'report' ? d.reporter_id === user.id || isQa
-        : kind === 'classification' ? isQa && d.reporter_id !== user.id
-        : d.investigator_id === user.id || isQa;
+        kind === 'report' ? (d.reporter_id === user.id && can(user, 'deviations.deviation.report')) || oversee
+        : kind === 'classification' ? can(user, 'deviations.deviation.classify') && d.reporter_id !== user.id
+        : (d.investigator_id === user.id && can(user, 'deviations.investigation.write')) || oversee;
       if (!allowed) return { status: 403, error: 'forbidden' };
       let content: unknown = data.data;
       if (kind === 'investigation') {
@@ -192,11 +200,10 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         if (!area) return { status: 400, error: 'invalid_request', problems: ['Choose an area from the list.'] };
       }
       if (kind === 'classification') {
-        // The same checks as the first classification (DV-03, D-08: Admin never investigates).
+        // The same checks as the first classification (DV-03).
         const c = data.data as ClassificationData;
         const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
-        const [inv] = await tx`select 1 from users u where u.id = ${c.investigatorId} and u.active and u.locked_at is null
-          and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))`;
+        const [inv] = await assignable(tx, c.investigatorId);
         if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
       }
       const section = await addSection(tx, id, kind, content, user.id, reason);
@@ -226,7 +233,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
 
   // DV-08, DV-10, D-14: QA closes once the investigation is signed and CAPAs are raised (owner and due date),
   // or, for a minor deviation only, "no CAPA" is recorded with a reason. Open CAPAs do not block closure.
-  app.post<{ Params: { id: string } }>('/api/deviations/:id/close', { preHandler: requireRole('qa') }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/close', closer, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = closeBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request' });
@@ -234,7 +241,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: [...new Set(data.error.issues.map((i) => i.message))] });
     const user = req.user as SessionUser;
     try {
-      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'deviation', objectId: id, meaning: 'closed' });
+      const signed = await signer(user, body.data.signature, id, 'closed');
       return await sql.begin(async (tx) => {
         const d = await lockHeader(tx, id);
         if (!d) return reply.code(404).send({ error: 'not_found' });
@@ -261,7 +268,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         }
         const content = { ...data.data, noCapaReason: n === 0 ? data.data.noCapaReason : '', weakCapaJustification: allWeak ? data.data.weakCapaJustification : '' };
         const section = await addSection(tx, id, 'closure', content, user.id, (await latestId(tx, id, 'closure')) ? 'closed again after reopening' : null);
-        await sign(tx, { signer, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'closed', content });
+        await sign(tx, { signer: signed, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'closed', content });
         await tx`update deviations set step = 'closed' where id = ${id}`;
         await audit(tx, { actorId: user.id, action: 'deviation.closed', objectType: 'section', objectId: section.id, new: { ...content, capas: n } });
         return { step: 'closed' };
@@ -272,20 +279,20 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
   });
 
   // DV-10: QA reopens a closed deviation with a reason and an e-signature, so it can be corrected; it is never edited while closed.
-  app.post<{ Params: { id: string } }>('/api/deviations/:id/reopen', { preHandler: requireRole('qa') }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/reopen', closer, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = reopenBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Give the reason for reopening.'] });
     const user = req.user as SessionUser;
     try {
-      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'deviation', objectId: id, meaning: 'reopened' });
+      const signed = await signer(user, body.data.signature, id, 'reopened');
       return await sql.begin(async (tx) => {
         const d = await lockHeader(tx, id);
         if (!d) return reply.code(404).send({ error: 'not_found' });
         if (d.step !== 'closed') return reply.code(409).send({ error: 'wrong_step' });
         const content = { reopened: true, reason: body.data.reason };
         const section = await addSection(tx, id, 'closure', content, user.id, body.data.reason);
-        await sign(tx, { signer, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'reopened', content });
+        await sign(tx, { signer: signed, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'reopened', content });
         const step = await recomputeStep(tx, { ...d, step: 'closure' });
         await tx`update deviations set step = ${step} where id = ${id}`;
         await audit(tx, { actorId: user.id, action: 'deviation.reopened', objectType: 'deviation', objectId: id, new: { step }, reason: body.data.reason });
@@ -320,7 +327,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     return reply.code(201).send({ id: out, sha256 });
   });
 
-  app.get<{ Params: { id: string } }>('/api/attachments/:id', { preHandler: requireRole() }, async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/api/attachments/:id', { preHandler: requirePermission() }, async (req, reply) => {
     const id = parseId(req.params.id);
     if (id === null) return reply.code(400).send({ error: 'invalid_request' });
     const [a] = await sql<{ filename: string; mime: string; data: Buffer }[]>`select filename, mime, data from attachments where id = ${id}`;
@@ -331,7 +338,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
       .send(a.data);
   });
 
-  // DV-14: withdrawing keeps the file; only the uploader or QA may withdraw, with a reason.
+  // DV-14: withdrawing keeps the file; only the uploader or a holder of deviations.qa.oversee may withdraw, with a reason.
   app.post<{ Params: { id: string } }>('/api/attachments/:id/withdraw', actor, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = reasonBody.safeParse(req.body);
@@ -343,7 +350,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
         from attachments a join deviations d on d.id = a.deviation_id where a.id = ${id} for update of d`;
       if (!a) return 404;
       if (a.withdrawn || a.step === 'closed' || a.step === 'rejected') return 409;
-      if (a.uploaded_by !== req.user!.id && !req.user!.roles.includes('qa')) return 403;
+      if (a.uploaded_by !== req.user!.id && !can(req.user!, 'deviations.qa.oversee')) return 403;
       await tx`insert into attachment_withdrawals (attachment_id, reason, withdrawn_by) values (${id}, ${body.data.reason}, ${req.user!.id})`;
       await audit(tx, { actorId: req.user!.id, action: 'attachment.withdrawn', objectType: 'deviation', objectId: a.deviation_id,
         new: { attachmentId: id }, reason: body.data.reason });

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
@@ -7,7 +7,6 @@ const c: Record<string, string> = {};
 const ids: Record<string, number> = {};
 let areas: Record<string, number>;
 let typeId: number;
-const sig = (u: string) => ({ username: u, password: PASSWORD });
 const thisMonth = new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 7);
 const inDays = (n: number) => new Date(Date.now() + n * 86400_000 + 5.5 * 3600_000).toISOString().slice(0, 10);
 

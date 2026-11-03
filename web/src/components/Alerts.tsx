@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError, plantTime, type Alert, type Me } from '../api.js';
+import { api, ApiError, can, plantTime, type Alert, type Me } from '../api.js';
 
-// DV-18 / P11 11.300(d): misuse alerts stay on every screen for Admin and QA until acknowledged.
+// DV-22: a failed integrity check stays on every screen for holders of deviations.audit.read until acknowledged.
+// Misuse alerts (lockouts) are core's since D-43 (PL-04).
 export function Alerts({ me }: { me: Me }) {
-  const watches = me.roles.includes('admin') || me.roles.includes('qa');
+  const watches = can(me, 'deviations.audit.read');
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const load = async (background = false) => setAlerts(await api<Alert[]>('GET', '/api/alerts', undefined, background));
   useEffect(() => {
@@ -26,7 +27,7 @@ export function Alerts({ me }: { me: Me }) {
       {alerts.map((a) => (
         <div key={a.id} className="alert" role="alert">
           <span>
-            <strong>Security alert</strong> · {plantTime(a.createdAt)} · {a.message}
+            <strong>Integrity alert</strong> · {plantTime(a.createdAt)} · {a.message}
           </span>
           <button onClick={() => ack(a.id)}>Acknowledge</button>
         </div>

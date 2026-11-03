@@ -37,7 +37,6 @@ jobs:
           psql -q postgres://dev_owner:dev@localhost:5432/postgres -c "create database dev_ci"
           export DATABASE_URL=postgres://dev_owner:dev@localhost:5432/dev_ci
           MIGRATION_DATABASE_URL=$DATABASE_URL node dist/db/migrate.js
-          MIGRATION_DATABASE_URL=$DATABASE_URL node dist/db/create-admin.js admin "CI Admin" > /dev/null
           npx tsx scripts/ci-seed.ts
           BACKUP_DIR=./backups OFFSITE_DIR=./offsite ops/backup.sh
           ADMIN_URL=postgres://dev_owner:dev@localhost:5432/postgres ops/restore-check.sh "$(ls ./offsite/*.dump | tail -1)" | tee restore.log

@@ -3,7 +3,7 @@ import { connect } from '../server/db.js';
 import { migrate } from '../db/migrate.js';
 import { buildApp } from '../server/app.js';
 import globalSetup from '../test/global-setup.js';
-import { APP_ROLE, TEST_DATABASE_URL, seedUser } from '../test/helpers.js';
+import { APP_ROLE, TEST_DATABASE_URL, TEST_PROOF_KEY, fakeSignOn, seedUser } from '../test/helpers.js';
 import { E2E_PORT, E2E_SCHEMA, USERS } from './config.js';
 
 await globalSetup();
@@ -21,5 +21,6 @@ await schemaOwner`insert into deviation_types (name) values ('Process'), ('Equip
 await schemaOwner.end();
 
 const sql = connect(TEST_DATABASE_URL, { role: APP_ROLE, searchPath: E2E_SCHEMA });
-const app = await buildApp({ sql, webRoot: new URL('../dist/web', import.meta.url).pathname, cookieSecure: false });
+// Sign-on and signing go through a stand-in for Medhanta core (D-43), which signs in whoever login_hint names.
+const app = await buildApp({ sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: new URL('../dist/web', import.meta.url).pathname, cookieSecure: false });
 await app.listen({ port: E2E_PORT, host: '127.0.0.1' });

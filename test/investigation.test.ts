@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PASSWORD, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 let t: TestApp;
@@ -32,7 +32,6 @@ const investigation = (over: Record<string, unknown> = {}) => ({
   conclusion: 'No impact on MET-10; MET-11 segregated tablets rejected.',
   ...over,
 });
-const sig = (u: string, password = PASSWORD) => ({ username: u, password });
 
 // A deviation reported by us1, classified by qa1, with us2 as investigator.
 async function inInvestigation(planned = false) {
@@ -157,9 +156,9 @@ describe('investigation', () => {
     expect((await investigate(fresh)).statusCode).toBe(409);
   });
 
-  it('DV-17: signing needs the signer\'s own user ID and password', async () => {
+  it('DV-17 PL-05: signing needs core\'s fresh proof of the signer\'s own password', async () => {
     const id = await inInvestigation();
-    const res = await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, { data: investigation(), signature: sig('us2', 'wrong') });
+    const res = await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, { data: investigation(), signature: { proof: 'not-a-proof' } });
     expect(res.statusCode).toBe(401);
     const other = await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, { data: investigation(), signature: sig('us3') });
     expect(other.statusCode).toBe(401);
@@ -271,7 +270,9 @@ describe('review fixes (S3)', () => {
 
   it('DV-03: a classification correction checks the investigator and type like the first classification', async () => {
     const id = await inInvestigation();
-    const data = { classification: 'major', typeId, impact: 'x', investigatorId: ids.admin1, productBatchChecked: true };
+    const gone = await seedUser(t.owner, 'gone1', ['user']);
+    await t.owner`update users set active = false where id = ${gone}`;
+    const data = { classification: 'major', typeId, impact: 'x', investigatorId: gone, productBatchChecked: true };
     const res = await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/correct`, { kind: 'classification', data, reason: 'swap' });
     expect(res.statusCode).toBe(400);
     expect((await get(id)).investigator).toBe('US2');

@@ -31,9 +31,11 @@ State on 2026-10-31, for the next working session.
 | Compose passes the reader connection settings | #22 | merged |
 | CAPA register view `report.capa_v1` for the QMS product (D-40) | #24 | merged |
 | Final impact assessment at closure (D-39) | #23 | merged |
+| Platform slice 1: wiring, `deviations_app`, platform-safe migrations (D-42) | #26 | merged |
+| Platform slices 2+3: sign-on and e-signature through core, permission codes (D-43) | branch `platform-signon` | open |
 
 Slice plan and rules: `docs/05-architecture-and-slices.md`, `docs/03-compliance-register.md`.
-Decisions D-01 to D-41: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
+Decisions D-01 to D-43: `docs/decisions.md`. Rule → test list: `docs/traceability.md` (23/23 rules covered).
 
 ## Deployment (server report of 31 Oct 2026)
 

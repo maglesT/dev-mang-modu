@@ -2,8 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { connect, type Sql } from '../server/db.js';
 import { migrate } from '../db/migrate.js';
 import { buildApp, type AppOptions } from '../server/app.js';
-import { hashPassword } from '../server/passwords.js';
-import type { Role } from '../server/auth.js';
+import { MEANINGS, makeProof } from '../server/signatures.js';
+import { randomUUID } from 'node:crypto';
+import { permissionsOf, type Role } from '../server/auth.js';
+import type { Identity, SignOn } from '../server/signon.js';
 
 export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://dev_owner:dev@localhost:5432/dev_test';
@@ -44,7 +46,7 @@ export interface TestApp extends TestDb {
 
 export async function freshApp(opts: Partial<AppOptions> = {}): Promise<TestApp> {
   const db = await freshDb();
-  const app = await buildApp({ sql: db.sql, webRoot: '/nonexistent', ...opts });
+  const app = await buildApp({ sql: db.sql, signOn: fakeSignOn(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', ...opts });
   return {
     ...db,
     app,
@@ -55,20 +57,48 @@ export async function freshApp(opts: Partial<AppOptions> = {}): Promise<TestApp>
   };
 }
 
-export const PASSWORD = 'Correct-Horse-9';
+// People as core knows them (D-43): login -> employee id, name, this product's codes, active.
+export const directory = new Map<string, { sub: string; name: string; permissions: string[]; active: boolean }>();
 
-// Seeds an active user with a known, already-changed password.
-export async function seedUser(owner: Sql, username: string, roles: Role[], password = PASSWORD): Promise<number> {
-  const hash = await hashPassword(password);
+// A stand-in for core's sign-on: it signs in whoever login_hint names, if active in the directory.
+export function fakeSignOn(people = directory): SignOn {
+  const who = (login: string): Identity => {
+    const p = people.get(login);
+    if (!p?.active) throw new Error('sign-on refused');
+    return { ...p, login, permissions: [...p.permissions], refreshToken: login, idToken: `id-${login}`, authTime: Math.floor(Date.now() / 1000) };
+  };
+  return {
+    authUrl: ({ state, loginHint }) => `/cb?${new URLSearchParams({ state, code: loginHint ?? '' })}`,
+    exchange: async (code) => who(code),
+    refresh: async (token) => who(token),
+    logoutUrl: (idToken) => `/?signed-out=${idToken ?? ''}`,
+  };
+}
+
+// Seeds a person as core knows them, with the codes of the old roles (D-42), and their id-map row (no local password).
+export async function seedUser(owner: Sql, username: string, roles: Role[]): Promise<number> {
+  const sub = randomUUID();
+  directory.set(username, { sub, name: username.toUpperCase(), permissions: permissionsOf(roles), active: true });
   const [u] = await owner<{ id: number }[]>`
-    insert into users (username, full_name, password_hash, must_change_password)
-    values (${username}, ${username.toUpperCase()}, ${hash}, false) returning id::int`;
-  for (const r of roles) await owner`insert into user_roles (user_id, role) values (${u!.id}, ${r})`;
+    insert into users (employee_id, username, full_name, password_hash, must_change_password)
+    values (${sub}, ${username}, ${username.toUpperCase()}, '-', false) returning id::int`;
   return u!.id;
 }
 
-export async function login(app: FastifyInstance, username: string, password = PASSWORD) {
-  const res = await app.inject({ method: 'POST', url: '/api/login', payload: { username, password } });
+// Signing proofs (PL-05): what /cb makes after core re-authenticated the person, for the stand-in's people.
+export const TEST_PROOF_KEY = Buffer.alloc(32, 7);
+export function proofFor(username: string, at?: number, meanings: string[] = [...MEANINGS]): string {
+  const p = directory.get(username);
+  return makeProof(TEST_PROOF_KEY, { sub: p?.sub ?? '00000000-0000-0000-0000-000000000000', permissions: p?.permissions ?? [] }, meanings, at);
+}
+// The signature part of a request body, as the sign dialog sends it.
+export const sig = (username: string) => ({ proof: proofFor(username) });
+
+// Signs on through the stand-in for core: /login, then /cb.
+export async function login(app: FastifyInstance, username: string) {
+  const start = await app.inject({ method: 'GET', url: `/login?login_hint=${encodeURIComponent(username)}` });
+  const pending = start.cookies.find((c) => c.name === 'signon');
+  const res = await app.inject({ method: 'GET', url: String(start.headers.location), headers: { cookie: `signon=${pending?.value ?? ''}` } });
   const cookie = res.cookies.find((c) => c.name === 'sid');
   return { res, cookie: cookie ? `sid=${cookie.value}` : '' };
 }

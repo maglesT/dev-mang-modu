@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Sql } from '../db.js';
 import { audit } from '../audit.js';
-import { parseId, requireRole } from '../auth.js';
+import { parseId, requirePermission } from '../auth.js';
 
 const nameBody = z.object({ name: z.string().trim().min(1).max(120) });
 const updateBody = z.object({ name: z.string().trim().min(1).max(120).optional(), active: z.boolean().optional(), reason: z.string().trim().min(1).max(500) });
@@ -14,11 +14,11 @@ const settingsBody = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
-// Areas and deviation types (D-12) and the settings row (D-10). Admin changes them; every change is
+// Areas and deviation types (D-12) and the settings row (D-10). Holders of deviations.settings.manage change them; every change is
 // audited (DV-15) and falls under the site's change procedure (CP-07).
 export function listRoutes(app: FastifyInstance, sql: Sql) {
-  const anyone = { preHandler: requireRole() };
-  const admin = { preHandler: requireRole('admin') };
+  const anyone = { preHandler: requirePermission() };
+  const admin = { preHandler: requirePermission('deviations.settings.manage') };
 
   // S14 (D-36): Admin marks a deviation type as lab / OOS; its investigations then need the KT checklist.
   app.patch<{ Params: { id: string } }>('/api/deviation-types/:id/lab', admin, async (req, reply) => {

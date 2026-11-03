@@ -14,7 +14,6 @@
     "start": "node dist/server/index.js",
     "migrate:prod": "node dist/db/migrate.js",
     "migrate": "tsx db/migrate.ts",
-    "create-admin": "tsx db/create-admin.ts",
     "integrity": "tsx db/integrity.ts",
     "traceability": "tsx scripts/traceability.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",

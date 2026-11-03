@@ -2,9 +2,9 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
-import { parseId, requireRole, type SessionUser } from '../auth.js';
+import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
-import { PLANT_TZ } from '../deviations.js';
+import { PLANT_TZ, assignable } from '../deviations.js';
 
 export type CapaStep = 'open' | 'done' | 'check' | 'closed';
 
@@ -61,9 +61,7 @@ async function addVersion(tx: Tx, capaId: number, action: string, data: unknown,
   return row!.id;
 }
 
-const okOwner = async (tx: Tx, ownerId: number) =>
-  (await tx`select 1 from users u where u.id = ${ownerId} and u.active and u.locked_at is null
-    and exists (select 1 from user_roles r where r.user_id = u.id and r.role in ('user', 'qa'))`).length > 0;
+const okOwner = async (tx: Tx, ownerId: number) => (await assignable(tx, ownerId)).length > 0;
 const pastDate = async (tx: Tx, d: string) =>
   (await tx<{ past: boolean }[]>`select ${d}::date < (now() at time zone ${PLANT_TZ})::date as past`)[0]!.past;
 
@@ -73,17 +71,17 @@ export const capaOverdueSql = (sql: Sql) =>
 
 const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
 const signFail = (reply: FastifyReply, e: unknown) => {
-  if (e instanceof SignError) return reply.code(e.code === 'wrong_credentials' ? 401 : e.code === 'not_allowed' ? 403 : 409).send({ error: e.code });
+  if (e instanceof SignError) return reply.code(e.code === 'wrong_credentials' ? 401 : 409).send({ error: e.code });
   throw e;
 };
 
 export function capaRoutes(app: FastifyInstance, sql: Sql) {
-  const qa = { preHandler: requireRole('qa') };
-  const actor = { preHandler: requireRole('user', 'qa') };
-  const reader = { preHandler: requireRole() };
+  const raiser = { preHandler: requirePermission('deviations.capa.raise') };
+  const verifier = { preHandler: requirePermission('deviations.capa.verify') };
+  const reader = { preHandler: requirePermission() };
 
   // DV-08: QA raises a CAPA from a deviation or directly for an audit, complaint or other source.
-  app.post('/api/capas', qa, async (req, reply) => {
+  app.post('/api/capas', raiser, async (req, reply) => {
     const body = raiseBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(body.error) });
     const { source, deviationId, sourceRef, ...fields } = body.data;
@@ -116,8 +114,8 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
   app.get<{ Querystring: Record<string, string> }>('/api/capas', reader, async (req) => {
     const f = req.query;
     const deviationId = f.deviationId ? parseId(f.deviationId) : null;
-    const isQa = req.user!.roles.includes('qa');
-    const mine = sql`((c.step = 'open' and c.owner_id = ${req.user!.id}) or (${isQa} and c.step in ('done', 'check')))`;
+    const oversee = can(req.user!, 'deviations.qa.oversee');
+    const mine = sql`((c.step = 'open' and c.owner_id = ${req.user!.id}) or (${oversee} and c.step in ('done', 'check')))`;
     return sql`
       select c.id::int, c.number, c.source, c.deviation_id::int as "deviationId", d.number as "deviationNumber", c.source_ref as "sourceRef",
         c.step, to_char(c.due_date, 'YYYY-MM-DD') as "dueDate", to_char(c.check_due, 'YYYY-MM-DD') as "checkDue",
@@ -159,8 +157,8 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
     return { ...c, versions, signatures, history };
   });
 
-  // The owner (or QA) records what was done.
-  app.post<{ Params: { id: string } }>('/api/capas/:id/done', actor, async (req, reply) => {
+  // The owner (or a holder of deviations.qa.oversee) records what was done.
+  app.post<{ Params: { id: string } }>('/api/capas/:id/done', { preHandler: requirePermission('deviations.capa.complete') }, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = doneBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Describe what was done.'] });
@@ -168,7 +166,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
       const c = await lockCapa(tx, id);
       if (!c) return 404;
       if (c.step !== 'open') return 409;
-      if (c.owner_id !== req.user!.id && !req.user!.roles.includes('qa')) return 403;
+      if (c.owner_id !== req.user!.id && !can(req.user!, 'deviations.qa.oversee')) return 403;
       const prev = await latestData(tx, id);
       await addVersion(tx, id, 'done', { ...prev.data, doneNote: body.data.note }, req.user!.id);
       await tx`update capas set step = 'done' where id = ${id}`;
@@ -181,13 +179,13 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
 
   // DV-08, DV-09: QA verifies with an e-signature and decides how effectiveness is monitored.
   // "Monitored through the trend and review" closes the CAPA at once; a dedicated check waits for its result.
-  app.post<{ Params: { id: string } }>('/api/capas/:id/verify', qa, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/capas/:id/verify', verifier, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = verifyBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: body.success ? [] : problems(body.error) });
     const user = req.user as SessionUser;
     try {
-      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'capa', objectId: id, meaning: 'verified' });
+      const signer = await authenticateSigner(sql, app.proofKey, user, body.data.signature, { objectType: 'capa', objectId: id, meaning: 'verified', needs: 'deviations.capa.verify' });
       return await sql.begin(async (tx) => {
         const c = await lockCapa(tx, id);
         if (!c) return reply.code(404).send({ error: 'not_found' });
@@ -211,13 +209,13 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
 
   // DV-09: QA records the effectiveness check and closes the CAPA with an e-signature.
   // "Not effective" closes this CAPA too; QA raises a follow-up CAPA (the screen offers it).
-  app.post<{ Params: { id: string } }>('/api/capas/:id/check', qa, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/capas/:id/check', verifier, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = checkBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: body.success ? [] : problems(body.error) });
     const user = req.user as SessionUser;
     try {
-      const signer = await authenticateSigner(sql, user, { ...body.data.signature, contentHash: '0'.repeat(64) }, { objectType: 'capa', objectId: id, meaning: 'closed' });
+      const signer = await authenticateSigner(sql, app.proofKey, user, body.data.signature, { objectType: 'capa', objectId: id, meaning: 'closed', needs: 'deviations.capa.verify' });
       return await sql.begin(async (tx) => {
         const c = await lockCapa(tx, id);
         if (!c) return reply.code(404).send({ error: 'not_found' });
@@ -237,7 +235,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
   });
 
   // DV-14: QA corrects an open CAPA (what, who, when) with a reason; the earlier version stays readable.
-  app.post<{ Params: { id: string } }>('/api/capas/:id/correct', qa, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/capas/:id/correct', raiser, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = correctBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: body.success ? [] : problems(body.error) });
@@ -260,7 +258,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
   });
 
   // QA moves a due date (or, in the check step, the check date) with a reason (D-15).
-  app.post<{ Params: { id: string } }>('/api/capas/:id/due-date', qa, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/capas/:id/due-date', raiser, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = dueBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: body.success ? [] : problems(body.error) });

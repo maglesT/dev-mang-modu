@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import type { Sql } from '../db.js';
 import { audit } from '../audit.js';
-import { parseId, requireRole } from '../auth.js';
+import { parseId, requirePermission } from '../auth.js';
 
-// DV-18 / P11 11.300(d): misuse alerts stay on screen for Admin and QA until acknowledged.
+// DV-22: a failed integrity check stays on screen for holders of deviations.audit.read until acknowledged. Misuse
+// alerts (lockouts) are core's since D-43 (PL-04).
 export function alertRoutes(app: FastifyInstance, sql: Sql) {
-  const watchers = { preHandler: requireRole('admin', 'qa') };
+  const watchers = { preHandler: requirePermission('deviations.audit.read') };
 
   app.get('/api/alerts', watchers, async () =>
     sql`select id::int, kind, message, created_at as "createdAt"

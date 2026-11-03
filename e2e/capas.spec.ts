@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { PASSWORD, apiAs, logIn, logOut, post } from './helpers.js';
+import { expect, test } from '@playwright/test';
+import { apiAs, logIn, logOut, post, proofOf, sign } from './helpers.js';
 import { TOOLS } from '../test/fixtures.js';
 
 const inDays = (n: number) => new Date(Date.now() + n * 86400_000 + 5.5 * 3600_000).toISOString().slice(0, 10);
@@ -23,17 +23,10 @@ async function awaitingClosure(batch: string) {
   const us2 = await apiAs('us2');
   await post(us2, `/api/deviations/${id}/investigate`, {
     data: { ...TOOLS, rootCause: 'Old stock not removed.', otherBatches: [], noOtherReason: 'Only this line had rev 3.', conclusion: 'Repack.' },
-    signature: { username: 'us2', password: PASSWORD },
+    signature: { proof: await proofOf(us2, 'investigation_complete') },
   });
   await us2.dispose();
   return number as string;
-}
-
-async function sign(page: Page, username: string) {
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('User ID').fill(username);
-  await dialog.getByLabel('Password', { exact: true }).fill(PASSWORD);
-  await dialog.getByRole('button', { name: 'Sign' }).click();
 }
 
 test('main flow: QA raises a CAPA, closes the deviation with the CAPA still open; the owner and QA then close the CAPA', async ({ page }) => {
@@ -62,7 +55,7 @@ test('main flow: QA raises a CAPA, closes the deviation with the CAPA still open
 
   // D-14: open CAPAs do not block closure.
   await page.getByRole('button', { name: 'Sign closed' }).click();
-  await sign(page, 'qa1');
+  await sign(page);
   await expect(page.locator('.statusbar')).toContainText('Closed');
   await expect(page.getByText('1 still open (followed in the CAPA list)')).toBeVisible();
   await expect(page.getByText('Final impact (closure)')).toBeVisible();
@@ -83,7 +76,7 @@ test('main flow: QA raises a CAPA, closes the deviation with the CAPA still open
   await page.getByLabel('Monitored through the trend and quality review (closes the CAPA now)').check();
   await page.getByLabel('Why no dedicated check is needed').fill('Low risk; recurrence seen in the yearly review.');
   await page.getByRole('button', { name: 'Sign verified' }).click();
-  await sign(page, 'qa2');
+  await sign(page);
   await expect(page.locator('.statusbar')).toContainText('Closed');
 });
 
