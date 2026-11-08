@@ -51,10 +51,10 @@ async function appRights(q: Sql, schema: string) {
   return rows.map((x) => x.r).filter((r) => !r.startsWith('schema_migrations '));
 }
 
-const columns = (q: Sql, schema: string) => q<{ name: string; type: string }[]>`
+const columns = (q: Sql, schema: string, view = 'capa_v1') => q<{ name: string; type: string }[]>`
   select a.attname as name, format_type(a.atttypid, a.atttypmod) as type
   from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
-  where n.nspname = ${schema} and c.relname = 'capa_v1' and a.attnum > 0 and not a.attisdropped order by a.attnum`;
+  where n.nspname = ${schema} and c.relname = ${view} and a.attnum > 0 and not a.attisdropped order by a.attnum`;
 
 beforeAll(async () => {
   admin = connect(TEST_DATABASE_URL.replace(/\/[^/]+$/, '/postgres'));
@@ -106,6 +106,15 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(platform).toEqual(await columns(standalone.owner, `${schema}_report`));
     // The platform's link switch can grant it: a published view in schema report, named <name>_v<n>.
     expect((await su`select 1 from pg_views where schemaname = 'report' and viewname = 'capa_v1'`).length).toBe(1);
+  });
+
+  it('DV-11 report.deviation_v1 for the Batchwright link: same name, version and columns on the platform as standalone', async () => {
+    const schema = (await standalone.owner<{ s: string }[]>`select current_schema() as s`)[0]!.s;
+    const platform = await columns(su, 'report', 'deviation_v1');
+    expect(platform.map((c) => c.name)).toEqual(['number', 'status', 'classification', 'opened_at', 'closed_at',
+      'product', 'batch', 'batch_norm', 'outcome', 'read_at', 'data_as_of']);
+    expect(platform).toEqual(await columns(standalone.owner, `${schema}_report`, 'deviation_v1'));
+    expect((await su`select 1 from pg_views where schemaname = 'report' and viewname = 'deviation_v1'`).length).toBe(1);
   });
 
   it('DV-15 on the platform the app reads its own database from DEVIATIONS_DATABASE_URL, and the Logbook from LOGBOOK_DATABASE_URL', () => {
