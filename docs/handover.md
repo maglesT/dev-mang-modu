@@ -87,7 +87,7 @@ Decisions D-01 to D-46: `docs/decisions.md`. Rule → test list: `docs/traceabil
   Squash-merge with explicit `commit_title` and `commit_message` through `gh api` (GraphQL is blocked).
 - Commit trailers: `Co-Authored-By: Claude <noreply@anthropic.com>` and the `Claude-Session:` line.
   No model name anywhere.
-- Email the owner (triplerascals03@gmail.com) in a new Gmail thread with subject starting
+- Email the owner (address held outside the repository) in a new Gmail thread with subject starting
   "Deviations:" after merges and when a decision is needed.
 - At most 2–3 agents at once.
 
