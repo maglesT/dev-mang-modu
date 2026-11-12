@@ -6,6 +6,7 @@ import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
 import {
+  fileDeviation,
   PLANT_TZ, addSection, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
   investigationContext,
@@ -59,24 +60,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     const body = reportData.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(body.error) });
     const d = body.data;
-    const result = await sql.begin(async (tx) => {
-      const [area] = await tx`select 1 from areas where id = ${d.areaId} and active`;
-      if (!area) return null;
-      // Numbers are sequential per year and never reused (the lock serialises numbering).
-      await tx`select pg_advisory_xact_lock(hashtext('deviation_number'))`;
-      const [y] = await tx<{ year: number }[]>`select extract(year from now() at time zone ${PLANT_TZ})::int as year`;
-      const year = y!.year;
-      const [s] = await tx<{ seq: number }[]>`select coalesce(max(seq), 0)::int + 1 as seq from deviations where year = ${year}`;
-      const seq = s!.seq;
-      const number = `DEV-${year}-${String(seq).padStart(4, '0')}`;
-      const [dev] = await tx<{ id: number }[]>`
-        insert into deviations (year, seq, number, planned, reporter_id) values (${year}, ${seq}, ${number}, ${d.planned}, ${req.user!.id})
-        returning id::int`;
-      const section = await addSection(tx, dev!.id, 'report', d, req.user!.id);
-      await writeBatches(tx, dev!.id, section.id, d.products.map((p) => ({ ...p, role: 'own' as const })));
-      await audit(tx, { actorId: req.user!.id, action: 'deviation.reported', objectType: 'deviation', objectId: dev!.id, new: { number, ...d } });
-      return { id: dev!.id, number };
-    });
+    const result = await sql.begin((tx) => fileDeviation(tx, d, req.user!.id));
     if (!result) return reply.code(400).send({ error: 'invalid_request', problems: ['Choose an area from the list.'] });
     return reply.code(201).send(result);
   });

@@ -5,6 +5,7 @@ import { connect } from './db.js';
 import { scheduleIntegrityCheck } from './integrity.js';
 import { oidcSignOn } from './signon.js';
 import { sqlPeople } from './people.js';
+import { scheduleAutoRaise } from './autoraise.js';
 
 const config = loadConfig();
 const sql = connect(config.DATABASE_URL, { role: config.DB_APP_ROLE });
@@ -25,10 +26,13 @@ const app = await buildApp({ sql, signOn, proofKey, logger: true, cookieSecure: 
 
 await app.listen({ port: config.PORT, host: config.HOST });
 const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));
+// D-50: missed limits the Logbook publishes are filed as deviations (only with the Logbook link).
+const stopAuto = sources.logbook ? scheduleAutoRaise(sql, sources.logbook, (msg) => app.log.info(msg)) : () => {};
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
     stopIntegrity();
+    stopAuto();
     await app.close();
     await sql.end();
     // The read-only connections to the Logbook and Batchwright too.

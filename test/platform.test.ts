@@ -112,7 +112,7 @@ describe('Deviations on a platform database (D-42)', () => {
     const schema = (await standalone.owner<{ s: string }[]>`select current_schema() as s`)[0]!.s;
     const platform = await columns(su, 'report', 'deviation_v1');
     expect(platform.map((c) => c.name)).toEqual(['number', 'status', 'classification', 'opened_at', 'closed_at',
-      'product', 'batch', 'batch_norm', 'outcome', 'read_at', 'data_as_of']);
+      'product', 'batch', 'batch_norm', 'outcome', 'read_at', 'data_as_of', 'title', 'source_ref']);   // title, source_ref: D-50
     expect(platform).toEqual(await columns(standalone.owner, `${schema}_report`, 'deviation_v1'));
     expect((await su`select 1 from pg_views where schemaname = 'report' and viewname = 'deviation_v1'`).length).toBe(1);
   });
