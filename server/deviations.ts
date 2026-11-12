@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Sql, Tx } from './db.js';
 import { contentHash } from './signatures.js';
+import { audit } from './audit.js';
 
 // Plant time zone for dates (target dates, overdue); storage stays UTC (DV-16).
 export const PLANT_TZ = 'Asia/Kolkata';
@@ -80,6 +81,30 @@ export async function addSection(tx: Tx, deviationId: number, kind: string, data
     values (${deviationId}, ${kind}, ${(prev?.version ?? 0) + 1}, ${tx.json(data as never)}, ${userId}, ${reason}, ${prev?.id ?? null})
     returning id::int, version`;
   return row!;
+}
+
+/**
+ * Files a report (DV-01): the next number of the year, the report section, its batches, the audit row. Null when the
+ * area is not an active area. sourceRef: the record of a linked system an automatic report was filed for (D-50).
+ */
+export async function fileDeviation(tx: Tx, d: ReportData, reporterId: number, sourceRef: string | null = null): Promise<{ id: number; number: string } | null> {
+  const [area] = await tx`select 1 from areas where id = ${d.areaId} and active`;
+  if (!area) return null;
+  // Numbers are sequential per year and never reused (the lock serialises numbering).
+  await tx`select pg_advisory_xact_lock(hashtext('deviation_number'))`;
+  const [y] = await tx<{ year: number }[]>`select extract(year from now() at time zone ${PLANT_TZ})::int as year`;
+  const year = y!.year;
+  const [s] = await tx<{ seq: number }[]>`select coalesce(max(seq), 0)::int + 1 as seq from deviations where year = ${year}`;
+  const seq = s!.seq;
+  const number = `DEV-${year}-${String(seq).padStart(4, '0')}`;
+  const [dev] = await tx<{ id: number }[]>`
+    insert into deviations (year, seq, number, planned, reporter_id, source_ref) values (${year}, ${seq}, ${number}, ${d.planned}, ${reporterId}, ${sourceRef})
+    returning id::int`;
+  const section = await addSection(tx, dev!.id, 'report', d, reporterId);
+  await writeBatches(tx, dev!.id, section.id, d.products.map((p) => ({ ...p, role: 'own' as const })));
+  await audit(tx, { actorId: reporterId, action: 'deviation.reported', objectType: 'deviation', objectId: dev!.id,
+    new: { number, ...d, ...(sourceRef ? { sourceRef } : {}) } });
+  return { id: dev!.id, number };
 }
 
 // Target closure date from the report date (plant time) and the classification (D-10).
