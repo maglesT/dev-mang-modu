@@ -1,4 +1,4 @@
-# Data read from the Logbook, Batchwright and TrueBatch (contracts for S15, S16, S17, D-51)
+# Data read from the Logbook, Batchwright, TrueBatch and TrueBatch Packing (contracts for S15, S16, S17, D-51, D-53)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -54,6 +54,17 @@ than `batch_fact_v1` is optional there); each fetch keeps TrueBatch's copy as it
 
 Every note of the last 30 days with no `reference` is filed once as a deviation (`deviations.source_ref` = its
 `source_ref`); TrueBatch finds the number in `report.deviation_v1` by `source_ref` or by the batch (`batch_norm`).
+
+## TrueBatch Tablets Packing (truebatch_packing), platform link `TRUEBATCH_PACKING_DATABASE_URL` (D-53)
+
+Packing publishes `report.deviation_note_v1` with the columns of TrueBatch's above; `source_ref` is
+`truebatch_packing:note:<note_id>` and `batch_number` the packing batch (e.g. TP260001). Every note of the last 30 days
+with no `reference` is filed once as a deviation (reporter `truebatch_packing.auto`, area "TrueBatch Packing
+(automatic)"); Packing finds the number in `report.deviation_v1` by `source_ref` or by the batch.
+
+Not read: `report.packing_batch_v1` (its columns are not Batchwright's `batch_fact_v1`, and filing needs only the
+note), `equipment_use_v1` and `material_use_v1`. "Fetch related data" does not read Packing; for a packing deviation
+the investigator adds the bulk batch (printed on the packs) to the report, and that batch is read in TrueBatch.
 
 ## Shared demo scenario (the same codes in all three systems; follows the hosted Batchwright demo)
 
