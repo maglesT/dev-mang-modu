@@ -159,7 +159,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql) {
   });
 
   // The owner (or a holder of deviations.qa.oversee) records what was done.
-  app.post<{ Params: { id: string } }>('/api/capas/:id/done', { preHandler: requirePermission('deviations.capa.complete') }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/capas/:id/done', { preHandler: requirePermission('deviations.capa.complete', 'deviations.qa.oversee') }, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = doneBody.safeParse(req.body);
     if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Describe what was done.'] });

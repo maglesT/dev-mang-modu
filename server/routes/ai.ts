@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Sql } from '../db.js';
 import { audit } from '../audit.js';
-import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
+import { INVESTIGATES, can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { FISHBONE } from '../deviations.js';
 import { computeSignals } from './signals.js';
 
@@ -58,7 +58,7 @@ Only use the facts given. If something important is missing, say what to find ou
 const PER_HOUR = 10;
 
 export function aiRoutes(app: FastifyInstance, sql: Sql, ai?: AiOptions) {
-  const actor = { preHandler: requirePermission('deviations.investigation.write') };
+  const actor = { preHandler: requirePermission(...INVESTIGATES) };
 
   // Lets the screen show or hide the button.
   app.get('/api/ai/status', actor, async () => ({ enabled: !!ai, model: ai?.model ?? null }));

@@ -105,7 +105,9 @@ export async function fileTrueBatchNotes(sql: Sql, src: Source): Promise<Filed> 
       where reference is null and noted_at > now() - make_interval(days => ${LOOKBACK_DAYS}) order by note_id`;
   });
   return fileAll(sql, TRUEBATCH, rows.map((r) => ({ ...r, id: r.note_id })), (r, areaId) => {
-    const step = r.step ?? 'step not named';
+    // The step as the view names it (TrueBatch gives the readable name people see on the batch record), used as given:
+    // Deviations keeps no list of TrueBatch's steps and builds no name from keys.
+    const step = (r.step ?? '').trim() || 'step not named';
     const text = (r.note ?? '').trim() || '(no text)';
     return {
       planned: false, title: `Batch ${r.batch_number}, ${step}: ${text}`.slice(0, 200),

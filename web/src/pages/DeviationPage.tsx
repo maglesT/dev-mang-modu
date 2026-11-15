@@ -174,7 +174,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       {d.step !== 'rejected' && <>
         <PhaseHead k="M" step={d.step} />
         <Signals id={d.id} onOpen={onOpenDeviation} />
-        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && holds(me, 'deviations.investigation.write')} />
+        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && (holds(me, 'deviations.investigation.write') || oversee)} />
         <Attachments d={d} me={me} open={open} onChange={load} />
         </>}
       {d.step === 'rejected' && <Attachments d={d} me={me} open={open} onChange={load} />}
@@ -384,6 +384,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
   id: number; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
 }) {
   const [types, setTypes] = useState<NamedItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [f, setF] = useState({
     classification: String(initial?.classification ?? ''), typeId: Number(initial?.typeId ?? 0), impact: String(initial?.impact ?? ''),
@@ -392,7 +393,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   useEffect(() => {
-    void api<NamedItem[]>('GET', '/api/deviation-types').then((t) => setTypes(t.filter((x) => x.active)));
+    void api<NamedItem[]>('GET', '/api/deviation-types').then((t) => { setTypes(t.filter((x) => x.active)); setLoaded(true); });
     api<Person[]>('GET', '/api/people').then(setPeople, (err: Error) => setProblems([err.message]));
   }, []);
   const submit = async (e: FormEvent) => {
@@ -419,6 +420,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
             <option value={0}>Choose…</option>
             {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
+          {loaded && !types.length && <span className="error small">No deviation types yet. An administrator adds them under Admin › Deviation types (one click adds the usual ones).</span>}
         </label>
         <label>Investigator
           <select value={f.investigatorId} onChange={(e) => setF({ ...f, investigatorId: Number(e.target.value) })}>
@@ -624,7 +626,7 @@ function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: bo
       setError('Only the person who attached the file or QA can withdraw it.');
     }
   };
-  const canAct = open && holds(me, 'deviations.investigation.write');
+  const canAct = open && (holds(me, 'deviations.investigation.write') || holds(me, 'deviations.qa.oversee'));
   return (
     <section className="card">
       <h2>Attachments</h2>

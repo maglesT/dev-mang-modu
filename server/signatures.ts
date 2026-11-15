@@ -71,22 +71,23 @@ export interface AuthenticatedSigner {
 }
 
 // DV-17, PL-05: the signing proof must be core's fresh re-authentication of the signed-in person, its token must hold
-// the code this signature needs (A10; D-43: nothing else blocks a signer, no Admin block), and it must be unused. A
-// refused proof is audited.
+// one of the codes this signature needs (A10; D-43: nothing else blocks a signer, no Admin block), and it must be unused.
+// A refused proof is audited.
 export async function authenticateSigner(
   sql: Sql,
   key: Buffer,
   user: SessionUser,
   input: { proof: string },
-  context: { objectType: string; objectId: number; meaning: Meaning; needs: Permission },
+  context: { objectType: string; objectId: number; meaning: Meaning; needs: Permission | Permission[] },
 ): Promise<AuthenticatedSigner> {
   const p = readProof(key, input.proof);
+  const needs = ([] as Permission[]).concat(context.needs);
   const ok = await sql.begin(async (tx) => {
     const [u] = await tx<{ employee_id: string | null }[]>`select employee_id::text from users where id = ${user.id}`;
     const why = !p ? 'invalid proof'
       : Date.now() - p.at > PROOF_SECONDS * 1000 || p.at > Date.now() + 5_000 ? 'proof expired'
       : !u?.employee_id || p.sub !== u.employee_id ? 'signed by another person'
-      : !p.permissions?.includes(context.needs) ? `no ${context.needs} at core`
+      : !needs.some((c) => p.permissions?.includes(c)) ? `no ${needs.join(' or ')} at core`
       : !p.meanings?.includes(context.meaning) ? 'proof for another meaning'
       : null;
     if (!why && !(await tx`select 1 from signing_proofs where nonce = ${p!.nonce}`).length) return true;

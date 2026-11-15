@@ -35,6 +35,10 @@ export const permissionsOf = (roles: readonly Role[]): Permission[] =>
   CODES.filter((c) => roles.some((r) => ROLE_PERMISSIONS[r].includes(c)));
 
 // Only this product's known codes count; anything else in the claim is ignored.
+// Acting on an investigation: the investigator's code, or QA's oversee code alone ("act on any deviation's
+// investigation", D-42); which deviation each may act on is checked per route.
+export const INVESTIGATES: Permission[] = ['deviations.investigation.write', 'deviations.qa.oversee'];
+
 export const asPermissions = (codes: readonly string[]): Permission[] => CODES.filter((c) => codes.includes(c));
 
 export const can = (user: { permissions: readonly string[] }, code: Permission) => user.permissions.includes(code);

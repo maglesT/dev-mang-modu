@@ -83,9 +83,9 @@ describe('missed limits from the Logbook (D-50)', () => {
   });
 });
 
-async function note(id: number, batch: string, text: string, reference: string | null, hoursAgo: number) {
+async function note(id: number, batch: string, text: string, reference: string | null, hoursAgo: number, step: string | null = 'compression/compress') {
   await t.owner.unsafe(`insert into ${tb}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, status, noted_at) values
-    (${id}, 'truebatch:note:${id}', '${batch}', 'MGL-SR-500', 'compression/compress', '${text}', ${reference ? `'${reference}'` : 'null'}, ${reference ? `'open'` : 'null'}, now() - interval '${hoursAgo} hours')`);
+    (${id}, 'truebatch:note:${id}', '${batch}', 'MGL-SR-500', ${step === null ? 'null' : `'${step}'`}, '${text}', ${reference ? `'${reference}'` : 'null'}, ${reference ? `'open'` : 'null'}, now() - interval '${hoursAgo} hours')`);
 }
 
 describe('deviation notes from TrueBatch (D-51)', () => {
@@ -114,6 +114,22 @@ describe('deviation notes from TrueBatch (D-51)', () => {
     expect([...v]).toEqual([{ number: d.number, batch_norm: 'mgl26001', source_ref: `${TB_PREFIX}41` }]);
     const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'truebatch.auto'`;
     expect(u!.employee_id).toBeNull();
+  });
+
+  it('DV-01: the title and text name the step as the view gives it (TrueBatch\'s readable name), with no keys added', async () => {
+    await note(45, 'TB260003', 'Impeller power end point 5.6 kW', null, 1, 'Granulation › Granulate to an end point');
+    await note(46, 'TB260003', 'Spray rate low', null, 1, '  ');
+    const r = await fileTrueBatchNotes(t.sql, tsrc());
+    expect(r.filed).toHaveLength(2);
+    const rows = await t.owner<{ ref: string; title: string; description: string; action: string }[]>`
+      select d.source_ref as ref, s.data->>'title' as title, s.data->>'description' as description, s.data->>'immediateAction' as action
+      from deviations d join latest_sections s on s.deviation_id = d.id and s.kind = 'report'
+      where d.source_ref in (${TB_PREFIX + '45'}, ${TB_PREFIX + '46'}) order by d.source_ref`;
+    expect(rows[0]!.title).toBe('Batch TB260003, Granulation › Granulate to an end point: Impeller power end point 5.6 kW');
+    expect(rows[0]!.description).toContain('step Granulation › Granulate to an end point.');
+    expect(rows[0]!.action).toContain('(step Granulation › Granulate to an end point)');
+    expect(rows.map((x) => x.title).join(' ')).not.toMatch(/granulation\/|\/granulate/);
+    expect(rows[1]!.title).toBe('Batch TB260003, step not named: Spray rate low');
   });
 
   it('DV-01: with the TrueBatch automatic area made inactive nothing is filed, and the reason is reported', async () => {
