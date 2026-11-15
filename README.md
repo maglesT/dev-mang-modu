@@ -27,7 +27,8 @@ the trend view and PDF copies support reviews and inspections.
    The app port is published on localhost only and the database port not at all.
    The compose project is named `deviations` (volume `deviations_dbdata`). An install first started under
    another project name (e.g. `ops`) keeps that name with `-p <old name>`, or its volume is not found.
-4. As Admin: set the site name and target days, add areas and deviation types, create users
+4. As Admin: set the site name and target days, add areas and deviation types ("Add the usual types" adds a
+   starting list in one click; QA cannot classify until there is at least one type), create users
    (User, QA; Admin is never combined with another role).
 5. Optional, AI help in investigations (D-29): put `GEMINI_API_KEY=...` (and, to change the model,
    `GEMINI_MODEL=...`) in `ops/.env` and restart. Deviation facts are then sent to Google

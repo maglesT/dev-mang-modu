@@ -65,6 +65,13 @@ function List({ title, path }: { title: string; path: string }) {
     await api('PATCH', `/api/deviation-types/${i.id}/lab`, { labOos: !i.labOos, reason });
     await load();
   };
+  // D-52: the usual deviation types in one click; any already on the list are left as they are.
+  const addDefaults = async () => {
+    setError('');
+    const r = await api<{ added: string[] }>('POST', '/api/deviation-types/defaults');
+    setError(r.added.length ? '' : 'The usual types are all on the list already.');
+    await load();
+  };
   const toggle = async (i: NamedItem) => {
     const reason = ask(`${i.active ? 'deactivating' : 'reactivating'} ${i.name}`);
     if (!reason) return;
@@ -77,6 +84,7 @@ function List({ title, path }: { title: string; path: string }) {
       <form className="row" onSubmit={add}>
         <input aria-label={`New ${title.toLowerCase()}`} placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
         <button type="submit">Add</button>
+        {path === 'deviation-types' && <button type="button" onClick={addDefaults}>Add the usual types</button>}
       </form>
       {error && <p className="error">{error}</p>}
       <ul className="plain">

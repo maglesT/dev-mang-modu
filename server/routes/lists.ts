@@ -14,6 +14,19 @@ const settingsBody = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
+// D-52: the usual deviation types, added by an administrator in one click (Admin > Deviation types), so a new site can
+// classify without typing a list first. Made by the app and audited like a typed one, never by a migration (the move of
+// a standalone installation needs empty tables, D-45). Each can be renamed or deactivated like any other.
+export const DEFAULT_TYPES: { name: string; labOos: boolean }[] = [
+  { name: 'Process (manufacturing)', labOos: false },
+  { name: 'Equipment and facility', labOos: false },
+  { name: 'Materials', labOos: false },
+  { name: 'Cleaning', labOos: false },
+  { name: 'Environment and utilities', labOos: false },
+  { name: 'Documentation and records', labOos: false },
+  { name: 'Laboratory / OOS', labOos: true },
+];
+
 // Areas and deviation types (D-12) and the settings row (D-10). Holders of deviations.settings.manage change them; every change is
 // audited (DV-15) and falls under the site's change procedure (CP-07).
 export function listRoutes(app: FastifyInstance, sql: Sql) {
@@ -33,6 +46,22 @@ export function listRoutes(app: FastifyInstance, sql: Sql) {
       return { id, labOos: body.data.labOos };
     });
   });
+
+  // Adds the usual types that are not on the list yet (by name, any case); an existing one is left as it is.
+  app.post('/api/deviation-types/defaults', admin, async (req) =>
+    sql.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtext('deviation_types'))`;
+      const added: string[] = [];
+      for (const t of DEFAULT_TYPES) {
+        const [exists] = await tx`select 1 from deviation_types where lower(name) = lower(${t.name})`;
+        if (exists) continue;
+        const [r] = await tx<{ id: number }[]>`insert into deviation_types (name) values (${t.name}) returning id::int`;
+        if (t.labOos) await tx`update deviation_types set lab_oos = true where id = ${r!.id}`;
+        await audit(tx, { actorId: req.user!.id, action: 'deviation_type.created', objectType: 'deviation_type', objectId: r!.id, new: { name: t.name, labOos: t.labOos, default: true } });
+        added.push(t.name);
+      }
+      return { added };
+    }));
 
   for (const [path, table, objectType] of [['areas', 'areas', 'area'], ['deviation-types', 'deviation_types', 'deviation_type']] as const) {
     app.get(`/api/${path}`, anyone, async () =>

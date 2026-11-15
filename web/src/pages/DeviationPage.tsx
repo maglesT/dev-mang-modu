@@ -384,6 +384,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
   id: number; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
 }) {
   const [types, setTypes] = useState<NamedItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [f, setF] = useState({
     classification: String(initial?.classification ?? ''), typeId: Number(initial?.typeId ?? 0), impact: String(initial?.impact ?? ''),
@@ -392,7 +393,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   useEffect(() => {
-    void api<NamedItem[]>('GET', '/api/deviation-types').then((t) => setTypes(t.filter((x) => x.active)));
+    void api<NamedItem[]>('GET', '/api/deviation-types').then((t) => { setTypes(t.filter((x) => x.active)); setLoaded(true); });
     api<Person[]>('GET', '/api/people').then(setPeople, (err: Error) => setProblems([err.message]));
   }, []);
   const submit = async (e: FormEvent) => {
@@ -419,6 +420,7 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
             <option value={0}>Choose…</option>
             {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
+          {loaded && !types.length && <span className="error small">No deviation types yet. An administrator adds them under Admin › Deviation types (one click adds the usual ones).</span>}
         </label>
         <label>Investigator
           <select value={f.investigatorId} onChange={(e) => setF({ ...f, investigatorId: Number(e.target.value) })}>

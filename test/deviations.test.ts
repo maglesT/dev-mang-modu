@@ -278,6 +278,23 @@ describe('review fixes (S2)', () => {
     expect((await call(t.app, c.admin1!, 'POST', '/api/areas', { name: 'COATING' })).statusCode).toBe(409);
   });
 
+  it('DV-03: an Admin adds the usual deviation types in one click (audited; missing ones only), so QA can classify', async () => {
+    expect((await call(t.app, c.qa1!, 'POST', '/api/deviation-types/defaults')).statusCode).toBe(403);
+    await call(t.app, c.admin1!, 'POST', '/api/deviation-types', { name: 'cleaning' });   // already there under another case
+    const first = await call(t.app, c.admin1!, 'POST', '/api/deviation-types/defaults');
+    expect(first.statusCode, first.body).toBe(200);
+    expect(first.json().added).toEqual(['Process (manufacturing)', 'Equipment and facility', 'Materials', 'Environment and utilities', 'Documentation and records', 'Laboratory / OOS']);
+    expect((await call(t.app, c.admin1!, 'POST', '/api/deviation-types/defaults')).json().added).toEqual([]);
+    const types = (await call(t.app, c.qa1!, 'GET', '/api/deviation-types')).json() as { id: number; name: string; labOos: boolean }[];
+    expect(types.filter((x) => x.labOos).map((x) => x.name)).toEqual(['Laboratory / OOS']);
+    const audited = await t.owner`select count(*)::int as n from audit_log where action = 'deviation_type.created' and (new_value->>'default')::boolean`;
+    expect(audited[0]!.n).toBe(6);
+    const id = (await call(t.app, c.us1!, 'POST', '/api/deviations', report())).json().id;
+    const res = await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, {
+      classification: 'minor', typeId: types.find((x) => x.name === 'Process (manufacturing)')!.id, impact: 'This batch only.', investigatorId: ids.us2, productBatchChecked: true });
+    expect(res.statusCode, res.body).toBe(200);
+  });
+
   it('PL-08 refuses an inactive or unknown item: a person core lists as inactive is not offered or accepted as investigator', async () => {
     const locked = await seedUser(t.owner, 'lockedinv', ['user']);
     directory.get('lockedinv')!.active = false;   // deactivated in core (PL-08)
