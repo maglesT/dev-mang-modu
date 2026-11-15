@@ -118,6 +118,16 @@ describe('CAPA register', () => {
     await call(t.app, c.us3!, 'POST', `/api/capas/${id}/done`, { note: 'Done.' });
     expect((await call(t.app, c.qa2!, 'GET', '/api/capas?mine=1')).json().map((x: { id: number }) => x.id)).toContain(id);
   });
+
+  it('DV-08: QA with deviations.qa.oversee alone records a CAPA as done for its owner; another person cannot', async () => {
+    await seedUser(t.owner, 'qaonly', ['qa']);
+    directory.get('qaonly')!.permissions = directory.get('qaonly')!.permissions.filter((p) => p !== 'deviations.capa.complete');
+    const qa = (await login(t.app, 'qaonly')).cookie;
+    const { id } = (await raise(capa({ source: 'other', sourceRef: 'Oversee example' }))).json();
+    expect((await call(t.app, c.us1!, 'POST', `/api/capas/${id}/done`, { note: 'Not mine.' })).statusCode).toBe(403);
+    const res = await call(t.app, qa, 'POST', `/api/capas/${id}/done`, { note: 'Owner on leave; done as recorded in the change log.' });
+    expect(res.statusCode, res.body).toBe(200);
+  });
 });
 
 describe('deviation closure', () => {

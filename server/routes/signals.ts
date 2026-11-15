@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Sql } from '../db.js';
-import { parseId, requirePermission } from '../auth.js';
+import { INVESTIGATES, parseId, requirePermission } from '../auth.js';
 import { FISHBONE, normaliseBatch } from '../deviations.js';
 
 // S8 (D-27): fixed, explainable rules that point the investigator at repeats and at earlier root causes.
@@ -136,8 +136,8 @@ export async function computeSignals(sql: Sql, id: number): Promise<Signals | nu
 }
 
 export function signalRoutes(app: FastifyInstance, sql: Sql) {
-  // Those who investigate (deviations.investigation.write).
-  app.get<{ Params: { id: string } }>('/api/deviations/:id/signals', { preHandler: requirePermission('deviations.investigation.write') }, async (req, reply) => {
+  // Those who investigate (deviations.investigation.write) or oversee investigations (deviations.qa.oversee).
+  app.get<{ Params: { id: string } }>('/api/deviations/:id/signals', { preHandler: requirePermission(...INVESTIGATES) }, async (req, reply) => {
     const id = parseId(req.params.id);
     if (id === null) return reply.code(400).send({ error: 'invalid_request' });
     const s = await computeSignals(sql, id);

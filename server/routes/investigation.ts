@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
 import { assignable } from '../people.js';
-import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
+import { INVESTIGATES, can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
   addSection, applyContext, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
@@ -60,13 +60,14 @@ const signFail = (reply: FastifyReply, e: unknown) => {
 const otherRows = (d: InvestigationData) => d.otherBatches.map((b) => ({ product: b.product, batch: b.batch, outcome: b.outcome, role: 'other' as const }));
 
 export function investigationRoutes(app: FastifyInstance, sql: Sql) {
-  const actor = { preHandler: requirePermission('deviations.investigation.write') };
+  // The investigator, or whoever holds deviations.qa.oversee, acts on an investigation; QA's oversee code is enough on
+  // its own (it does not also need investigation.write: e2e finding of 15 November).
+  const actor = { preHandler: requirePermission(...INVESTIGATES) };
   const closer = { preHandler: requirePermission('deviations.deviation.close') };
-  // The investigator, or whoever holds deviations.qa.oversee, acts on an investigation.
   const investigates = (user: SessionUser, d: Header) => d.investigator_id === user.id || can(user, 'deviations.qa.oversee');
   const signer = (user: SessionUser, proof: { proof: string }, id: number, meaning: 'investigation_complete' | 'closed' | 'reopened') =>
     authenticateSigner(sql, app.proofKey, user, proof, { objectType: 'deviation', objectId: id, meaning,
-      needs: meaning === 'investigation_complete' ? 'deviations.investigation.write' : 'deviations.deviation.close' });
+      needs: meaning === 'investigation_complete' ? INVESTIGATES : 'deviations.deviation.close' });
 
   // DV-04 to DV-07: the investigator (or QA) writes and signs the investigation in one step.
   app.post<{ Params: { id: string } }>('/api/deviations/:id/investigate', actor, async (req, reply) => {
@@ -164,7 +165,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
 
   // DV-14: a correction is a new version with a reason; the audit trail records who and when. Each kind needs the
   // code of the action it corrects (report, classify, investigation.write); checked per kind below.
-  const corrector = { preHandler: requirePermission('deviations.deviation.report', 'deviations.deviation.classify', 'deviations.investigation.write') };
+  const corrector = { preHandler: requirePermission('deviations.deviation.report', 'deviations.deviation.classify', ...INVESTIGATES) };
   app.post<{ Params: { id: string } }>('/api/deviations/:id/correct', corrector, async (req, reply) => {
     const id = parseId(req.params.id);
     const body = correctBody.safeParse(req.body);

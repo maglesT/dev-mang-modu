@@ -174,7 +174,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       {d.step !== 'rejected' && <>
         <PhaseHead k="M" step={d.step} />
         <Signals id={d.id} onOpen={onOpenDeviation} />
-        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && holds(me, 'deviations.investigation.write')} />
+        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && (holds(me, 'deviations.investigation.write') || oversee)} />
         <Attachments d={d} me={me} open={open} onChange={load} />
         </>}
       {d.step === 'rejected' && <Attachments d={d} me={me} open={open} onChange={load} />}
@@ -624,7 +624,7 @@ function Attachments({ d, me, open, onChange }: { d: Deviation; me: Me; open: bo
       setError('Only the person who attached the file or QA can withdraw it.');
     }
   };
-  const canAct = open && holds(me, 'deviations.investigation.write');
+  const canAct = open && (holds(me, 'deviations.investigation.write') || holds(me, 'deviations.qa.oversee'));
   return (
     <section className="card">
       <h2>Attachments</h2>

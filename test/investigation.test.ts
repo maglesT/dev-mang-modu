@@ -156,6 +156,26 @@ describe('investigation', () => {
     expect((await investigate(fresh)).statusCode).toBe(409);
   });
 
+  it('DV-19: QA acts on any investigation with deviations.qa.oversee alone, without deviations.investigation.write', async () => {
+    // As core may grant QA (end-to-end run of 15 November): oversee, but not the investigator's code.
+    await seedUser(t.owner, 'qaonly', ['qa']);
+    directory.get('qaonly')!.permissions = directory.get('qaonly')!.permissions.filter((p) => p !== 'deviations.investigation.write');
+    const qa = c.qaonly = (await login(t.app, 'qaonly')).cookie;
+    const id = await inInvestigation();
+    expect((await call(t.app, qa, 'GET', `/api/deviations/${id}/signals`)).statusCode).toBe(200);
+    expect((await call(t.app, qa, 'POST', `/api/deviations/${id}/investigation/draft`, { data: { rootCause: 'Draft by QA' } })).statusCode).toBe(200);
+    const file = { filename: 'qa.pdf', mime: 'application/pdf', dataBase64: Buffer.from('%PDF-1.4 qa').toString('base64') };
+    expect((await call(t.app, qa, 'POST', `/api/deviations/${id}/attachments`, file)).statusCode).toBe(201);
+    const signed = await investigate(id, 'qaonly');
+    expect(signed.statusCode, signed.body).toBe(200);
+    expect((await get(id)).signatures.map((s: { meaning: string; printedName: string }) => [s.meaning, s.printedName])).toEqual([['investigation_complete', 'QAONLY']]);
+    const fix = await call(t.app, qa, 'POST', `/api/deviations/${id}/correct`, { kind: 'investigation', data: investigation({ conclusion: 'Corrected by QA.' }), reason: 'Lab result' });
+    expect(fix.statusCode, fix.body).toBe(200);
+    // Not the investigator and without oversee: refused, as before.
+    const other = await inInvestigation();
+    expect((await call(t.app, c.us3!, 'POST', `/api/deviations/${other}/investigation/draft`, { data: { rootCause: 'x' } })).statusCode).toBe(403);
+  });
+
   it('DV-17 PL-05: signing needs core\'s fresh proof of the signer\'s own password', async () => {
     const id = await inInvestigation();
     const res = await call(t.app, c.us2!, 'POST', `/api/deviations/${id}/investigate`, { data: investigation(), signature: { proof: 'not-a-proof' } });
