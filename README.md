@@ -35,6 +35,8 @@ the trend view and PDF copies support reviews and inspections.
 6. Optional, data from the Logbook and Batchwright (D-37): set `LOGBOOK_REPORT_URL` (role `logbook_report`, database
    `logbook`) and `BATCHWRIGHT_REPORT_URL` (role `ebmr_report`, database `ebmr_tablets`) in `ops/.env`. Both roles are
    read-only; each system's README has its `pg_hba` line. The app container must reach both databases.
+   On the platform, apply writes `TRUEBATCH_DATABASE_URL` while the link to TrueBatch is on (D-51): its batch views are
+   read beside Batchwright's, and its deviation notes without a deviation number are filed as deviations.
 7. Optional, the QMS product reads the CAPA register (D-40): give the read-only role `capa_report` a login,
    `ALTER ROLE capa_report LOGIN PASSWORD '...'` (typed by the site), and a `pg_hba` line for the QMS host only, followed by
    `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,

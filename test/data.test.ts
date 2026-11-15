@@ -14,10 +14,27 @@ let areaId: number;
 const tag = Math.random().toString(36).slice(2, 8);
 const LB = `lbfake_${tag}`;
 const BW = `bwfake_${tag}`;
+const TB = `tbfake_${tag}`;
 const H = 3_600_000;
 const event = new Date(Date.now() - 2 * H);
 const at = (hours: number) => new Date(event.getTime() + hours * H).toISOString();
 const day = (days: number) => new Date(event.getTime() + days * 24 * H + 5.5 * H).toISOString().slice(0, 10);
+
+// D-51: TrueBatch publishes only batch_fact_v1 and equipment_use_v1 (its migration 0006: Batchwright's names and columns).
+async function trueBatch(o: TestApp['owner']) {
+  await o.unsafe(`
+    create schema ${TB};
+    create table ${TB}.batch_fact_v1 (batch_id uuid, batch_number text, product_code text, strength text, mbr_version_id uuid, family_code text, record_kind text, status text,
+      issued_at timestamptz, completed_at timestamptz, released boolean, read_at timestamptz default now(), data_as_of timestamptz default now());
+    create table ${TB}.equipment_use_v1 (batch_number text, equipment_code text, equipment_type text, room_code text, step text, started_at timestamptz, ended_at timestamptz,
+      read_at timestamptz default now(), data_as_of timestamptz default now());
+    insert into ${TB}.batch_fact_v1 (batch_id, batch_number, product_code, strength, mbr_version_id, family_code, record_kind, status, issued_at, completed_at, released) values
+      ('0b5c7d5e-2f3a-4c1b-9d8e-1a2b3c4d5e6f', 'MGL26001', 'MGL-SR-500', null, '1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f', 'master-3', 'PROCESSING', 'IN_PRODUCTION', '${at(-20)}', null, false);
+    insert into ${TB}.equipment_use_v1 (batch_number, equipment_code, equipment_type, room_code, step, started_at, ended_at) values
+      ('MGL26001', 'PRESS-01', 'EQC-PRESS', 'COMP-1', 'compression/compress', '${at(-3)}', null),
+      ('MGL26001', 'COMP-1', null, 'COMP-1', 'compression/compress', '${at(-3)}', null);
+  `);
+}
 
 async function standIns(o: TestApp['owner']) {
   await o.unsafe(`
@@ -87,6 +104,7 @@ async function standIns(o: TestApp['owner']) {
 beforeAll(async () => {
   const db = await freshDb();
   await standIns(db.owner);
+  await trueBatch(db.owner);
   // The app reads the stand-ins through the owner connection, as it reads the real views through a read-only role.
   const app = await buildApp({ sql: db.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { logbook: { sql: db.owner, schema: LB }, batchwright: { sql: db.owner, schema: BW } } });
   t = { ...db, app, close: async () => { await app.close(); await db.close(); } };
@@ -98,7 +116,7 @@ beforeAll(async () => {
   off = await freshApp();
 });
 afterAll(async () => {
-  await t.owner.unsafe(`drop schema ${LB} cascade; drop schema ${BW} cascade`);
+  await t.owner.unsafe(`drop schema ${LB} cascade; drop schema ${BW} cascade; drop schema ${TB} cascade`);
   await t.close();
   await off.close();
 });
@@ -187,6 +205,60 @@ describe('data collection (S17)', () => {
     }
   });
 
+  it('DV-23: a provider with batch_fact_v1 only (no step_use_v1, cpp_value_v1, exception_v1, alarm_v1) is still read (D-51)', async () => {
+    const MIN = `${BW}_min`;
+    await t.owner.unsafe(`create schema ${MIN}; create table ${MIN}.batch_fact_v1 as table ${BW}.batch_fact_v1`);
+    const app = await buildApp({ sql: t.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { batchwright: { sql: t.owner, schema: MIN } } });
+    try {
+      const ck = (await login(app, 'us1')).cookie;
+      const id = (await report()).json().id as number;
+      await call(app, ck, 'POST', `/api/deviations/${id}/fetch`, {});
+      const bw = ((await call(app, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; status: string; views: string[]; data: { findings: string[]; values: unknown[] } }[])
+        .find((x) => x.source === 'batchwright')!;
+      expect(bw).toMatchObject({ status: 'ok', views: ['batch_fact_v1'] });
+      expect(bw.data.values).toEqual([]);
+      expect(bw.data.findings).toEqual(['RAB26004 (RAB-GR-20): status in progress, not released.']);
+    } finally {
+      await app.close();
+      await t.owner.unsafe(`drop schema ${MIN} cascade`);
+    }
+  });
+
+  it('DV-23: TrueBatch\'s batch_fact_v1 and equipment_use_v1 are read beside Batchwright\'s, kept as their own copy, and the equipment either names is looked up in the Logbook (D-51)', async () => {
+    const app = await buildApp({ sql: t.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent',
+      sources: { logbook: { sql: t.owner, schema: LB }, batchwright: { sql: t.owner, schema: BW }, truebatch: { sql: t.owner, schema: TB } } });
+    try {
+      const ck = (await login(app, 'us1')).cookie;
+      expect((await call(app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: true, batchwright: true, truebatch: true });
+      // A TrueBatch batch: Batchwright does not know it.
+      const id = (await report({ products: [{ product: 'Metformin SR 500 mg', batch: 'MGL 26001' }] })).json().id as number;
+      await call(app, ck, 'POST', `/api/deviations/${id}/fetch`, {});
+      const f = (await call(app, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; status: string; views: string[]; params: { equipment: string[] };
+        data: { findings: string[]; batches: { batch_number: string }[]; equipmentUse: { equipment_code: string; step: string }[] } }[];
+      expect(f.map((x) => x.source).sort()).toEqual(['batchwright', 'logbook', 'truebatch']);
+      const tb = f.find((x) => x.source === 'truebatch')!;
+      expect(tb).toMatchObject({ status: 'ok', views: ['batch_fact_v1', 'equipment_use_v1'] });
+      expect(tb.data.batches.map((x) => x.batch_number)).toEqual(['MGL26001']);
+      expect(tb.data.equipmentUse.map((x) => `${x.equipment_code} ${x.step}`)).toEqual(['PRESS-01 compression/compress', 'COMP-1 compression/compress']);
+      expect(tb.data.findings).toEqual([
+        'MGL26001 (MGL-SR-500): status in production, not released.',
+        'Equipment used by the batch: PRESS-01, COMP-1 (looked up in the Logbook too).',
+      ]);
+      expect(f.find((x) => x.source === 'batchwright')!.data.findings).toContain('No batch with this number was found in Batchwright.');
+      // The Logbook is asked about the press TrueBatch says the batch used, and about the batch itself.
+      const lb = f.find((x) => x.source === 'logbook')!;
+      expect(lb.params.equipment).toEqual(expect.arrayContaining(['PRESS-01', 'COMP-1']));
+      expect(lb.status).toBe('ok');
+      // The record PDF names the TrueBatch copy.
+      const pdf = await call(app, c.qa1!, 'GET', `/api/deviations/${id}/pdf`);
+      expect(pdf.statusCode).toBe(200);
+      const [row] = await t.owner`select count(*)::int as n from data_fetches where deviation_id = ${id} and source = 'truebatch' and status = 'ok'`;
+      expect(row!.n).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('DV-23: the equipment named in the report is looked up too: PM age and a breakdown before the event', async () => {
     const id = (await report({ equipment: 'Tablet press PRESS-01' })).json().id as number;
     await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/fetch`, {});
@@ -234,7 +306,7 @@ describe('data collection (S17)', () => {
     await seedUser(off.owner, 'usr9', ['user']);
     const ad = (await login(off.app, 'adm9')).cookie;
     const ck = (await login(off.app, 'usr9')).cookie;
-    expect((await call(off.app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: false, batchwright: false });
+    expect((await call(off.app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: false, batchwright: false, truebatch: false });
     const area = (await call(off.app, ad, 'POST', '/api/areas', { name: 'X' })).json().id;
     const dev = (await call(off.app, ck, 'POST', '/api/deviations', {
       planned: false, title: 'x', description: 'x', areaId: area, eventAt: event.toISOString(), products: [], noBatch: true, immediateAction: 'x',
@@ -242,7 +314,7 @@ describe('data collection (S17)', () => {
     })).json().id;
     await call(off.app, ck, 'POST', `/api/deviations/${dev}/fetch`, {});
     const g = (await call(off.app, ck, 'GET', `/api/deviations/${dev}/fetches`)).json() as { status: string }[];
-    expect(g.map((x) => x.status)).toEqual(['not_configured', 'not_configured']);
+    expect(g.map((x) => x.status)).toEqual(['not_configured', 'not_configured', 'not_configured']);
     // A failing source is recorded with its error; the other source still gives its data.
     const bad = await buildApp({ sql: t.sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: '/nonexistent', sources: { logbook: { sql: t.owner, schema: 'no_such_schema' }, batchwright: { sql: t.owner, schema: BW } } });
     const bc = (await login(bad, 'us1')).cookie;

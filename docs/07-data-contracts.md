@@ -1,4 +1,4 @@
-# Data read from the Logbook and Batchwright (contracts for S15, S16, S17)
+# Data read from the Logbook, Batchwright and TrueBatch (contracts for S15, S16, S17, D-51)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -39,6 +39,21 @@ Each of these four also exists as a function taking batch numbers, `report.<view
 
 Not read: `report.deviation_fact_v1` and every `site.deviation*` / `site.capa*` table (owner: read the batch data
 directly, not Batchwright's deviation module).
+
+## TrueBatch Tablets (truebatch), platform link `TRUEBATCH_DATABASE_URL` (D-51)
+
+TrueBatch publishes these views in schema `report` (its migration `0006_report_views.sql`). The first two have the
+names and columns of Batchwright's views, so data collection reads them with the Batchwright reader (every view other
+than `batch_fact_v1` is optional there); each fetch keeps TrueBatch's copy as its own row (source `truebatch`).
+
+| View | Columns |
+|------|---------|
+| `report.batch_fact_v1` | `batch_id uuid`, `batch_number`, `product_code`, `strength` (null), `mbr_version_id uuid`, `family_code`, `record_kind` (PROCESSING), `status` (IN_PRODUCTION / PRODUCTION_APPROVED / QC_APPROVED / RELEASED / REJECTED), `issued_at`, `completed_at`, `released`, `read_at`, `data_as_of` |
+| `report.equipment_use_v1` | `batch_number`, `equipment_code` (a machine, or a room), `equipment_type`, `room_code`, `step` (stage/step keys), `started_at`, `ended_at`, `read_at`, `data_as_of` |
+| `report.deviation_note_v1` | `note_id bigint`, `source_ref` (`truebatch:note:<note_id>`), `batch_number`, `product_code`, `step`, `note`, `reference` (the deviation number typed with the note, or null), `status` (TrueBatch's own: open / closed; null without a number), `noted_at`, `read_at`, `data_as_of` |
+
+Every note of the last 30 days with no `reference` is filed once as a deviation (`deviations.source_ref` = its
+`source_ref`); TrueBatch finds the number in `report.deviation_v1` by `source_ref` or by the batch (`batch_norm`).
 
 ## Shared demo scenario (the same codes in all three systems; follows the hosted Batchwright demo)
 
