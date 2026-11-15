@@ -2,10 +2,16 @@ import type { Query, Source } from './logbook.js';
 
 // S17 (D-37, DV-23): reads Batchwright's read-only report views as the role ebmr_report (contract:
 // docs/07-data-contracts.md). Never Batchwright's deviation module, never a write. Text comparisons only.
+// D-51: TrueBatch publishes batch_fact_v1 and equipment_use_v1 with Batchwright's names and columns; the same reader
+// reads it (every view but batch_fact_v1 is optional).
 export const BATCHWRIGHT_VIEWS = ['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1', 'batch_reference_v1',
   'equipment_use_v1', 'ipc_result_v1', 'process_actual_v1', 'exception_detail_v1'];
-// S18 (D-38): views added by Batchwright's S16 PR. Read when present, so the reader works before and after it is deployed.
-const OPTIONAL = ['batch_reference_v1', 'equipment_use_v1', 'ipc_result_v1', 'process_actual_v1', 'exception_detail_v1'];
+// Read when present and readable, so a provider that publishes fewer views is still read: the S16 views (D-38) and,
+// since D-51, the four S17 views besides batch_fact_v1 (TrueBatch has none of them).
+const OPTIONAL = ['step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1', 'batch_reference_v1', 'equipment_use_v1', 'ipc_result_v1',
+  'process_actual_v1', 'exception_detail_v1'];
+// The S16 views Batchwright also offers as per-batch functions (report.<view>_for(text[])).
+const WITH_FUNCTION = ['equipment_use_v1', 'ipc_result_v1', 'process_actual_v1', 'exception_detail_v1'];
 
 export interface BatchwrightData {
   batches: { batch_number: string; product_code: string | null; strength: string | null; family_code: string | null; status: string; issued_at: string | null; completed_at: string | null; released: boolean }[];
@@ -43,22 +49,7 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
     const batches = await tx<BatchwrightData['batches']>`
       select batch_number, product_code, strength, family_code, status, issued_at, completed_at, released
       from ${v('batch_fact_v1')} where ${b} = any(${q.batchesNorm}) order by issued_at`;
-    const steps = await tx<BatchwrightData['steps']>`
-      select batch_number, step, step_id, nullif(equipment_code, '') as equipment_code, nullif(equipment_type, '') as equipment_type,
-        nullif(room_code, '') as room_code, started_at, ended_at, coalesce(material_lots, '[]'::jsonb) as material_lots
-      from ${v('step_use_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, started_at nulls last limit 1000`;
-    const values = await tx<BatchwrightData['values']>`
-      select batch_number, kind, item, step, attempt, reading, role, value_text, unit, lower_text, upper_text, target_text, limit_tier, failed, recorded_at
-      from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, recorded_at nulls last, step, item, reading limit 3000`;
-    const exceptions = await tx<BatchwrightData['exceptions']>`
-      select batch_number, exception_id, exception_type, category, severity, raised_at
-      from ${v('exception_v1')} where ${b} = any(${q.batchesNorm}) order by raised_at limit 500`;
-    const alarms = await tx<BatchwrightData['alarms']>`
-      select alarm_code, source, gmp_critical, subject_kind, subject_code, raised_at, acked_at, coalesce(batch_numbers, '{}') as batch_numbers
-      from ${v('alarm_v1')} a
-      where exists (select 1 from unnest(a.batch_numbers) n where ${tx.unsafe(norm('n'))} = any(${q.batchesNorm}))
-      order by raised_at limit 200`;
-    // Which of the newer views this Batchwright has (to_regclass needs no rights on the view itself).
+    // Which of the optional views this provider has (to_regclass needs no rights on the view itself).
     // A view counts only if this login may read it (a view created before its grant is skipped, not a failure).
     // CASE fixes the order: no schema rights means no lookups at all.
     const present = new Set((await tx<{ name: string }[]>`
@@ -67,13 +58,28 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
                  when to_regclass(format('%I.%I', ${src.schema}::text, n)) is null then false
                  else has_table_privilege(format('%I.%I', ${src.schema}::text, n), 'SELECT') end`).map((r) => r.name));
     const has = (name: string) => present.has(name);
+    const steps = has('step_use_v1') ? await tx<BatchwrightData['steps']>`
+      select batch_number, step, step_id, nullif(equipment_code, '') as equipment_code, nullif(equipment_type, '') as equipment_type,
+        nullif(room_code, '') as room_code, started_at, ended_at, coalesce(material_lots, '[]'::jsonb) as material_lots
+      from ${v('step_use_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, started_at nulls last limit 1000` : [];
+    const values = has('cpp_value_v1') ? await tx<BatchwrightData['values']>`
+      select batch_number, kind, item, step, attempt, reading, role, value_text, unit, lower_text, upper_text, target_text, limit_tier, failed, recorded_at
+      from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, recorded_at nulls last, step, item, reading limit 3000` : [];
+    const exceptions = has('exception_v1') ? await tx<BatchwrightData['exceptions']>`
+      select batch_number, exception_id, exception_type, category, severity, raised_at
+      from ${v('exception_v1')} where ${b} = any(${q.batchesNorm}) order by raised_at limit 500` : [];
+    const alarms = has('alarm_v1') ? await tx<BatchwrightData['alarms']>`
+      select alarm_code, source, gmp_critical, subject_kind, subject_code, raised_at, acked_at, coalesce(batch_numbers, '{}') as batch_numbers
+      from ${v('alarm_v1')} a
+      where exists (select 1 from unnest(a.batch_numbers) n where ${tx.unsafe(norm('n'))} = any(${q.batchesNorm}))
+      order by raised_at limit 200` : [];
     const references = has('batch_reference_v1') ? await tx<BatchwrightData['references']>`
       select batch_number, kind, code, version, title from ${v('batch_reference_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, kind, code limit 200` : [];
     // The four S16 views also come as functions taking batch numbers (report.<view>_for(text[])): the same columns,
     // milliseconds per batch instead of a scan of every batch. Used when this login may run them, else the view.
     const exact = batches.map((x) => x.batch_number);
     const fns = new Set((await tx<{ name: string }[]>`
-      select n as name from unnest(${OPTIONAL}::text[]) n
+      select n as name from unnest(${WITH_FUNCTION}::text[]) n
       where case when not has_schema_privilege(${src.schema}, 'USAGE') then false
                  when to_regprocedure(format('%I.%I(text[])', ${src.schema}::text, n || '_for')) is null then false
                  else has_function_privilege(format('%I.%I(text[])', ${src.schema}::text, n || '_for'), 'EXECUTE') end`).map((r) => r.name));
@@ -93,11 +99,10 @@ export async function readBatchwright(src: Source, q: Query): Promise<Batchwrigh
       'batch_number, step, tag, value_text, unit, lower_text, upper_text, within_limits, recorded_at', 'batch_number, recorded_at nulls last, step, tag', 3000);
     const exceptionDetails = await rowsOf<BatchwrightData['exceptionDetails'][number]>('exception_detail_v1',
       'batch_number, exception_id, exception_type, category, severity, step, step_title, description, status, disposition, disposed_by, disposed_at, raised_at', 'raised_at', 500);
-    const viewsRead = ['batch_fact_v1', 'step_use_v1', 'cpp_value_v1', 'exception_v1', 'alarm_v1',
-      ...OPTIONAL.filter((n) => fns.has(n) ? false : has(n)), ...OPTIONAL.filter((n) => fns.has(n)).map((n) => `${n}_for`)];
+    const viewsRead = ['batch_fact_v1', ...OPTIONAL.filter((n) => fns.has(n) ? false : has(n)), ...OPTIONAL.filter((n) => fns.has(n)).map((n) => `${n}_for`)];
     const [asOf] = await tx<{ at: string | null }[]>`select greatest(
       (select max(data_as_of) from ${v('batch_fact_v1')} where ${b} = any(${q.batchesNorm})),
-      (select max(data_as_of) from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}))) as at`;
+      ${has('cpp_value_v1') ? tx`(select max(data_as_of) from ${v('cpp_value_v1')} where ${b} = any(${q.batchesNorm}))` : tx`null::timestamptz`}) as at`;
     const [now] = await tx<{ at: string }[]>`select now() as at`;
     // Equipment the batch used: the equipment-use view where present (step_use_v1 may have none), plus the IPC instruments.
     const equipmentUsed = [...new Set([...equipmentUse.map((x) => x.equipment_code), ...steps.map((x) => x.equipment_code), ...ipc.map((x) => x.instrument_code)]
@@ -110,9 +115,10 @@ const num = (t: string | null) => (t !== null && t.trim() !== '' && Number.isFin
 const fmt = (x: number) => String(Math.round(x * 100) / 100);
 
 // Plain-words findings for the investigator (advice; the copy is the evidence).
-export function batchwrightFindings(d: BatchwrightData): string[] {
+// system: the provider's name in the findings (Batchwright, or TrueBatch read through the same views, D-51).
+export function batchwrightFindings(d: BatchwrightData, system = 'Batchwright'): string[] {
   const out: string[] = [];
-  if (!d.batches.length) out.push('No batch with this number was found in Batchwright.');
+  if (!d.batches.length) out.push(`No batch with this number was found in ${system}.`);
   for (const b of d.batches) out.push(`${b.batch_number} (${b.product_code ?? 'product ?'}): status ${b.status.toLowerCase().replace(/_/g, ' ')}${b.released ? ', released' : ', not released'}.`);
   // Values outside their limits, grouped per batch, item and step.
   const groups = new Map<string, BatchwrightData['values']>();
@@ -173,7 +179,7 @@ export function batchwrightFindings(d: BatchwrightData): string[] {
       parts.push(`${outside.length} of ${singles.length} reading(s) outside ${lims}: ${outside.map((x) => x.value_text).join(', ')} ${unit}`.trim());
     }
     parts.push(...aggNotes.map((x) => x.text));
-    out.push(`${batch}: ${item} check at ${where}${failed ? ' FAILED' : ''}${parts.length ? `: ${parts.join('; ')}` : ' (Batchwright recorded the result only)'}.`);
+    out.push(`${batch}: ${item} check at ${where}${failed ? ' FAILED' : ''}${parts.length ? `: ${parts.join('; ')}` : ` (${system} recorded the result only)`}.`);
   }
   // Process actuals (S18) outside or close to their limits.
   for (const a of d.actuals) {

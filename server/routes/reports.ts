@@ -267,14 +267,14 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         }
       }
     }
-    // S17 (DV-23): data collected from the Logbook and Batchwright: every fetch, with its findings.
+    // S17 (DV-23): data collected from the Logbook, Batchwright and TrueBatch (D-51): every fetch, with its findings.
     const fetches = await sql<{ id: number; source: string; status: string; params: Row; data: { findings?: string[] }; row_count: number; sha256: string; error: string | null; fetched_at: string; by: string }[]>`
       select f.id::int, f.source, f.status, f.params, f.data, f.row_count, f.sha256, f.error, f.fetched_at, u.full_name as by
       from data_fetches f join users u on u.id = f.fetched_by where f.deviation_id = ${id} order by f.id`;
     if (fetches.length) {
       content.push(heading('Data collected (read from other systems)'));
       for (const f of fetches) {
-        content.push(t(`${f.source === 'batchwright' ? 'Batch record (Batchwright)' : 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        content.push(t(`${({ batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)' } as Record<string, string>)[f.source] ?? 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
       }

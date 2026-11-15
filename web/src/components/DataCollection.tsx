@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api, plantTime } from '../api.js';
 
-// S17 (D-37, DV-23): data from the Logbook and Batchwright for this deviation. Each fetch is a kept copy
+// S17 (D-37, DV-23): data from the Logbook, Batchwright and TrueBatch (D-51) for this deviation. Each fetch is a kept copy
 // (read-only, checksummed); the newest per source is shown, older ones are listed.
 type Row = Record<string, unknown>;
 interface Fetch {
-  id: number; source: 'logbook' | 'batchwright'; status: 'ok' | 'not_configured' | 'failed';
+  id: number; source: 'logbook' | 'batchwright' | 'truebatch'; status: 'ok' | 'not_configured' | 'failed';
   params: { batches: string[]; equipment: string[]; from: string; to: string }; views: string[];
   data: Row & { findings?: string[]; readAt?: string; dataAsOf?: string | null };
   rowCount: number; sha256: string; error: string | null; fetchedAt: string; fetchedBy: string;
 }
-const NAME = { logbook: 'Logbook', batchwright: 'Batch record (Batchwright)' } as const;
+const NAME = { logbook: 'Logbook', batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)' } as const;
+const SOURCES = ['batchwright', 'truebatch', 'logbook'] as const;
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const time = (v: unknown) => (v ? plantTime(String(v)) : '—');
 const list = (v: unknown) => (Array.isArray(v) ? (v as Row[]) : []);
@@ -37,7 +38,7 @@ function SourceView({ f }: { f: Fetch }) {
       {f.status === 'failed' && <p className="error">Could not read it: {f.error}</p>}
       {f.status === 'ok' && <>
         {(d.findings ?? []).length > 0 && <ul className="flags" aria-label={`${NAME[f.source]}: what the data shows`}>{d.findings!.map((x, i) => <li key={i}>{x}</li>)}</ul>}
-        {f.source === 'batchwright' ? <>
+        {f.source !== 'logbook' ? <>
           <Table title="Batches" rows={list(d.batches)} cols={[['Batch', (r) => s(r.batch_number)], ['Product', (r) => s(r.product_code)], ['Status', (r) => s(r.status)], ['Issued', (r) => time(r.issued_at)], ['Released', (r) => (r.released ? 'yes' : 'no')]]} />
           <Table title="In-process checks" rows={list(d.ipc)} bad={(r) => /fail/i.test(String(r.result ?? ''))}
             cols={[['Batch', (r) => s(r.batch_number)], ['Step', (r) => s(r.step_title ?? r.step)], ['Check', (r) => s(r.item)], ['Instrument', (r) => s(r.instrument_code)],
@@ -79,6 +80,9 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
   };
   const latest = (src: Fetch['source']) => fetches?.find((f) => f.source === src);
   const first = fetches?.[0];
+  // The newest copy per source is shown in full; every other copy is listed as an earlier fetch.
+  const shown = new Set(SOURCES.map((src) => latest(src)?.id));
+  const earlier = (fetches ?? []).filter((f) => !shown.has(f.id));
   return (
     <section className="card" aria-label="Data collection">
       <div className="section-head"><h2>Data collection</h2>
@@ -87,10 +91,10 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
       <p className="muted small">Reads the batch record and the Logbook for this deviation's batch, its equipment and the equipment the batch used, from {7} days before to 1 day after the event. Each fetch is kept as a read-only copy; nothing is changed in the other systems.</p>
       {error && <p className="error">{error}</p>}
       {first && <p className="small">Matched: batch {first.params.batches.join(', ') || 'none'} · equipment {first.params.equipment.join(', ') || 'none'} · {time(first.params.from)} to {time(first.params.to)}</p>}
-      {(['batchwright', 'logbook'] as const).map((src) => { const f = latest(src); return f ? <SourceView key={src} f={f} /> : null; })}
-      {fetches && fetches.length > 2 && (
-        <details><summary className="small">Earlier fetches ({fetches.length - 2})</summary>
-          <ul className="plain small">{fetches.slice(2).map((f) => <li key={f.id}>{NAME[f.source]} · {f.status} · {time(f.fetchedAt)} · {f.fetchedBy} · {f.rowCount} rows · SHA-256 {f.sha256.slice(0, 12)}…</li>)}</ul>
+      {SOURCES.map((src) => { const f = latest(src); return f ? <SourceView key={src} f={f} /> : null; })}
+      {earlier.length > 0 && (
+        <details><summary className="small">Earlier fetches ({earlier.length})</summary>
+          <ul className="plain small">{earlier.map((f) => <li key={f.id}>{NAME[f.source]} · {f.status} · {time(f.fetchedAt)} · {f.fetchedBy} · {f.rowCount} rows · SHA-256 {f.sha256.slice(0, 12)}…</li>)}</ul>
         </details>
       )}
     </section>

@@ -7,7 +7,10 @@ import { BATCHWRIGHT_VIEWS, batchwrightFindings, readBatchwright } from './batch
 // S17 (D-37, DV-23): "Fetch related data". Reads the Logbook and Batchwright through their read-only views,
 // matched on this deviation's batches, equipment and event time, and keeps each result as an insert-only
 // copy with a SHA-256. Advice for the investigation; the other systems are never written to.
-export interface Sources { logbook?: Source; batchwright?: Source }
+// D-51: TrueBatch's batch_fact_v1 and equipment_use_v1 (Batchwright's names and columns) are read beside Batchwright's,
+// with the same reader, and kept as their own copy (source 'truebatch'); the equipment either batch record names is
+// looked up in the Logbook.
+export interface Sources { logbook?: Source; batchwright?: Source; truebatch?: Source }
 export const WINDOW_BEFORE_DAYS = 7;
 export const WINDOW_AFTER_DAYS = 1;
 const NOT_A_BATCH = new Set(['none', 'na', 'nil', 'nan', 'null', 'nobatch', 'notapplicable', '0']);
@@ -44,9 +47,11 @@ export function plainError(e: unknown): string {
 // means the link is cut. The fetch stores this, reads nothing else, and never serves older data.
 export const LOGBOOK_OFF = 'Connection to Logbook is off. Ask your administrator.';
 export const BATCHWRIGHT_OFF = 'Connection to Batchwright is off. Ask your administrator.';   // its link to ebmr (D-48)
+export const TRUEBATCH_OFF = 'Connection to TrueBatch is off. Ask your administrator.';
+export const TRUEBATCH_VIEWS = ['batch_fact_v1', 'equipment_use_v1'];
 const linkCut = (e: unknown) => ['42501', '28000'].includes((e as { code?: string }).code ?? '');
 
-type Outcome = { source: 'logbook' | 'batchwright'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
+type Outcome = { source: 'logbook' | 'batchwright' | 'truebatch'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
 // Rows read from the other system (not the bookkeeping lists).
 const count = (d: Record<string, unknown>) => Object.entries(d).reduce<number>((n, [k, v]) => n + (Array.isArray(v) && !['viewsRead', 'equipmentUsed', 'findings'].includes(k) ? v.length : 0), 0);
 
@@ -54,17 +59,21 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
   const q = await buildQuery(sql, deviationId);
   if (!q) return null;
   const outcomes: Outcome[] = [];
-  // Batchwright first: the equipment the batch actually used is then also looked up in the Logbook.
+  // The batch records first (Batchwright, then TrueBatch): the equipment the batch actually used is then also looked up in the Logbook.
   let usedEquipment: string[] = [];
-  if (!sources.batchwright) outcomes.push({ source: 'batchwright', status: 'not_configured', data: {}, rows: 0, error: null, views: [] });
-  else {
+  const batchRecords = [
+    { source: 'batchwright' as const, name: 'Batchwright', src: sources.batchwright, off: BATCHWRIGHT_OFF, views: BATCHWRIGHT_VIEWS },
+    { source: 'truebatch' as const, name: 'TrueBatch', src: sources.truebatch, off: TRUEBATCH_OFF, views: TRUEBATCH_VIEWS },
+  ];
+  for (const r of batchRecords) {
+    if (!r.src) { outcomes.push({ source: r.source, status: 'not_configured', data: {}, rows: 0, error: null, views: [] }); continue; }
     try {
-      const d = await readBatchwright(sources.batchwright, q);
-      usedEquipment = d.equipmentUsed;
-      outcomes.push({ source: 'batchwright', status: 'ok', data: { ...d, findings: batchwrightFindings(d) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: d.viewsRead });
+      const d = await readBatchwright(r.src, q);
+      usedEquipment = [...new Set([...usedEquipment, ...d.equipmentUsed])];
+      outcomes.push({ source: r.source, status: 'ok', data: { ...d, findings: batchwrightFindings(d, r.name) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: d.viewsRead });
     } catch (e) {
-      log(`Batchwright read failed: ${e instanceof Error ? e.message : String(e)}`);
-      outcomes.push({ source: 'batchwright', status: 'failed', data: {}, rows: 0, error: linkCut(e) ? BATCHWRIGHT_OFF : plainError(e), views: BATCHWRIGHT_VIEWS });
+      log(`${r.name} read failed: ${e instanceof Error ? e.message : String(e)}`);
+      outcomes.push({ source: r.source, status: 'failed', data: {}, rows: 0, error: linkCut(e) ? r.off : plainError(e), views: r.views });
     }
   }
   const lq = { ...q, equipment: [...new Set([...q.equipment, ...usedEquipment])] };
