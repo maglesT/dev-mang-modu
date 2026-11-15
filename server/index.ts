@@ -17,6 +17,8 @@ const sources = {
   ...(config.BATCHWRIGHT_REPORT_URL ? { batchwright: reader(config.BATCHWRIGHT_REPORT_URL) } : {}),
   ...(config.TRUEBATCH_DATABASE_URL ? { truebatch: reader(config.TRUEBATCH_DATABASE_URL) } : {}),
 };
+// D-53: TrueBatch Tablets Packing is read for its deviation notes only (not by "Fetch related data").
+const packing = config.TRUEBATCH_PACKING_DATABASE_URL ? reader(config.TRUEBATCH_PACKING_DATABASE_URL) : undefined;
 // Core's employee view: a small second pool, read with this app's own login (PL-08).
 const identity = connect(config.IDENTITY_DATABASE_URL, {}, 2);
 const signOn = oidcSignOn({ issuer: config.OIDC_ISSUER, clientId: config.OIDC_CLIENT_ID, clientSecret: config.OIDC_CLIENT_SECRET,
@@ -27,10 +29,10 @@ const app = await buildApp({ sql, signOn, proofKey, logger: true, cookieSecure: 
 
 await app.listen({ port: config.PORT, host: config.HOST });
 const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));
-// D-50, D-51: missed limits the Logbook publishes and TrueBatch's deviation notes without a number are filed as
-// deviations (each only with its link).
-const stopAuto = sources.logbook || sources.truebatch
-  ? scheduleAutoRaise(sql, { logbook: sources.logbook, truebatch: sources.truebatch }, (msg) => app.log.info(msg)) : () => {};
+// D-50, D-51, D-53: missed limits the Logbook publishes and the deviation notes without a number of TrueBatch and
+// TrueBatch Packing are filed as deviations (each only with its link).
+const stopAuto = sources.logbook || sources.truebatch || packing
+  ? scheduleAutoRaise(sql, { logbook: sources.logbook, truebatch: sources.truebatch, truebatch_packing: packing }, (msg) => app.log.info(msg)) : () => {};
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
@@ -38,8 +40,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     stopAuto();
     await app.close();
     await sql.end();
-    // The read-only connections to the Logbook, Batchwright and TrueBatch too.
-    await Promise.all([...Object.values(sources).map((x) => x.sql.end()), identity.end()]);
+    // The read-only connections to the Logbook, Batchwright, TrueBatch and Packing too.
+    await Promise.all([...[...Object.values(sources), ...(packing ? [packing] : [])].map((x) => x.sql.end()), identity.end()]);
     process.exit(0);
   });
 }

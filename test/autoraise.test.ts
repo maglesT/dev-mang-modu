@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Sql } from '../server/db.js';
-import { AUTO_AREA, fileLogbookOverdue, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX } from '../server/autoraise.js';
+import { AUTO_AREA, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
 import { APP_ROLE, TEST_DATABASE_URL, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): missed limits the Logbook publishes in report.overdue_v1 are filed here once,
@@ -9,6 +9,7 @@ let t: TestApp;
 let reader: Sql;
 const lb = `lbod_${process.pid}`;
 const tb = `tbnote_${process.pid}`;
+const tbp = `tbpnote_${process.pid}`;
 const c: Record<string, string> = {};
 const src = () => ({ sql: reader, schema: lb });
 
@@ -28,15 +29,18 @@ beforeAll(async () => {
     title text, description text, immediate_action text, impact_notes text)`);
   await t.owner.unsafe(`grant usage on schema ${lb} to ${APP_ROLE}; grant select on ${lb}.overdue_v1 to ${APP_ROLE}`);
   // A stand-in for TrueBatch's report.deviation_note_v1 (its migration 0006), readable the same way.
-  await t.owner.unsafe(`create schema ${tb}`);
-  await t.owner.unsafe(`create table ${tb}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
-    reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now())`);
-  await t.owner.unsafe(`grant usage on schema ${tb} to ${APP_ROLE}; grant select on ${tb}.deviation_note_v1 to ${APP_ROLE}`);
+  // And for TrueBatch Tablets Packing's, which has the same columns (D-53).
+  for (const x of [tb, tbp]) {
+    await t.owner.unsafe(`create schema ${x}`);
+    await t.owner.unsafe(`create table ${x}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
+      reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now())`);
+    await t.owner.unsafe(`grant usage on schema ${x} to ${APP_ROLE}; grant select on ${x}.deviation_note_v1 to ${APP_ROLE}`);
+  }
   reader = connect(TEST_DATABASE_URL, { role: APP_ROLE }, 1);
 });
 afterAll(async () => {
   await reader?.end();
-  await t.owner.unsafe(`drop schema if exists ${lb} cascade; drop schema if exists ${tb} cascade`);
+  await t.owner.unsafe(`drop schema if exists ${lb} cascade; drop schema if exists ${tb} cascade; drop schema if exists ${tbp} cascade`);
   await t.close();
 });
 
@@ -78,14 +82,15 @@ describe('missed limits from the Logbook (D-50)', () => {
   it('DV-01: the automatic reporter cannot sign in (no core employee) and a person\'s own report keeps no source', async () => {
     const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'logbook.auto'`;
     expect(u!.employee_id).toBeNull();
-    const own = await t.owner`select count(*)::int as n from deviations d join users u on u.id = d.reporter_id where u.username not in ('logbook.auto', 'truebatch.auto') and d.source_ref is not null`;
+    const own = await t.owner`select count(*)::int as n from deviations d join users u on u.id = d.reporter_id where u.username not in ('logbook.auto', 'truebatch.auto', 'truebatch_packing.auto') and d.source_ref is not null`;
     expect(own[0]!.n).toBe(0);
   });
 });
 
-async function note(id: number, batch: string, text: string, reference: string | null, hoursAgo: number, step: string | null = 'compression/compress') {
-  await t.owner.unsafe(`insert into ${tb}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, status, noted_at) values
-    (${id}, 'truebatch:note:${id}', '${batch}', 'MGL-SR-500', ${step === null ? 'null' : `'${step}'`}, '${text}', ${reference ? `'${reference}'` : 'null'}, ${reference ? `'open'` : 'null'}, now() - interval '${hoursAgo} hours')`);
+async function note(id: number, batch: string, text: string, reference: string | null, hoursAgo: number, step: string | null = 'compression/compress',
+  where = { schema: tb, prefix: TB_PREFIX, product: 'MGL-SR-500' }) {
+  await t.owner.unsafe(`insert into ${where.schema}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, status, noted_at) values
+    (${id}, '${where.prefix}${id}', '${batch}', '${where.product}', ${step === null ? 'null' : `'${step}'`}, '${text}', ${reference ? `'${reference}'` : 'null'}, ${reference ? `'open'` : 'null'}, now() - interval '${hoursAgo} hours')`);
 }
 
 describe('deviation notes from TrueBatch (D-51)', () => {
@@ -140,5 +145,50 @@ describe('deviation notes from TrueBatch (D-51)', () => {
     expect(r.problems[0]).toContain(TB_AREA);
     await t.owner`update areas set active = true where name = ${TB_AREA}`;
     expect((await fileTrueBatchNotes(t.sql, tsrc())).filed).toHaveLength(1);
+  });
+});
+
+describe('deviation notes from TrueBatch Packing (D-53)', () => {
+  const psrc = () => ({ sql: reader, schema: tbp });
+  const packing = { schema: tbp, prefix: TBP_PREFIX, product: 'FG-ATV20-BL10' };
+
+  it('DV-01: a Packing note without a deviation number is filed once, for its product and packing batch, as the Packing automatic reporter', async () => {
+    // Note 41 also exists in TrueBatch (filed above): the two systems number their notes on their own.
+    await note(41, 'TP260001', 'Coding check 40 min late: line stopped for a jam', null, 2, 'Packing › Coding check', packing);
+    await note(47, 'TP260001', 'Leak test repeated', 'DEV-2026-0009', 1, 'Packing › Leak test', packing);   // has a number: never filed
+    await note(48, 'TP260002', 'Old note', null, 24 * 40, 'Packing › Coding check', packing);                // older than the look-back
+    const first = await filePackingNotes(t.sql, psrc());
+    expect(first).toEqual({ filed: [expect.stringMatching(/^DEV-\d{4}-\d{4}$/)], problems: [] });
+    expect(await filePackingNotes(t.sql, psrc())).toEqual({ filed: [], problems: [] });   // never twice
+
+    const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string; step: string }[];
+    const d = list.find((x) => x.number === first.filed[0])!;
+    expect(d).toMatchObject({ title: 'Batch TP260001, Packing › Coding check: Coding check 40 min late: line stopped for a jam', area: TBP_AREA,
+      reporter: 'TrueBatch Packing (automatic report)', step: 'classification' });
+    const [row] = await t.owner<{ source_ref: string; event_at: string; description: string; batch: string; product: string }[]>`
+      select d.source_ref, s.data->>'eventAt' as event_at, s.data->>'description' as description, b.batch, b.product from deviations d
+      join latest_sections s on s.deviation_id = d.id and s.kind = 'report' join batches b on b.section_id = s.id where d.id = ${d.id}`;
+    expect(row).toMatchObject({ source_ref: `${TBP_PREFIX}41`, batch: 'TP260001', product: 'FG-ATV20-BL10' });
+    expect(row!.description).toContain('in the TrueBatch Packing batch record of TP260001, step Packing › Coding check. Filed automatically from TrueBatch Packing.');
+    expect(Math.abs(Date.parse(row!.event_at) - (Date.now() - 2 * 3_600_000))).toBeLessThan(120_000);
+    // TrueBatch's own note 41 keeps its own deviation.
+    expect(await t.owner`select 1 from deviations where source_ref in (${TB_PREFIX + '41'}, ${TBP_PREFIX + '41'})`).toHaveLength(2);
+
+    // deviation_v1 gives Packing the number back by source_ref.
+    const schema = (await t.owner<{ s: string }[]>`select current_schema() as s`)[0]!.s;
+    const v = await t.owner.unsafe(`select number, batch_norm, source_ref from ${schema}_report.deviation_v1 where source_ref = '${TBP_PREFIX}41'`);
+    expect([...v]).toEqual([{ number: d.number, batch_norm: 'tp260001', source_ref: `${TBP_PREFIX}41` }]);
+    const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'truebatch_packing.auto'`;
+    expect(u!.employee_id).toBeNull();
+  });
+
+  it('DV-01: with the Packing automatic area made inactive nothing is filed, and the reason is reported', async () => {
+    await note(49, 'TP260003', 'Carton count short by 2', null, 1, 'Reconciliation › Reconcile', packing);
+    await t.owner`update areas set active = false where name = ${TBP_AREA}`;
+    const r = await filePackingNotes(t.sql, psrc());
+    expect(r.filed).toEqual([]);
+    expect(r.problems[0]).toContain(TBP_AREA);
+    await t.owner`update areas set active = true where name = ${TBP_AREA}`;
+    expect((await filePackingNotes(t.sql, psrc())).filed).toHaveLength(1);
   });
 });

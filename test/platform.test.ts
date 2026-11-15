@@ -133,5 +133,9 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(loadConfig(env).OIDC_CLIENT_ID).toBe('deviations');
     expect(loadConfig({ ...env, DATABASE_URL: 'postgres://x:y@h/standalone' }).DATABASE_URL).toBe('postgres://x:y@h/standalone');
     expect(loadConfig({ ...env, DATABASE_URL: '', LOGBOOK_REPORT_URL: ' ' })).toMatchObject({ DATABASE_URL: url, LOGBOOK_REPORT_URL: env.LOGBOOK_DATABASE_URL });
+    // Linked to TrueBatch Tablets Packing (D-53): apply names the link by Packing's database, truebatch_packing.
+    expect(loadConfig(env).TRUEBATCH_PACKING_DATABASE_URL).toBeUndefined();
+    const packing = 'postgres://deviations_app:pw@db:5432/truebatch_packing';
+    expect(loadConfig({ ...env, TRUEBATCH_PACKING_DATABASE_URL: packing }).TRUEBATCH_PACKING_DATABASE_URL).toBe(packing);
   });
 });

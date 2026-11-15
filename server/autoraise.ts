@@ -11,6 +11,9 @@ import type { Source } from './readers/logbook.js';
 // number: each is filed once as a deviation from the automatic reporter truebatch.auto in the area "TrueBatch
 // (automatic)", for the note's product and batch; source_ref 'truebatch:note:<note_id>'. A note with a number is a
 // deviation already reported, so it is never filed again.
+// D-53 (owner 2026-11-15): TrueBatch Tablets Packing publishes the same deviation_note_v1 (same columns); its notes
+// without a number are filed the same way, by truebatch_packing.auto in the area "TrueBatch Packing (automatic)";
+// source_ref 'truebatch_packing:note:<note_id>'.
 
 export const AUTO_REPORTER = 'logbook.auto';
 export const AUTO_AREA = 'Logbook (automatic)';
@@ -18,6 +21,9 @@ export const SOURCE_PREFIX = 'logbook:overdue:';
 export const TB_REPORTER = 'truebatch.auto';
 export const TB_AREA = 'TrueBatch (automatic)';
 export const TB_PREFIX = 'truebatch:note:';
+export const TBP_REPORTER = 'truebatch_packing.auto';
+export const TBP_AREA = 'TrueBatch Packing (automatic)';
+export const TBP_PREFIX = 'truebatch_packing:note:';
 // Records older than this are not filed (e.g. when the link is first switched on at a site with a long history).
 export const LOOKBACK_DAYS = 30;
 
@@ -25,6 +31,7 @@ export const LOOKBACK_DAYS = 30;
 interface Feed { username: string; fullName: string; area: string; prefix: string; what: string }
 const LOGBOOK: Feed = { username: AUTO_REPORTER, fullName: 'Logbook (automatic report)', area: AUTO_AREA, prefix: SOURCE_PREFIX, what: 'missed limits from the Logbook' };
 const TRUEBATCH: Feed = { username: TB_REPORTER, fullName: 'TrueBatch (automatic report)', area: TB_AREA, prefix: TB_PREFIX, what: 'deviation notes from TrueBatch' };
+const PACKING: Feed = { username: TBP_REPORTER, fullName: 'TrueBatch Packing (automatic report)', area: TBP_AREA, prefix: TBP_PREFIX, what: 'deviation notes from TrueBatch Packing' };
 
 interface OverdueRow {
   event_id: string; equipment_code: string; kind: string; due_at: Date;
@@ -96,7 +103,11 @@ export async function fileLogbookOverdue(sql: Sql, src: Source): Promise<Filed> 
 interface NoteRow { note_id: string; batch_number: string; product_code: string | null; step: string | null; note: string | null; noted_at: Date }
 
 /** D-51: TrueBatch's deviation notes without a deviation number, each filed once for its product and batch. */
-export async function fileTrueBatchNotes(sql: Sql, src: Source): Promise<Filed> {
+export const fileTrueBatchNotes = (sql: Sql, src: Source) => fileNotes(sql, src, TRUEBATCH, 'TrueBatch');
+/** D-53: the same for TrueBatch Tablets Packing, which publishes deviation_note_v1 with the same columns. */
+export const filePackingNotes = (sql: Sql, src: Source) => fileNotes(sql, src, PACKING, 'TrueBatch Packing');
+
+async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Promise<Filed> {
   const rows = await src.sql.begin('read only', async (tx) => {
     await tx`set local statement_timeout = '15s'`;
     return tx<NoteRow[]>`
@@ -104,28 +115,29 @@ export async function fileTrueBatchNotes(sql: Sql, src: Source): Promise<Filed> 
       from ${tx(`${src.schema}.deviation_note_v1`)}
       where reference is null and noted_at > now() - make_interval(days => ${LOOKBACK_DAYS}) order by note_id`;
   });
-  return fileAll(sql, TRUEBATCH, rows.map((r) => ({ ...r, id: r.note_id })), (r, areaId) => {
-    // The step as the view names it (TrueBatch gives the readable name people see on the batch record), used as given:
+  return fileAll(sql, feed, rows.map((r) => ({ ...r, id: r.note_id })), (r, areaId) => {
+    // The step as the view names it (TrueBatch and Packing give the readable name people see on the batch record), used as given:
     // Deviations keeps no list of TrueBatch's steps and builds no name from keys.
     const step = (r.step ?? '').trim() || 'step not named';
     const text = (r.note ?? '').trim() || '(no text)';
     return {
       planned: false, title: `Batch ${r.batch_number}, ${step}: ${text}`.slice(0, 200),
-      description: `${text}\n\nDeviation note ${r.note_id} in the TrueBatch batch record of ${r.batch_number}, step ${step}. Filed automatically from TrueBatch.`.slice(0, 5000),
+      description: `${text}\n\nDeviation note ${r.note_id} in the ${system} batch record of ${r.batch_number}, step ${step}. Filed automatically from ${system}.`.slice(0, 5000),
       areaId, equipment: '', eventAt: new Date(r.noted_at).toISOString(),
-      products: [{ product: (r.product_code ?? '').trim() || 'not named in TrueBatch', batch: r.batch_number }], noBatch: false,
-      immediateAction: `As written in the TrueBatch note and batch record of ${r.batch_number} (step ${step}).`, actionTakenAt: null,
-      initialImpact: { productQuality: 'unknown', patientSafety: 'unknown', otherBatches: 'unknown', notes: 'Filed automatically from TrueBatch; QA to assess the impact.' },
+      products: [{ product: (r.product_code ?? '').trim() || `not named in ${system}`, batch: r.batch_number }], noBatch: false,
+      immediateAction: `As written in the ${system} note and batch record of ${r.batch_number} (step ${step}).`, actionTakenAt: null,
+      initialImpact: { productQuality: 'unknown', patientSafety: 'unknown', otherBatches: 'unknown', notes: `Filed automatically from ${system}; QA to assess the impact.` },
     };
   });
 }
 
 /** Checks every minute inside the server process (as the integrity check does), each linked source on its own. */
-export function scheduleAutoRaise(sql: Sql, src: { logbook?: Source; truebatch?: Source }, log: (msg: string) => void, everyMs = 60_000): () => void {
+export function scheduleAutoRaise(sql: Sql, src: { logbook?: Source; truebatch?: Source; truebatch_packing?: Source }, log: (msg: string) => void, everyMs = 60_000): () => void {
   let running = false;
   const jobs = [
     ...(src.logbook ? [{ f: LOGBOOK, run: () => fileLogbookOverdue(sql, src.logbook!) }] : []),
     ...(src.truebatch ? [{ f: TRUEBATCH, run: () => fileTrueBatchNotes(sql, src.truebatch!) }] : []),
+    ...(src.truebatch_packing ? [{ f: PACKING, run: () => filePackingNotes(sql, src.truebatch_packing!) }] : []),
   ];
   const tick = async () => {
     if (running) return;
