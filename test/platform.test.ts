@@ -137,5 +137,9 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(loadConfig(env).TRUEBATCH_PACKING_DATABASE_URL).toBeUndefined();
     const packing = 'postgres://deviations_app:pw@db:5432/truebatch_packing';
     expect(loadConfig({ ...env, TRUEBATCH_PACKING_DATABASE_URL: packing }).TRUEBATCH_PACKING_DATABASE_URL).toBe(packing);
+    // And to TrueBatch Injectables (D-54), by its database truebatch_injectables.
+    expect(loadConfig(env).TRUEBATCH_INJECTABLES_DATABASE_URL).toBeUndefined();
+    const injectables = 'postgres://deviations_app:pw@db:5432/truebatch_injectables';
+    expect(loadConfig({ ...env, TRUEBATCH_INJECTABLES_DATABASE_URL: injectables }).TRUEBATCH_INJECTABLES_DATABASE_URL).toBe(injectables);
   });
 });

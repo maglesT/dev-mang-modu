@@ -29,6 +29,8 @@ const schema = z.object({
   TRUEBATCH_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
   // D-53: TrueBatch Tablets Packing's deviation notes (written by apply only while the link to Packing is on).
   TRUEBATCH_PACKING_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
+  // D-54: TrueBatch Injectables' deviation notes (written by apply only while the link to Injectables is on).
+  TRUEBATCH_INJECTABLES_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
   // Core's employee view (identity report.employee_v1), read with this app's own login (D-42 slice 4, PL-08).
   IDENTITY_DATABASE_URL: z.string().url(),
 });

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Sql } from '../server/db.js';
-import { AUTO_AREA, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
+import { AUTO_AREA, fileInjectablesNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
 import { APP_ROLE, TEST_DATABASE_URL, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): missed limits the Logbook publishes in report.overdue_v1 are filed here once,
@@ -10,6 +10,7 @@ let reader: Sql;
 const lb = `lbod_${process.pid}`;
 const tb = `tbnote_${process.pid}`;
 const tbp = `tbpnote_${process.pid}`;
+const tbi = `tbinote_${process.pid}`;
 const c: Record<string, string> = {};
 const src = () => ({ sql: reader, schema: lb });
 
@@ -29,8 +30,8 @@ beforeAll(async () => {
     title text, description text, immediate_action text, impact_notes text)`);
   await t.owner.unsafe(`grant usage on schema ${lb} to ${APP_ROLE}; grant select on ${lb}.overdue_v1 to ${APP_ROLE}`);
   // A stand-in for TrueBatch's report.deviation_note_v1 (its migration 0006), readable the same way.
-  // And for TrueBatch Tablets Packing's, which has the same columns (D-53).
-  for (const x of [tb, tbp]) {
+  // And for TrueBatch Tablets Packing's and TrueBatch Injectables', which have the same columns (D-53, D-54).
+  for (const x of [tb, tbp, tbi]) {
     await t.owner.unsafe(`create schema ${x}`);
     await t.owner.unsafe(`create table ${x}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
       reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now())`);
@@ -40,7 +41,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await reader?.end();
-  await t.owner.unsafe(`drop schema if exists ${lb} cascade; drop schema if exists ${tb} cascade; drop schema if exists ${tbp} cascade`);
+  await t.owner.unsafe(`drop schema if exists ${lb} cascade; drop schema if exists ${tb} cascade; drop schema if exists ${tbp} cascade; drop schema if exists ${tbi} cascade`);
   await t.close();
 });
 
@@ -82,7 +83,7 @@ describe('missed limits from the Logbook (D-50)', () => {
   it('DV-01: the automatic reporter cannot sign in (no core employee) and a person\'s own report keeps no source', async () => {
     const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'logbook.auto'`;
     expect(u!.employee_id).toBeNull();
-    const own = await t.owner`select count(*)::int as n from deviations d join users u on u.id = d.reporter_id where u.username not in ('logbook.auto', 'truebatch.auto', 'truebatch_packing.auto') and d.source_ref is not null`;
+    const own = await t.owner`select count(*)::int as n from deviations d join users u on u.id = d.reporter_id where u.username not in ('logbook.auto', 'truebatch.auto', 'truebatch_packing.auto', 'truebatch_injectables.auto') and d.source_ref is not null`;
     expect(own[0]!.n).toBe(0);
   });
 });
@@ -190,5 +191,32 @@ describe('deviation notes from TrueBatch Packing (D-53)', () => {
     expect(r.problems[0]).toContain(TBP_AREA);
     await t.owner`update areas set active = true where name = ${TBP_AREA}`;
     expect((await filePackingNotes(t.sql, psrc())).filed).toHaveLength(1);
+  });
+});
+
+describe('deviation notes from TrueBatch Injectables (D-54)', () => {
+  const isrc = () => ({ sql: reader, schema: tbi });
+  const inj = { schema: tbi, prefix: TBI_PREFIX, product: 'FG-INJ-EXM2' };
+
+  it('DV-01: an Injectables note without a deviation number is filed once, for its product and batch, as the Injectables automatic reporter', async () => {
+    await note(41, 'TI260001', 'Fill weight of needle 3 out of limits: needle replaced', null, 2, 'Filling › Fill with periodic fill-weight checks', inj);
+    await note(52, 'TI260001', 'Autoclave load repeated', 'DEV-2026-0010', 1, 'Terminal sterilisation › Terminal sterilisation (each load)', inj);   // has a number: never filed
+    await note(53, 'TI260002', 'Old note', null, 24 * 40, 'Filling › Fill', inj);   // older than the look-back
+    const first = await fileInjectablesNotes(t.sql, isrc());
+    expect(first.filed).toHaveLength(1);
+    expect(await fileInjectablesNotes(t.sql, isrc())).toEqual({ filed: [], problems: [] });   // never twice
+    const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string }[];
+    const d = list.find((x) => x.number === first.filed[0])!;
+    expect(d).toMatchObject({ title: 'Batch TI260001, Filling › Fill with periodic fill-weight checks: Fill weight of needle 3 out of limits: needle replaced', area: TBI_AREA,
+      reporter: 'TrueBatch Injectables (automatic report)' });
+    const [row] = await t.owner<{ source_ref: string; description: string; batch: string; product: string }[]>`
+      select d.source_ref, s.data->>'description' as description, b.batch, b.product from deviations d
+      join latest_sections s on s.deviation_id = d.id and s.kind = 'report' join batches b on b.section_id = s.id where d.id = ${d.id}`;
+    expect(row).toMatchObject({ source_ref: `${TBI_PREFIX}41`, batch: 'TI260001', product: 'FG-INJ-EXM2' });
+    expect(row!.description).toContain('in the TrueBatch Injectables batch record of TI260001, step Filling › Fill with periodic fill-weight checks. Filed automatically from TrueBatch Injectables.');
+    // The same note number in TrueBatch or Packing is another note: each system numbers its own.
+    expect(await t.owner`select 1 from deviations where source_ref in (${TB_PREFIX + '41'}, ${TBP_PREFIX + '41'}, ${TBI_PREFIX + '41'})`).toHaveLength(3);
+    const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'truebatch_injectables.auto'`;
+    expect(u!.employee_id).toBeNull();
   });
 });
