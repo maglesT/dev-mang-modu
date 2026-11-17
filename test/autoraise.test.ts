@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Sql } from '../server/db.js';
-import { AUTO_AREA, fileInjectablesNotes, fileInjectablesPackingNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBIP_AREA, TBIP_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
+import { AUTO_AREA, equipmentAt, fileInjectablesNotes, fileInjectablesPackingNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBIP_AREA, TBIP_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
 import { APP_ROLE, TEST_DATABASE_URL, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): missed limits the Logbook publishes in report.overdue_v1 are filed here once,
@@ -247,5 +247,48 @@ describe('deviation notes from TrueBatch Injectables Packing (D-55)', () => {
     expect(await t.owner`select 1 from deviations where source_ref in (${TB_PREFIX + '41'}, ${TBP_PREFIX + '41'}, ${TBI_PREFIX + '41'}, ${TBIP_PREFIX + '41'})`).toHaveLength(4);
     const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'truebatch_injectables_packing.auto'`;
     expect(u!.employee_id).toBeNull();
+  });
+});
+
+// D-58 (suite run S21): the Equipment of a filed note is pulled from the product's equipment_use_v1 for the note's step.
+describe('equipment of a filed note (D-58)', () => {
+  const isrc = () => ({ sql: reader, schema: tbi });
+  const inj = { schema: tbi, prefix: TBI_PREFIX, product: 'FG-INJ-EXF25' };
+  const use = (code: string, room: string, step: string, name: string) => ({ batch_number: 'TI260014', equipment_code: code, room_code: room, step, step_name: name });
+  const uses = [
+    use('RM-207', 'RM-207', 'filling/line-clearance', 'Aseptic filling'),
+    use('EQS-ISO-01', 'RM-207', 'filling/aseptic-ready', 'Aseptic filling › Aseptic set-up'),
+    use('EQS-VFM-01', 'RM-207', 'filling/fill', 'Aseptic filling › Fill with periodic fill-weight checks'),
+    use('EQS-ATC-01', 'RM-211', 'components/stoppers', 'Containers and closures › Sterilise the stoppers'),
+  ];
+
+  it('DV-01: the rooms and machines used at the note\'s step; else those of its stage; none without a step or a use', () => {
+    expect(equipmentAt('Aseptic filling › Fill with periodic fill-weight checks', uses)).toEqual({ text: 'Room RM-207; equipment EQS-VFM-01', at: 'step' });
+    expect(equipmentAt('Aseptic filling › Line clearance', uses)).toEqual({ text: 'Room RM-207; equipment EQS-ISO-01, EQS-VFM-01', at: 'stage' });
+    expect(equipmentAt('components/stoppers', uses)).toEqual({ text: 'Room RM-211; equipment EQS-ATC-01', at: 'step' });   // a note named by keys
+    expect(equipmentAt('Aseptic filling › Aseptic set-up (round 2)', uses)?.text).toBe('Room RM-207; equipment EQS-ISO-01');
+    expect(equipmentAt('Inspection › Inspect', uses)).toBeNull();
+    expect(equipmentAt(null, uses)).toBeNull();
+  });
+
+  it('DV-01: a filed note gets its Equipment from equipment_use_v1 when the view is there and readable', async () => {
+    await t.owner.unsafe(`create table ${tbi}.equipment_use_v1 (batch_number text, equipment_code text, equipment_type text, room_code text, step text,
+      started_at timestamptz, ended_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now(), step_name text)`);
+    for (const u of uses) {
+      await t.owner.unsafe(`insert into ${tbi}.equipment_use_v1 (batch_number, equipment_code, room_code, step, step_name) values ('${u.batch_number}', '${u.equipment_code}', '${u.room_code}', '${u.step}', '${u.step_name}')`);
+    }
+    await note(71, 'TI260014', 'Filling line refused at line clearance', null, 1, 'Aseptic filling › Line clearance', inj);
+    // Not yet granted: filed without equipment, not a failure.
+    const first = await fileInjectablesNotes(t.sql, isrc());
+    expect(first).toEqual({ filed: [expect.any(String)], problems: [] });
+    await t.owner.unsafe(`grant select on ${tbi}.equipment_use_v1 to ${APP_ROLE}`);
+    await note(72, 'TI260014', 'Fill weight low', null, 1, 'Aseptic filling › Fill with periodic fill-weight checks', inj);
+    const second = await fileInjectablesNotes(t.sql, isrc());
+    expect(second.filed).toHaveLength(1);
+    const rows = await t.owner<{ ref: string; equipment: string; description: string }[]>`
+      select d.source_ref as ref, s.data->>'equipment' as equipment, s.data->>'description' as description from deviations d
+      join latest_sections s on s.deviation_id = d.id and s.kind = 'report' where d.source_ref in (${TBI_PREFIX + '71'}, ${TBI_PREFIX + '72'}) order by d.source_ref`;
+    expect(rows.map((r) => r.equipment)).toEqual(['', 'Room RM-207; equipment EQS-VFM-01']);
+    expect(rows[1]!.description).toContain('Equipment pulled from the TrueBatch Injectables equipment use of TI260014 at this step.');
   });
 });

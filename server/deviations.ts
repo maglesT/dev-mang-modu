@@ -69,9 +69,28 @@ export const classificationData = z.object({
   typeId: z.number().int().positive(),
   impact: text(5000),
   investigatorId: z.number().int().positive(),
-  productBatchChecked: z.literal(true, { errorMap: () => ({ message: 'Confirm that product and batch were checked.' }) }),
+  // D-58: the tick is needed only when a batch of the report was typed by hand (batchCheckOf); see checkClassification.
+  productBatchChecked: z.boolean().default(false),
 });
 export type ClassificationData = z.infer<typeof classificationData>;
+
+// D-58: how product and batch were checked. 'picked': every batch of the report was picked from, or pulled by, a
+// TrueBatch product (D-57), so it was checked there and QA does not tick; 'qa': a batch was typed by hand (or saved
+// before D-57), so QA ticks that it checked it against the batch record; 'none': no product or batch concerned.
+export type BatchCheck = 'picked' | 'qa' | 'none';
+export async function batchCheckOf(tx: Tx | Sql, deviationId: number): Promise<BatchCheck> {
+  const [r] = await tx<{ n: number; typed: number }[]>`
+    select count(*)::int as n, count(*) filter (where b.batch_typed is not false)::int as typed
+    from batches b join latest_sections s on s.id = b.section_id and s.kind = 'report'
+    where b.deviation_id = ${deviationId} and b.role = 'own'`;
+  return !r!.n ? 'none' : r!.typed ? 'qa' : 'picked';
+}
+/** D-58: the classification as stored (how product and batch were checked), or the problem when QA must tick and did not. */
+export async function checkClassification(tx: Tx | Sql, deviationId: number, c: ClassificationData) {
+  const batchCheck = await batchCheckOf(tx, deviationId);
+  if (batchCheck === 'qa' && !c.productBatchChecked) return { problem: 'Confirm that product and batch were checked.' } as const;
+  return { data: { ...c, productBatchChecked: batchCheck === 'qa', batchCheck } } as const;
+}
 
 // typed: the report's own batch typed by hand (true) or picked from a linked product (false), D-57; null otherwise.
 export async function writeBatches(tx: Tx, deviationId: number, sectionId: number, rows: { product: string; batch: string; role: 'own' | 'other'; outcome?: string | null; typed?: boolean | null }[]) {

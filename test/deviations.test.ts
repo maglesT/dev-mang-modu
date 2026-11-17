@@ -116,6 +116,27 @@ describe('classify', () => {
     expect((await call(t.app, c.qa2!, 'POST', `/api/deviations/${id}/classify`, classify())).statusCode).toBe(200);
   });
 
+  it('DV-20: a batch picked from, or pulled by, a TrueBatch product is checked automatically; QA ticks only for a typed batch (D-58)', async () => {
+    const own = async (id: number) => (await t.owner<{ data: Record<string, unknown> }[]>`
+      select data from latest_sections where deviation_id = ${id} and kind = 'classification'`)[0]!.data;
+    // Picked: no tick needed; stored as checked automatically.
+    const { id: picked } = await reportAs('us1');
+    await t.owner`update batches set batch_typed = false where deviation_id = ${picked}`;
+    expect((await call(t.app, c.qa2!, 'POST', `/api/deviations/${picked}/classify`, classify({ productBatchChecked: false }))).statusCode).toBe(200);
+    expect(await own(picked)).toMatchObject({ productBatchChecked: false, batchCheck: 'picked' });
+    // No product or batch concerned: nothing to tick.
+    const { id: none } = await reportAs('us1', { products: [], noBatch: true });
+    expect((await call(t.app, c.qa2!, 'POST', `/api/deviations/${none}/classify`, classify({ productBatchChecked: undefined }))).statusCode).toBe(200);
+    expect(await own(none)).toMatchObject({ batchCheck: 'none' });
+    // Typed by hand: the tick stays, also on a correction.
+    const { id: typed } = await reportAs('us1');
+    expect((await call(t.app, c.qa2!, 'POST', `/api/deviations/${typed}/classify`, classify({ productBatchChecked: false }))).json().problems).toEqual(['Confirm that product and batch were checked.']);
+    expect((await call(t.app, c.qa2!, 'POST', `/api/deviations/${typed}/classify`, classify())).statusCode).toBe(200);
+    expect(await own(typed)).toMatchObject({ productBatchChecked: true, batchCheck: 'qa' });
+    const fix = await call(t.app, c.qa2!, 'POST', `/api/deviations/${typed}/correct`, { kind: 'classification', reason: 'Type corrected', data: classify({ productBatchChecked: false }) });
+    expect(fix.statusCode).toBe(400);
+  });
+
   it('DV-19: a deviation is classified only once in its classification step', async () => {
     const { id } = await reportAs('us1');
     await call(t.app, c.qa1!, 'POST', `/api/deviations/${id}/classify`, classify());

@@ -28,11 +28,15 @@ own row (source `truebatch`).
 | View | Columns |
 |------|---------|
 | `report.batch_fact_v1` | `batch_id uuid`, `batch_number`, `product_code`, `strength` (null), `mbr_version_id uuid`, `family_code`, `record_kind` (PROCESSING), `status` (IN_PRODUCTION / PRODUCTION_APPROVED / QC_APPROVED / RELEASED / REJECTED), `issued_at`, `completed_at`, `released`, `read_at`, `data_as_of` |
-| `report.equipment_use_v1` | `batch_number`, `equipment_code` (a machine, or a room), `equipment_type`, `room_code`, `step` (stage/step keys), `started_at`, `ended_at`, `read_at`, `data_as_of` |
+| `report.equipment_use_v1` | `batch_number`, `equipment_code` (a machine, or a room), `equipment_type`, `room_code`, `step` (stage/step keys), `step_name` (the readable step name; D-58), `started_at`, `ended_at`, `read_at`, `data_as_of` |
 | `report.deviation_note_v1` | `note_id bigint`, `source_ref` (`truebatch:note:<note_id>`), `batch_number`, `product_code`, `step` (the readable name of the step as TrueBatch shows it, e.g. "Granulation › Granulate to an end point"; Deviations puts it in the title as given, D-52), `note`, `reference` (the deviation number typed with the note, or null), `status` (TrueBatch's own: open / closed; null without a number), `noted_at`, `read_at`, `data_as_of` |
 
 Every note of the last 30 days with no `reference` is filed once as a deviation (`deviations.source_ref` = its
 `source_ref`); TrueBatch finds the number in `report.deviation_v1` by `source_ref` or by the batch (`batch_norm`).
+D-58: the filed deviation's Equipment is pulled from the same product's `report.equipment_use_v1` for the note's batch
+(`batch_number`, `equipment_code`, `room_code`, `step`, and `step_name`, the readable step name, read as JSON so a
+product without it reads null): the rooms and machines used at the note's step, else in its stage. This holds for all
+four TrueBatch products.
 
 ## TrueBatch Tablets Packing (truebatch_packing), platform link `TRUEBATCH_PACKING_DATABASE_URL` (D-53)
 

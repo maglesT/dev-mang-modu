@@ -2,6 +2,7 @@ import type { Sql } from './db.js';
 import { fileDeviation, reportData } from './deviations.js';
 import { audit } from './audit.js';
 import type { Source } from './readers/logbook.js';
+import { canRead } from './readers/truebatch.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): every missed limit the Logbook publishes in report.overdue_v1 (overdue
 // cleaning, preventive maintenance, calibration, requalification) is filed here once, as a deviation from the automatic
@@ -18,6 +19,9 @@ import type { Source } from './readers/logbook.js';
 // "TrueBatch Injectables (automatic)"; source_ref 'truebatch_injectables:note:<note_id>'.
 // D-55 (owner 2026-11-17): TrueBatch Injectables Packing the same way, by truebatch_injectables_packing.auto in the area
 // "TrueBatch Injectables Packing (automatic)"; source_ref 'truebatch_injectables_packing:note:<note_id>'.
+// D-58 (suite run S21): the report's Equipment is pulled from the product's equipment_use_v1 for the note's batch: the
+// rooms and machines used at the note's step, or, when none was used at that very step (e.g. a line clearance), in the
+// note's stage. Empty when the view is not there or not readable.
 
 export const AUTO_REPORTER = 'logbook.auto';
 export const AUTO_AREA = 'Logbook (automatic)';
@@ -114,6 +118,34 @@ export async function fileLogbookOverdue(sql: Sql, src: Source): Promise<Filed> 
 }
 
 interface NoteRow { note_id: string; batch_number: string; product_code: string | null; step: string | null; note: string | null; noted_at: Date }
+export interface UseRow { batch_number: string; equipment_code: string | null; room_code: string | null; step: string | null; step_name: string | null }
+
+// "Packing › Coding check (round 2)" is the step "Packing › Coding check"; compared without case.
+const plain = (s: string | null) => (s ?? '').replace(/\s*\(round \d+\)\s*$/i, '').trim().toLowerCase();
+// The stage of a readable name ("Aseptic filling › Line clearance") or of keys ("filling/line-clearance").
+const stageOf = (s: string | null, keys: boolean) => plain(s).split(keys ? '/' : '›')[0]!.trim();
+
+/**
+ * D-58: the rooms and machines a batch used at a note's step, from equipment_use_v1 (one row per room or machine, with
+ * the step it was last used at, as keys and as the readable name). Matched at the step; else in the step's stage.
+ */
+export function equipmentAt(step: string | null, uses: UseRow[]): { text: string; at: 'step' | 'stage' } | null {
+  const s = plain(step);
+  if (!s) return null;
+  let at: 'step' | 'stage' = 'step';
+  let hit = uses.filter((u) => plain(u.step) === s || plain(u.step_name) === s);
+  if (!hit.length) {
+    at = 'stage';
+    const stage = stageOf(step, !s.includes('›'));
+    hit = uses.filter((u) => stageOf(u.step, true) === stage || stageOf(u.step_name, false) === stage);
+  }
+  const rooms = [...new Set(hit.map((u) => u.room_code?.trim()).filter((x): x is string => !!x))];
+  const machines = [...new Set(hit.map((u) => u.equipment_code?.trim()).filter((x): x is string => !!x && !rooms.includes(x)))];
+  if (!rooms.length && !machines.length) return null;
+  const parts = [...(rooms.length ? [`${rooms.length > 1 ? 'Rooms' : 'Room'} ${rooms.join(', ')}`] : []), ...(machines.length ? [`equipment ${machines.join(', ')}`] : [])];
+  const text = parts.join('; ');
+  return { text: (text.charAt(0).toUpperCase() + text.slice(1)).slice(0, 200), at };
+}
 
 /** D-51: TrueBatch's deviation notes without a deviation number, each filed once for its product and batch. */
 export const fileTrueBatchNotes = (sql: Sql, src: Source) => fileNotes(sql, src, TRUEBATCH, 'TrueBatch');
@@ -125,22 +157,30 @@ export const fileInjectablesNotes = (sql: Sql, src: Source) => fileNotes(sql, sr
 export const fileInjectablesPackingNotes = (sql: Sql, src: Source) => fileNotes(sql, src, INJECTABLES_PACKING, 'TrueBatch Injectables Packing');
 
 async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Promise<Filed> {
-  const rows = await src.sql.begin('read only', async (tx) => {
+  const { rows, uses } = await src.sql.begin('read only', async (tx) => {
     await tx`set local statement_timeout = '15s'`;
-    return tx<NoteRow[]>`
+    const rows = await tx<NoteRow[]>`
       select note_id::text, batch_number, product_code, step, note, noted_at
       from ${tx(`${src.schema}.deviation_note_v1`)}
       where reference is null and noted_at > now() - make_interval(days => ${LOOKBACK_DAYS}) order by note_id`;
+    // D-58: the equipment use of these batches (step_name read as JSON: null where a product does not publish it).
+    const batches = [...new Set(rows.map((r) => r.batch_number))];
+    const uses = batches.length && await canRead(tx, src.schema, 'equipment_use_v1') ? await tx<UseRow[]>`
+      select x->>'batch_number' as batch_number, x->>'equipment_code' as equipment_code, x->>'room_code' as room_code, x->>'step' as step, x->>'step_name' as step_name
+      from (select to_jsonb(u) as x from ${tx(`${src.schema}.equipment_use_v1`)} u where u.batch_number = any(${batches})) r limit 5000` : [];
+    return { rows, uses };
   });
   return fileAll(sql, feed, rows.map((r) => ({ ...r, id: r.note_id })), (r, areaId) => {
     // The step as the view names it (TrueBatch and Packing give the readable name people see on the batch record), used as given:
     // Deviations keeps no list of TrueBatch's steps and builds no name from keys.
     const step = (r.step ?? '').trim() || 'step not named';
     const text = (r.note ?? '').trim() || '(no text)';
+    const eq = equipmentAt(r.step, uses.filter((u) => u.batch_number === r.batch_number));
+    const eqLine = eq ? ` Equipment pulled from the ${system} equipment use of ${r.batch_number} ${eq.at === 'step' ? 'at this step' : 'in this stage'}.` : '';
     return {
       planned: false, title: `Batch ${r.batch_number}, ${step}: ${text}`.slice(0, 200),
-      description: `${text}\n\nDeviation note ${r.note_id} in the ${system} batch record of ${r.batch_number}, step ${step}. Filed automatically from ${system}.`.slice(0, 5000),
-      areaId, equipment: '', eventAt: new Date(r.noted_at).toISOString(),
+      description: `${text}\n\nDeviation note ${r.note_id} in the ${system} batch record of ${r.batch_number}, step ${step}. Filed automatically from ${system}.${eqLine}`.slice(0, 5000),
+      areaId, equipment: eq?.text ?? '', eventAt: new Date(r.noted_at).toISOString(),
       // D-57: the batch comes from the product's own note, so it is pulled, not typed by hand.
       products: [{ product: (r.product_code ?? '').trim() || `not named in ${system}`, batch: r.batch_number, from: feed.prefix.split(':')[0] }], noBatch: false,
       immediateAction: `As written in the ${system} note and batch record of ${r.batch_number} (step ${step}).`, actionTakenAt: null,
