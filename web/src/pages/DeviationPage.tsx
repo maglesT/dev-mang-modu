@@ -156,7 +156,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         {classification && correcting !== 'classification' ? (
           <Classified d={d} c={classification} />
         ) : (classification && correcting === 'classification') || (d.step === 'classification' && classifier) ? (
-          <ClassifyForm id={d.id} initial={classification?.data} correct={classification ? correct('classification') : undefined}
+          <ClassifyForm id={d.id} batchCheck={batchCheckOf(d)} initial={classification?.data} correct={classification ? correct('classification') : undefined}
             onDone={async () => { setCorrecting(null); await load(); }} onCancel={() => setCorrecting(null)} />
         ) : (
           <p className="muted">{d.reporterId === me.id && holds(me, 'deviations.deviation.classify') ? 'You reported this deviation, so another QA person classifies it.' : 'Waiting for QA.'}</p>
@@ -358,6 +358,13 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
   );
 }
 
+// D-58: how product and batch were checked at classification (older classifications: ticked by QA).
+const BATCH_CHECK: Record<string, string> = {
+  qa: 'Checked by QA against the batch record (typed by hand)',
+  picked: 'Picked from the batch record (checked automatically)',
+  none: 'None concerned',
+};
+
 function Classified({ d, c }: { d: Deviation; c: SectionVersion }) {
   const [types, setTypes] = useState<NamedItem[]>([]);
   useEffect(() => {
@@ -370,7 +377,7 @@ function Classified({ d, c }: { d: Deviation; c: SectionVersion }) {
       ['Type', types.find((t) => t.id === data.typeId)?.name ?? '—'],
       ['Impact assessment', str(data.impact)],
       ['Investigator', str(d.investigator)],
-      ['Product and batch', 'Checked by QA'],
+      ['Product and batch', BATCH_CHECK[str(data.batchCheck)] ?? 'Checked by QA'],
       ['Classified by', `${c.savedBy} · ${plantTime(c.savedAt)}`],
     ]} />
   );
@@ -380,8 +387,15 @@ function ReasonField({ value, onChange }: { value: string; onChange: (v: string)
   return <label>Reason for the correction *<input value={value} onChange={(e) => onChange(e.target.value)} /></label>;
 }
 
-function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
-  id: number; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
+// D-58: QA ticks only when a batch of the report was typed by hand (or saved before D-57); a picked or pulled batch was
+// checked in its TrueBatch product. The server decides the same way.
+const batchCheckOf = (d: Deviation) => {
+  const own = d.batches.filter((b) => b.role === 'own');
+  return !own.length ? 'none' : own.some((b) => b.typed !== false) ? 'qa' : 'picked';
+};
+
+function ClassifyForm({ id, batchCheck, initial, correct, onDone, onCancel }: {
+  id: number; batchCheck: 'qa' | 'picked' | 'none'; initial?: Record<string, unknown>; correct?: (data: object, reason: string) => Promise<void>; onDone: () => Promise<void>; onCancel: () => void;
 }) {
   const [types, setTypes] = useState<NamedItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -430,7 +444,9 @@ function ClassifyForm({ id, initial, correct, onDone, onCancel }: {
         </label>
       </div>
       <label>Impact assessment (product, batches, other batches possibly affected)<textarea rows={3} value={f.impact} onChange={(e) => setF({ ...f, impact: e.target.value })} /></label>
-      <label className="check"><input type="checkbox" checked={f.productBatchChecked} onChange={(e) => setF({ ...f, productBatchChecked: e.target.checked })} /> I checked the product and batch numbers against the batch record</label>
+      {batchCheck === 'qa'
+        ? <label className="check"><input type="checkbox" checked={f.productBatchChecked} onChange={(e) => setF({ ...f, productBatchChecked: e.target.checked })} /> I checked the product and batch numbers against the batch record</label>
+        : batchCheck === 'picked' && <p className="muted small">Product and batch: picked from the batch record, checked automatically.</p>}
       {correct && <ReasonField value={reason} onChange={setReason} />}
       {problems.length > 0 && <div className="error">{problems.map((p) => <p key={p}>{p}</p>)}</div>}
       <div className="actions">

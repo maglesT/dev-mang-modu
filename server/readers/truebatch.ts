@@ -1,4 +1,5 @@
 import type { Query, Source } from './logbook.js';
+import type { Sql, Tx } from '../db.js';
 
 // S17 (D-37, DV-23), D-51: reads TrueBatch's read-only report views (contract: docs/07-data-contracts.md). Never a write.
 // Text comparisons only. equipment_use_v1 is optional: read when present and readable. D-56: Batchwright is retired; its
@@ -27,6 +28,18 @@ export interface TrueBatchData {
   dataAsOf: string | null;
 }
 
+/**
+ * Whether a view is there and this login may read it (to_regclass needs no rights on the view itself; a view created
+ * before its grant is skipped, not a failure). CASE fixes the order: no schema rights, no lookups.
+ */
+export async function canRead(tx: Sql | Tx, schema: string, view: string): Promise<boolean> {
+  const [r] = await tx<{ ok: boolean }[]>`
+    select case when not has_schema_privilege(${schema}, 'USAGE') then false
+                when to_regclass(format('%I.%I', ${schema}::text, ${view}::text)) is null then false
+                else has_table_privilege(format('%I.%I', ${schema}::text, ${view}::text), 'SELECT') end as ok`;
+  return !!r?.ok;
+}
+
 const norm = (col: string) => `lower(regexp_replace(coalesce(${col}, ''), '[\\s\\-/._]+', '', 'g'))`;
 
 export async function readTrueBatch(src: Source, q: Query, product: BatchProduct = 'truebatch'): Promise<TrueBatchData> {
@@ -45,16 +58,11 @@ export async function readTrueBatch(src: Source, q: Query, product: BatchProduct
              x->>'status' as status, (x->>'issued_at')::timestamptz as issued_at, (x->>'completed_at')::timestamptz as completed_at,
              coalesce((x->>'released')::boolean, false) as released, x->>'coded_batch_number' as coded_batch_number, x->>'bulk_product_code' as bulk_product_code
       from (select to_jsonb(f) as x from ${v(fact)} f where ${b} = any(${q.batchesNorm})) r order by (x->>'issued_at')::timestamptz`;
-    // Whether equipment_use_v1 is there and this login may read it (to_regclass needs no rights on the view itself;
-    // a view created before its grant is skipped, not a failure). CASE fixes the order: no schema rights, no lookups.
-    const [eq] = await tx<{ ok: boolean }[]>`
-      select case when not has_schema_privilege(${src.schema}, 'USAGE') then false
-                  when to_regclass(format('%I.%I', ${src.schema}::text, 'equipment_use_v1')) is null then false
-                  else has_table_privilege(format('%I.%I', ${src.schema}::text, 'equipment_use_v1'), 'SELECT') end as ok`;
-    const equipmentUse = eq?.ok && batches.length ? await tx<TrueBatchData['equipmentUse']>`
+    const eq = { ok: await canRead(tx, src.schema, 'equipment_use_v1') };
+    const equipmentUse = eq.ok && batches.length ? await tx<TrueBatchData['equipmentUse']>`
       select batch_number, equipment_code, equipment_type, room_code, step, started_at, ended_at
       from ${v('equipment_use_v1')} where ${b} = any(${q.batchesNorm}) order by batch_number, started_at nulls last limit 1000` : [];
-    const viewsRead = [fact, ...(eq?.ok ? ['equipment_use_v1'] : [])];
+    const viewsRead = [fact, ...(eq.ok ? ['equipment_use_v1'] : [])];
     const [asOf] = await tx<{ at: string | null }[]>`select max(data_as_of) as at from ${v(fact)} where ${b} = any(${q.batchesNorm})`;
     const [now] = await tx<{ at: string }[]>`select now() as at`;
     const equipmentUsed = [...new Set(equipmentUse.map((x) => x.equipment_code).filter((x): x is string => !!x))];

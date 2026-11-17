@@ -9,7 +9,7 @@ import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
 import {
   fileDeviation,
-  PLANT_TZ, addSection, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
+  PLANT_TZ, addSection, checkClassification, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
   investigationContext,
 } from '../deviations.js';
@@ -194,13 +194,15 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
       const [type] = await tx`select 1 from deviation_types where id = ${c.typeId} and active`;
       const inv = await assignable(tx, app.people, c.investigatorId);
       if (!type || !inv) return { status: 400, error: 'invalid_request', problems: ['Choose a deviation type and an investigator from the lists.'] };
-      const section = await addSection(tx, id, 'classification', c, req.user!.id);
+      const checked = await checkClassification(tx, id, c);
+      if ('problem' in checked) return { status: 400, error: 'invalid_request', problems: [checked.problem] };
+      const section = await addSection(tx, id, 'classification', checked.data, req.user!.id);
       const target = await targetDate(tx, id, c.classification);
       const step: Step = d.planned ? 'approval' : 'investigation';
       await tx`update deviations set classification = ${c.classification}, target_date = ${target},
         investigator_id = ${c.investigatorId}, step = ${step} where id = ${id}`;
       await audit(tx, { actorId: req.user!.id, action: 'deviation.classified', objectType: 'section', objectId: section.id,
-        new: { ...c, targetDate: target, step } });
+        new: { ...checked.data, targetDate: target, step } });
       return { status: 200, step, targetDate: target };
     });
     if (out.status !== 200) return reply.code(out.status).send(out);

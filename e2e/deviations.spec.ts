@@ -48,6 +48,37 @@ test('D-57: a reporter picks the batch from the list (product filled), and a bat
   await expect(page.getByText('FG-INJ-EX25 / TI26E01; Saline 500 mL / PAPER-9 (typed by hand)')).toBeVisible();
 });
 
+// D-58: a batch picked from TrueBatch was checked there: QA classifies without the tick, and the record says so.
+test('D-58: a picked batch needs no "checked product and batch" tick at classification', async ({ page }) => {
+  await logIn(page, 'us1');
+  await page.getByRole('button', { name: 'Report a deviation' }).click();
+  await page.getByLabel('Title *').fill('Stopper bowl jam');
+  await page.getByLabel('What happened *').fill('Stopper bowl jammed for 5 minutes.');
+  await page.getByLabel('Area *').selectOption({ label: 'Packing' });
+  await page.getByLabel('Batch 1').fill('TI26E01');
+  await expect(page.getByLabel('Product 1')).toHaveValue('FG-INJ-EX25');
+  await page.getByRole('radiogroup', { name: 'Could product quality be affected?' }).getByLabel('Not known yet').check();
+  await page.getByRole('radiogroup', { name: 'Could patient safety be at risk?' }).getByLabel('No', { exact: true }).check();
+  await page.getByRole('radiogroup', { name: 'Could other batches be affected?' }).getByLabel('No', { exact: true }).check();
+  await page.getByLabel('Short assessment *').fill('Vials in the jam segregated.');
+  await page.getByLabel('Action taken (immediate action) *').fill('Bowl cleared.');
+  await page.getByRole('button', { name: 'Save and get a number' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Stopper bowl jam');
+  const number = (await page.getByRole('heading', { level: 1 }).textContent())!.split(' · ')[0]!;
+  await logOut(page);
+
+  await logIn(page, 'qa1');
+  await page.getByRole('button', { name: number }).click();
+  await expect(page.getByText('Product and batch: picked from the batch record, checked automatically.')).toBeVisible();
+  await expect(page.getByLabel('I checked the product and batch numbers against the batch record')).toHaveCount(0);
+  await page.getByLabel('Minor').check();
+  await page.getByLabel('Type').selectOption({ label: 'Process' });
+  await page.getByLabel('Investigator').selectOption({ label: 'US2 (us2)' });
+  await page.getByLabel(/^Impact assessment/).fill('This batch only.');
+  await page.getByRole('button', { name: 'Save classification' }).click();
+  await expect(page.getByText('Picked from the batch record (checked automatically)')).toBeVisible();
+});
+
 async function classify(page: Page, number: string, level = 'Major') {
   await page.getByRole('button', { name: number }).click();
   await page.getByLabel(level).check();
