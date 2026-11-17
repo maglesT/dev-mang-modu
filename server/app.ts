@@ -38,7 +38,7 @@ export interface AppOptions {
   cookieSecure?: boolean;
   // S9: Gemini settings; the AI suggestions are off without them.
   ai?: AiOptions;
-  // S17: read-only sources (Logbook, Batchwright); each is optional.
+  // S17: read-only sources (TrueBatch, Logbook); each is optional.
   sources?: Sources;
   // Core's employee view, for the write-time check of investigators and CAPA owners (D-42 slice 4, PL-08).
   people: People;

@@ -33,11 +33,11 @@ the trend view and PDF copies support reviews and inspections.
 5. Optional, AI help in investigations (D-29): put `GEMINI_API_KEY=...` (and, to change the model,
    `GEMINI_MODEL=...`) in `ops/.env` and restart. Deviation facts are then sent to Google
    (user names are not; free text goes as written).
-6. Optional, data from the Logbook and Batchwright (D-37): set `LOGBOOK_REPORT_URL` (role `logbook_report`, database
-   `logbook`) and `BATCHWRIGHT_REPORT_URL` (role `ebmr_report`, database `ebmr_tablets`) in `ops/.env`. Both roles are
-   read-only; each system's README has its `pg_hba` line. The app container must reach both databases.
+6. Optional, data from the Logbook (D-37): set `LOGBOOK_REPORT_URL` (role `logbook_report`, database `logbook`) in
+   `ops/.env`. The role is read-only; the Logbook's README has its `pg_hba` line. The app container must reach it.
    On the platform, apply writes `TRUEBATCH_DATABASE_URL` while the link to TrueBatch is on (D-51): its batch views are
-   read beside Batchwright's, and its deviation notes without a deviation number are filed as deviations.
+   read by "Fetch related data", and its deviation notes without a deviation number are filed as deviations.
+   Batchwright is retired (D-56): it is no longer read; data fetched from it before stays readable.
    Likewise `TRUEBATCH_PACKING_DATABASE_URL` while the link to TrueBatch Tablets Packing is on (D-53): its deviation
    notes without a deviation number are filed as deviations too (area "TrueBatch Packing (automatic)").
 7. Optional, the QMS product reads the CAPA register (D-40): give the read-only role `capa_report` a login,
@@ -46,7 +46,7 @@ the trend view and PDF copies support reviews and inspections.
    description, source) and nothing else. Migration 0010 also takes TEMPORARY from PUBLIC on the database; that is a
    database setting, not in a backup, so after restoring into a new database run
    `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO deviations_app;`.
-   Batchwright reads the deviations the same way (D-49): role `deviation_report`, view `report.deviation_v1`
+   The batch records read the deviations the same way (D-49): role `deviation_report`, view `report.deviation_v1`
    (deviation number, status, classification, opened and closed times, and each product and batch it names).
 8. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
@@ -68,7 +68,7 @@ so a live database contains only what its users enter. Keep it apart from any de
 cd /opt/deviations
 # ops/live.env (mode 600, typed by the site; never in git or chat):
 #   DB_PASSWORD=...            GEMINI_API_KEY=...        (GEMINI_MODEL only to change the default)
-#   LOGBOOK_REPORT_URL=...     BATCHWRIGHT_REPORT_URL=...  (only if those systems are connected)
+#   LOGBOOK_REPORT_URL=...     (only if the Logbook is connected)
 # ops/live.override.yml: the live port on localhost only, e.g.
 #   services: { app: { ports: !override ["127.0.0.1:3004:3000"] } }     (!override needs Docker Compose 2.24 or later)
 L="docker compose -p deviations-live --env-file ops/live.env -f ops/docker-compose.yml -f ops/live.override.yml"

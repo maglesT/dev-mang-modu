@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, plantTime } from '../api.js';
 
-// S17 (D-37, DV-23): data from the Logbook, Batchwright and TrueBatch (D-51) for this deviation. Each fetch is a kept copy
-// (read-only, checksummed); the newest per source is shown, older ones are listed.
+// S17 (D-37, DV-23): data from TrueBatch (D-51) and the Logbook for this deviation. Each fetch is a kept copy
+// (read-only, checksummed); the newest per source is shown, older ones are listed. Copies read from Batchwright before it
+// was retired (D-56) are still shown as kept, with the tables of its other views.
 type Row = Record<string, unknown>;
 interface Fetch {
   id: number; source: 'logbook' | 'batchwright' | 'truebatch'; status: 'ok' | 'not_configured' | 'failed';
@@ -11,7 +12,7 @@ interface Fetch {
   rowCount: number; sha256: string; error: string | null; fetchedAt: string; fetchedBy: string;
 }
 const NAME = { logbook: 'Logbook', batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)' } as const;
-const SOURCES = ['batchwright', 'truebatch', 'logbook'] as const;
+const SOURCES = ['truebatch', 'logbook', 'batchwright'] as const;
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const time = (v: unknown) => (v ? plantTime(String(v)) : '—');
 const list = (v: unknown) => (Array.isArray(v) ? (v as Row[]) : []);

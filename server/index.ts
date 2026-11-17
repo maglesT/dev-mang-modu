@@ -14,7 +14,6 @@ const ai = config.GEMINI_API_KEY ? { apiKey: config.GEMINI_API_KEY, model: confi
 const reader = (url: string) => ({ sql: connect(url, {}, 2), schema: 'report' });
 const sources = {
   ...(config.LOGBOOK_REPORT_URL ? { logbook: reader(config.LOGBOOK_REPORT_URL) } : {}),
-  ...(config.BATCHWRIGHT_REPORT_URL ? { batchwright: reader(config.BATCHWRIGHT_REPORT_URL) } : {}),
   ...(config.TRUEBATCH_DATABASE_URL ? { truebatch: reader(config.TRUEBATCH_DATABASE_URL) } : {}),
 };
 // D-53: TrueBatch Tablets Packing is read for its deviation notes only (not by "Fetch related data").
@@ -45,7 +44,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     stopAuto();
     await app.close();
     await sql.end();
-    // The read-only connections to the Logbook, Batchwright, TrueBatch and Packing too.
+    // The read-only connections to the Logbook and the TrueBatch products too.
     await Promise.all([...[...Object.values(sources), ...(packing ? [packing] : []), ...(injectables ? [injectables] : []), ...(injectablesPacking ? [injectablesPacking] : [])].map((x) => x.sql.end()), identity.end()]);
     process.exit(0);
   });

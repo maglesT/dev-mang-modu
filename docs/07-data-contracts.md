@@ -1,4 +1,4 @@
-# Data read from the Logbook, Batchwright, TrueBatch and TrueBatch Packing (contracts for S15, S16, S17, D-51, D-53)
+# Data read from the Logbook, TrueBatch and TrueBatch Packing (contracts for S15, S17, D-51, D-53)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -14,37 +14,16 @@ the site sets LOGIN and a password at install)
 | `report.calibration_v1` | one row per calibration entry (latest version): `equipment_code text`, `performed_at timestamptz` (activity_end or start), `result text`, `next_due date`, `certificate_ref text`, `read_at`, `data_as_of` |
 | `report.logbook_sop_v1` | `type text` (logbook type key), `sop_ref text` (from the approved settings in force), `read_at`, `data_as_of` |
 
-## Batchwright (ebmr), role `ebmr_report`
+## Batchwright (ebmr): retired (D-56)
 
-Existing views read as they are (columns as defined in Batchwright): `report.batch_fact_v1`,
-`report.step_use_v1`, `report.cpp_value_v1`, `report.exception_v1`, `report.alarm_v1`.
-New in S16:
-
-| View | Columns |
-|------|---------|
-| `report.reference_document_v1` | `kind text` (e.g. SOP), `code text`, `version text`, `title text`, `effective_from date`, `read_at`, `data_as_of` |
-| `report.batch_reference_v1` | `batch_number text`, `kind text`, `code text`, `version text`, `title text` (documents the batch's master record cites), `read_at`, `data_as_of` |
-
-Added in S16 after the server session checked the hosted demo (the existing views have no in-process check
-results or process actuals, `step_use_v1.equipment_code` is empty there, and `exception_v1` has no step or text):
-
-| View | Columns |
-|------|---------|
-| `report.equipment_use_v1` | `batch_number`, `equipment_code`, `equipment_type`, `room_code`, `step`, `started_at`, `ended_at`, `read_at`, `data_as_of` |
-| `report.ipc_result_v1` | `batch_number`, `step`, `step_title`, `check_kind`, `item`, `instrument_code`, `reading` (null for an aggregate), `value_text`, `unit`, `lower_text`, `upper_text`, `aggregate` (e.g. mean), `alert_lower_text`, `alert_upper_text`, `result` (PASS / ALERT / FAIL, Batchwright's verdict), `recorded_at`, `read_at`, `data_as_of` |
-| `report.process_actual_v1` | `batch_number`, `step`, `tag`, `value_text`, `unit`, `lower_text`, `upper_text`, `within_limits`, `recorded_at`, `read_at`, `data_as_of` |
-| `report.exception_detail_v1` | `batch_number`, `exception_id`, `exception_type`, `category`, `severity`, `step`, `step_title`, `description`, `status`, `disposition`, `disposed_by` (pseudonymous person id), `disposed_at`, `raised_at`, `read_at`, `data_as_of` |
-
-Each of these four also exists as a function taking batch numbers, `report.<view>_for(text[])`, with the same columns (milliseconds per batch instead of a scan of all batches; Batchwright D-S16-5). The reader uses the function where the login may execute it, else the view if readable, else skips it; each fetch records what it read. `exception_detail_v1.disposed_by` is a pseudonymous person id; `ipc_result_v1.result` is PASS, ALERT or FAIL (one combined verdict per parameter).
-
-Not read: `report.deviation_fact_v1` and every `site.deviation*` / `site.capa*` table (owner: read the batch data
-directly, not Batchwright's deviation module).
+Batchwright was read until 17 Nov 2026 (D-37, D-38, D-48). It is retired and no longer read; copies fetched from it
+before (source `batchwright`) are kept and stay readable. Its view list is in the history of this file.
 
 ## TrueBatch Tablets (truebatch), platform link `TRUEBATCH_DATABASE_URL` (D-51)
 
-TrueBatch publishes these views in schema `report` (its migration `0006_report_views.sql`). The first two have the
-names and columns of Batchwright's views, so data collection reads them with the Batchwright reader (every view other
-than `batch_fact_v1` is optional there); each fetch keeps TrueBatch's copy as its own row (source `truebatch`).
+TrueBatch publishes these views in schema `report` (its migration `0006_report_views.sql`). Data collection reads the
+first two (`equipment_use_v1` is optional: read when present and readable); each fetch keeps TrueBatch's copy as its
+own row (source `truebatch`).
 
 | View | Columns |
 |------|---------|
@@ -62,26 +41,20 @@ Packing publishes `report.deviation_note_v1` with the columns of TrueBatch's abo
 with no `reference` is filed once as a deviation (reporter `truebatch_packing.auto`, area "TrueBatch Packing
 (automatic)"); Packing finds the number in `report.deviation_v1` by `source_ref` or by the batch.
 
-Not read: `report.packing_batch_v1` (its columns are not Batchwright's `batch_fact_v1`, and filing needs only the
+Not read: `report.packing_batch_v1` (its columns are not those of `batch_fact_v1`, and filing needs only the
 note), `equipment_use_v1` and `material_use_v1`. "Fetch related data" does not read Packing; for a packing deviation
 the investigator adds the bulk batch (printed on the packs) to the report, and that batch is read in TrueBatch.
 
-## Shared demo scenario (the same codes in all three systems; follows the hosted Batchwright demo)
+## Shared demo scenario (Logbook test data)
 
-- Product **`RAB-GR-20`** "Rabeprazole sodium 20 mg gastro-resistant tablets (DEMO-ONLY)", master family `RAB-WG-DEMO`.
-- Batch **`RAB26004`** (the deviation); earlier normal batch `RAB26002` on the same equipment (released).
+- Product **`RAB-GR-20`** "Rabeprazole sodium 20 mg gastro-resistant tablets (DEMO-ONLY)".
+- Batch **`RAB26004`** (the deviation); earlier normal batch `RAB26002` on the same equipment.
 - Rooms `GRAN-1` (granulation: RMG-01, FBD-01, MILL-01) and `COMP-1` (compression: PRESS-01, BAL-COMP-01, HT-01, FRB-01).
-- Batchwright (hosted demo, created by the server session): drying step TB-05 records `dryer.inlet_temp_C`
-  (50.0–70.0 °C) and LOD (2.0–3.5 %); RAB26004 has 51.0 °C and 3.4 %, inside but at the edge (RAB26002: 60.0 °C, 2.8 %).
-  Compression on PRESS-01 (COMP-1); step p-ipc-phys@ (TB-13) "Thickness and breaking force of the cores" on HT-01:
-  3 tablets, 48 / 95 / 52 N against individual limits 60–140 N, mean 65 N (action min 60, alert min 70), result
-  FAIL; exception EX-21 IPC_CHECK_FAILED / OUT_OF_LIMIT / ACTION, open; the batch is on hold at compression.
-  SOPs come from the master and route level (`batch_reference_v1`), not per step.
+- The batch record (TrueBatch in the tests) names FBD-01 and HT-01 as used by RAB26004.
 - Logbook (demo seed, Logbook PR #18), event 31 Oct 2026 22:00 IST: FBD-01 use and cleaning for both batches;
   PRESS-01 use for RAB26002, cleaning, use for RAB26004 (19:00–23:30 IST); last preventive maintenance of PRESS-01
   40 days before, none since; a PRESS-01 breakdown two days before ("Upper punch sticking", repaired); HT-01
   calibration with next due 30 Oct 2026 (overdue at the event); SOP-ENG-010 on PRESS-01 and in the settings.
-- Expected findings of "Fetch related data" for RAB26004: hardness check FAILED on HT-01 (48, 52 N outside 60–140;
-  mean 65 N below the alert limit 70); exception EX-21 open;
-  dryer inlet 51.0 °C close to its lower limit; the exception; HT-01 calibration overdue at the event; PRESS-01 last
-  preventive maintenance 40 days before; the PRESS-01 breakdown two days before.
+- Expected findings of "Fetch related data" for RAB26004: the batch's status and the equipment it used; HT-01
+  calibration overdue at the event; PRESS-01 last preventive maintenance 40 days before; the PRESS-01 breakdown two
+  days before.

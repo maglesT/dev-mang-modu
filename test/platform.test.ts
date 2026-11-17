@@ -108,7 +108,7 @@ describe('Deviations on a platform database (D-42)', () => {
     expect((await su`select 1 from pg_views where schemaname = 'report' and viewname = 'capa_v1'`).length).toBe(1);
   });
 
-  it('DV-11 report.deviation_v1 for the Batchwright link: same name, version and columns on the platform as standalone', async () => {
+  it('DV-11 report.deviation_v1 for the batch record links: same name, version and columns on the platform as standalone', async () => {
     const schema = (await standalone.owner<{ s: string }[]>`select current_schema() as s`)[0]!.s;
     const platform = await columns(su, 'report', 'deviation_v1');
     expect(platform.map((c) => c.name)).toEqual(['number', 'status', 'classification', 'opened_at', 'closed_at',
@@ -125,11 +125,8 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(loadConfig(env).DATABASE_URL).toBe(url);
     expect(loadConfig(env).DB_APP_ROLE).toBeUndefined();
     expect(loadConfig(env).LOGBOOK_REPORT_URL).toBe('postgres://deviations_app:pw@db:5432/logbook');
-    expect(loadConfig(env).BATCHWRIGHT_REPORT_URL).toBeUndefined();   // Batchwright not licensed or not linked
-    // Linked to Batchwright (ebmr, D-48): apply writes EBMR_DATABASE_URL; a standalone BATCHWRIGHT_REPORT_URL still wins.
-    const ebmr = 'postgres://deviations_app:pw@db:5432/ebmr';
-    expect(loadConfig({ ...env, EBMR_DATABASE_URL: ebmr }).BATCHWRIGHT_REPORT_URL).toBe(ebmr);
-    expect(loadConfig({ ...env, EBMR_DATABASE_URL: ebmr, BATCHWRIGHT_REPORT_URL: 'postgres://x:y@h/ebmr' }).BATCHWRIGHT_REPORT_URL).toBe('postgres://x:y@h/ebmr');
+    // D-56: Batchwright is retired: a link to it left in the environment is not read.
+    expect(Object.keys(loadConfig({ ...env, EBMR_DATABASE_URL: 'postgres://deviations_app:pw@db:5432/ebmr' })).filter((k) => /EBMR|BATCHWRIGHT/.test(k))).toEqual([]);
     expect(loadConfig(env).OIDC_CLIENT_ID).toBe('deviations');
     expect(loadConfig({ ...env, DATABASE_URL: 'postgres://x:y@h/standalone' }).DATABASE_URL).toBe('postgres://x:y@h/standalone');
     expect(loadConfig({ ...env, DATABASE_URL: '', LOGBOOK_REPORT_URL: ' ' })).toMatchObject({ DATABASE_URL: url, LOGBOOK_REPORT_URL: env.LOGBOOK_DATABASE_URL });

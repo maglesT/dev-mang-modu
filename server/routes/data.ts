@@ -3,11 +3,11 @@ import type { Sql } from '../db.js';
 import { INVESTIGATES, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { fetchRelated, type Sources } from '../readers/fetch.js';
 
-// S17 (D-37, DV-23): data collection for a deviation from the Logbook, Batchwright and TrueBatch (D-51; read-only).
+// S17 (D-37, DV-23): data collection for a deviation from TrueBatch (D-51) and the Logbook (read-only; Batchwright retired, D-56).
 export function dataRoutes(app: FastifyInstance, sql: Sql, sources: Sources) {
   const actor = { preHandler: requirePermission(...INVESTIGATES) };
 
-  app.get('/api/data/status', actor, async () => ({ logbook: !!sources.logbook, batchwright: !!sources.batchwright, truebatch: !!sources.truebatch }));
+  app.get('/api/data/status', actor, async () => ({ logbook: !!sources.logbook, truebatch: !!sources.truebatch }));
 
   // Anyone working on the deviation (investigation.write or qa.oversee) may fetch while it is open; each fetch is kept.
   app.post<{ Params: { id: string } }>('/api/deviations/:id/fetch', actor, async (req, reply) => {

@@ -151,7 +151,7 @@ test('DV-23: the Measure band fetches related data; a system that is not connect
   await page.getByRole('button', { name: number }).click();
   const card = page.getByRole('region', { name: 'Data collection' });
   await card.getByRole('button', { name: 'Fetch related data' }).click();
-  await expect(card).toContainText('Batch record (Batchwright)');
+  await expect(card).toContainText('Batch record (TrueBatch)');
   await expect(card).toContainText('Not connected on this installation.');
   await expect(card.getByRole('button', { name: 'Fetch again' })).toBeVisible();
 });
