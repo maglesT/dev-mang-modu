@@ -251,7 +251,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         ['Reported by', `${val(d.reporter)} · ${plant(d.reportedAt as string)}`], ['Investigator', d.investigator], ['Open CAPAs', d.openCapas],
       ]),
       heading('Product and batches'),
-      table(['Role', 'Product', 'Batch', 'Outcome'], d.batches.map((b) => [b.role === 'own' ? 'Concerned' : 'Other batch checked', b.product, b.batch, b.outcome ?? ''])),
+      table(['Role', 'Product', 'Batch', 'Outcome'], d.batches.map((b) => [b.role === 'own' ? 'Concerned' : 'Other batch checked', b.product, `${b.batch}${b.typed ? ' (typed by hand)' : ''}`, b.outcome ?? ''])),
     ];
     for (const kind of ['report', 'classification', 'investigation_draft', 'investigation', 'closure', 'target_date']) {
       const versions = d.sections.filter((x) => x.kind === kind);
@@ -275,7 +275,8 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     if (fetches.length) {
       content.push(heading('Data collected (read from other systems)'));
       for (const f of fetches) {
-        content.push(t(`${({ batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)' } as Record<string, string>)[f.source] ?? 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        content.push(t(`${({ batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)', truebatch_injectables: 'Batch record (TrueBatch Injectables)',
+          truebatch_packing: 'Batch record (TrueBatch Packing)', truebatch_injectables_packing: 'Batch record (TrueBatch Injectables Packing)' } as Record<string, string>)[f.source] ?? 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
       }

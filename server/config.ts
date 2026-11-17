@@ -26,11 +26,11 @@ const schema = z.object({
   LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
   // D-51: TrueBatch's batch views (written by the platform's apply only while the link to TrueBatch is on).
   TRUEBATCH_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-53: TrueBatch Tablets Packing's deviation notes (written by apply only while the link to Packing is on).
+  // D-53, D-57: TrueBatch Tablets Packing (written by apply only while the link to Packing is on).
   TRUEBATCH_PACKING_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-54: TrueBatch Injectables' deviation notes (written by apply only while the link to Injectables is on).
+  // D-54, D-57: TrueBatch Injectables (written by apply only while the link to Injectables is on).
   TRUEBATCH_INJECTABLES_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-55: TrueBatch Injectables Packing's deviation notes (written by apply only while the link to it is on).
+  // D-55, D-57: TrueBatch Injectables Packing (written by apply only while the link to it is on).
   TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
   // Core's employee view (identity report.employee_v1), read with this app's own login (D-42 slice 4, PL-08).
   IDENTITY_DATABASE_URL: z.string().url(),

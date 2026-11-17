@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
+import type { Sources } from '../readers/fetch.js';
+import { confirmPicks } from '../readers/picks.js';
 import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
@@ -51,7 +53,7 @@ const signFail = (reply: FastifyReply, e: unknown) => {
   throw e;
 };
 
-export function deviationRoutes(app: FastifyInstance, sql: Sql) {
+export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources = {}) {
   const reader = { preHandler: requirePermission() };
 
   // DV-01: anyone holding deviations.deviation.report reports a deviation and gets its number at once.
@@ -60,6 +62,9 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
     const body = reportData.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(body.error) });
     const d = body.data;
+    // D-57: a batch picked from a TrueBatch product is checked there once, on saving.
+    const picks = await confirmPicks(sources, d.products);
+    if (picks.length) return reply.code(400).send({ error: 'invalid_request', problems: picks });
     const result = await sql.begin((tx) => fileDeviation(tx, d, req.user!.id));
     if (!result) return reply.code(400).send({ error: 'invalid_request', problems: ['Choose an area from the list.'] });
     return reply.code(201).send(result);
@@ -132,7 +137,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql) {
       from signatures g where g.object_type = 'section' and g.object_id in (select id from sections where deviation_id = ${id})
       order by g.signed_at`;
     const batches = await sql`
-      select b.role, b.product, b.batch, b.outcome from batches b join latest_sections s on s.id = b.section_id
+      select b.role, b.product, b.batch, b.outcome, b.batch_typed as typed from batches b join latest_sections s on s.id = b.section_id
       where b.deviation_id = ${id} order by b.id`;
     const history = await sql`
       select a.id::int, a.at, u.full_name as actor, a.action, a.old_value as "oldValue", a.new_value as "newValue", a.reason

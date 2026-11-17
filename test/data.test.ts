@@ -131,7 +131,7 @@ describe('data collection (S17)', () => {
 
   it('DV-23: TrueBatch\'s copy is kept as its own row, and the equipment it names is looked up in the Logbook (D-51)', async () => {
     const ck = c.us1!;
-    expect((await call(t.app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: true, truebatch: true });
+    expect((await call(t.app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: true, truebatch: true, truebatch_injectables: false, truebatch_packing: false, truebatch_injectables_packing: false });
     const id = (await report({ products: [{ product: 'Metformin SR 500 mg', batch: 'MGL 26001' }] })).json().id as number;
     await call(t.app, ck, 'POST', `/api/deviations/${id}/fetch`, {});
     const f = (await call(t.app, ck, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; status: string; views: string[]; params: { equipment: string[] };
@@ -227,7 +227,7 @@ describe('data collection (S17)', () => {
     await seedUser(off.owner, 'usr9', ['user']);
     const ad = (await login(off.app, 'adm9')).cookie;
     const ck = (await login(off.app, 'usr9')).cookie;
-    expect((await call(off.app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: false, truebatch: false });
+    expect((await call(off.app, ck, 'GET', '/api/data/status')).json()).toEqual({ logbook: false, truebatch: false, truebatch_injectables: false, truebatch_packing: false, truebatch_injectables_packing: false });
     const area = (await call(off.app, ad, 'POST', '/api/areas', { name: 'X' })).json().id;
     const dev = (await call(off.app, ck, 'POST', '/api/deviations', {
       planned: false, title: 'x', description: 'x', areaId: area, eventAt: event.toISOString(), products: [], noBatch: true, immediateAction: 'x',

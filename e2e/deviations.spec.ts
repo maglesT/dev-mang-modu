@@ -23,6 +23,31 @@ async function report(page: Page, title: string, batch: string, planned = false)
   return (await page.getByRole('heading', { level: 1 }).textContent())!.split(' · ')[0]!;
 }
 
+// D-57: the batch is picked from the linked TrueBatch products; its product comes with it. A typed batch is marked.
+test('D-57: a reporter picks the batch from the list (product filled), and a batch not in the list is saved as typed by hand', async ({ page }) => {
+  await logIn(page, 'us1');
+  await page.getByRole('button', { name: 'Report a deviation' }).click();
+  await page.getByLabel('Title *').fill('Vial crimp loose');
+  await page.getByLabel('What happened *').fill('Three vials found with loose crimps at inspection.');
+  await page.getByLabel('Area *').selectOption({ label: 'Packing' });
+  await expect(page.getByText('Pick the batch from the list; its product comes with it.')).toBeVisible();
+  await page.getByLabel('Batch 1').fill('TI26E01');
+  await expect(page.getByLabel('Product 1')).toHaveValue('FG-INJ-EX25');
+  await expect(page.getByLabel('Product 1')).not.toBeEditable();
+  await page.getByRole('button', { name: 'Add another batch' }).click();
+  await page.getByLabel('Batch 2').fill('PAPER-9');
+  await page.getByLabel('Product 2').fill('Saline 500 mL');
+  await expect(page.getByText('Typed by hand', { exact: true })).toHaveCount(1);
+  await page.getByRole('radiogroup', { name: 'Could product quality be affected?' }).getByLabel('Not known yet').check();
+  await page.getByRole('radiogroup', { name: 'Could patient safety be at risk?' }).getByLabel('No', { exact: true }).check();
+  await page.getByRole('radiogroup', { name: 'Could other batches be affected?' }).getByLabel('No', { exact: true }).check();
+  await page.getByLabel('Short assessment *').fill('Vials segregated.');
+  await page.getByLabel('Action taken (immediate action) *').fill('Line stopped, crimper checked.');
+  await page.getByRole('button', { name: 'Save and get a number' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Vial crimp loose');
+  await expect(page.getByText('FG-INJ-EX25 / TI26E01; Saline 500 mL / PAPER-9 (typed by hand)')).toBeVisible();
+});
+
 async function classify(page: Page, number: string, level = 'Major') {
   await page.getByRole('button', { name: number }).click();
   await page.getByLabel(level).check();

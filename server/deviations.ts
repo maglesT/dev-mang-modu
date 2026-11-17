@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Sql, Tx } from './db.js';
 import { contentHash } from './signatures.js';
 import { audit } from './audit.js';
+import { BATCH_PRODUCTS } from './readers/truebatch.js';
 
 // Plant time zone for dates (target dates, overdue); storage stays UTC (DV-16).
 export const PLANT_TZ = 'Asia/Kolkata';
@@ -18,6 +19,12 @@ const productBatch = z.object({
   batch: text(80).refine((b) => normaliseBatch(b).length > 0, 'A batch number needs letters or digits.'),
 });
 
+// D-57: a batch of the report picked from a linked TrueBatch product names that product (`from`); without it the batch
+// was typed by hand. Kept in the report's data and on its batch rows (batches.batch_typed).
+const reportProduct = productBatch.extend({ from: z.enum(BATCH_PRODUCTS).optional() });
+export const ownRows = (products: { product: string; batch: string; from?: string }[]) =>
+  products.map((p) => ({ product: p.product, batch: p.batch, role: 'own' as const, typed: !p.from }));
+
 // S12 (D-34): the reporter's initial impact assessment: three quick answers and a short note.
 const answer = (what: string) => z.enum(['yes', 'no', 'unknown'], { errorMap: () => ({ message: `Initial impact: answer "${what}" (yes, no or not known).` }) });
 export const initialImpactData = z.object({
@@ -27,7 +34,8 @@ export const initialImpactData = z.object({
   notes: z.string().trim().min(1, 'Initial impact: write a short assessment.').max(3000),
 }, { errorMap: () => ({ message: 'Give the initial impact assessment.' }) });
 
-// DV-01: the report. Product and batch are free text (owner default); "none" must be said explicitly.
+// DV-01: the report. "None" must be said explicitly. D-57: the batch is picked from the linked TrueBatch products (the
+// product comes with it); one not in the list is typed by hand, and product and batch are then free text as before.
 export const reportData = z
   .object({
     planned: z.boolean(),
@@ -36,7 +44,7 @@ export const reportData = z
     areaId: z.number().int().positive(),
     equipment: z.string().trim().max(200).default(''),
     eventAt: z.string().datetime({ offset: true }),
-    products: z.array(productBatch).max(20),
+    products: z.array(reportProduct).max(20),
     noBatch: z.boolean().default(false),
     immediateAction: text(5000),
     // S12: when the immediate action was taken (optional; never in the future).
@@ -65,10 +73,11 @@ export const classificationData = z.object({
 });
 export type ClassificationData = z.infer<typeof classificationData>;
 
-export async function writeBatches(tx: Tx, deviationId: number, sectionId: number, rows: { product: string; batch: string; role: 'own' | 'other'; outcome?: string | null }[]) {
+// typed: the report's own batch typed by hand (true) or picked from a linked product (false), D-57; null otherwise.
+export async function writeBatches(tx: Tx, deviationId: number, sectionId: number, rows: { product: string; batch: string; role: 'own' | 'other'; outcome?: string | null; typed?: boolean | null }[]) {
   for (const r of rows) {
-    await tx`insert into batches (section_id, deviation_id, role, product, batch, batch_norm, outcome)
-      values (${sectionId}, ${deviationId}, ${r.role}, ${r.product}, ${r.batch}, ${normaliseBatch(r.batch)}, ${r.outcome ?? null})`;
+    await tx`insert into batches (section_id, deviation_id, role, product, batch, batch_norm, outcome, batch_typed)
+      values (${sectionId}, ${deviationId}, ${r.role}, ${r.product}, ${r.batch}, ${normaliseBatch(r.batch)}, ${r.outcome ?? null}, ${r.typed ?? null})`;
   }
 }
 
@@ -101,7 +110,7 @@ export async function fileDeviation(tx: Tx, d: ReportData, reporterId: number, s
     insert into deviations (year, seq, number, planned, reporter_id, source_ref) values (${year}, ${seq}, ${number}, ${d.planned}, ${reporterId}, ${sourceRef})
     returning id::int`;
   const section = await addSection(tx, dev!.id, 'report', d, reporterId);
-  await writeBatches(tx, dev!.id, section.id, d.products.map((p) => ({ ...p, role: 'own' as const })));
+  await writeBatches(tx, dev!.id, section.id, ownRows(d.products));
   await audit(tx, { actorId: reporterId, action: 'deviation.reported', objectType: 'deviation', objectId: dev!.id,
     new: { number, ...d, ...(sourceRef ? { sourceRef } : {}) } });
   return { id: dev!.id, number };
