@@ -107,7 +107,7 @@ export async function check(sql: Sql): Promise<IntegrityResult> {
   const fileIds = new Set(files.map((f) => f.id));
   for (const id of added.keys()) if (!fileIds.has(id)) problems.push(`Attachment ${id}: in the audit trail but missing from the records.`);
 
-  // S17 (DV-23): copies of Logbook and Batchwright data still match their SHA-256 and the one in the audit trail.
+  // S17 (DV-23): copies of data read from other systems still match their SHA-256 and the one in the audit trail.
   const fetches = await sql<{ id: number; ok: boolean; sha256: string }[]>`
     select id::int, encode(sha256(convert_to(data::text, 'UTF8')), 'hex') = sha256 as ok, sha256 from data_fetches`;
   const fetched = new Map((await sql<{ id: number; sha256: string }[]>`

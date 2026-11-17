@@ -267,7 +267,8 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         }
       }
     }
-    // S17 (DV-23): data collected from the Logbook, Batchwright and TrueBatch (D-51): every fetch, with its findings.
+    // S17 (DV-23): data collected from TrueBatch (D-51) and the Logbook: every fetch, with its findings (copies read from
+    // Batchwright before it was retired, D-56, are printed as they were kept).
     const fetches = await sql<{ id: number; source: string; status: string; params: Row; data: { findings?: string[] }; row_count: number; sha256: string; error: string | null; fetched_at: string; by: string }[]>`
       select f.id::int, f.source, f.status, f.params, f.data, f.row_count, f.sha256, f.error, f.fetched_at, u.full_name as by
       from data_fetches f join users u on u.id = f.fetched_by where f.deviation_id = ${id} order by f.id`;

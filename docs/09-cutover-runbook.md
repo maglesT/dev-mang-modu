@@ -1,5 +1,7 @@
 # Cutover runbook: the live Deviations & CAPA onto the Medhanta platform (slice 6)
 
+Note: Batchwright retired 17 Nov 2026 (D-56); skip its steps below.
+
 Status: written, **not run**. Adapted from the MMS runbook (its `docs/07-cutover-runbook.md`). It is applied at the
 **joint go-live**, when all products go live on the platform together (owner decision, 3 Nov 2026), and **only with
 the owner's approval**, on the owner's server, in a window the owner sets. Rules met: platform PL-13 (data moves

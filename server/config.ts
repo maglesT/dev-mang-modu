@@ -20,11 +20,10 @@ const schema = z.object({
   // S9 (D-29): AI-suggested causes through Google Gemini. Without a key the feature is off.
   GEMINI_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
   GEMINI_MODEL: z.string().trim().min(1).default('gemini-4-argon'),
-  // S17 (D-37): read-only connections to the Logbook and Batchwright report views. Without one, that
+  // S17 (D-37): read-only connection to the Logbook's report views. Without it, that
   // source shows as "not configured" and nothing else changes.
   // On the Medhanta platform (D-42) apply writes LOGBOOK_DATABASE_URL for the link to the Logbook's views instead.
   LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
-  BATCHWRIGHT_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
   // D-51: TrueBatch's batch views (written by the platform's apply only while the link to TrueBatch is on).
   TRUEBATCH_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
   // D-53: TrueBatch Tablets Packing's deviation notes (written by apply only while the link to Packing is on).
@@ -41,12 +40,10 @@ export type Config = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // On the Medhanta platform (D-42) apply names the product's own database DEVIATIONS_DATABASE_URL and the linked
-  // Logbook and Batchwright databases LOGBOOK_DATABASE_URL and EBMR_DATABASE_URL (D-48); standalone keeps the
-  // *_REPORT_URL settings.
+  // Logbook database LOGBOOK_DATABASE_URL (D-48); standalone keeps LOGBOOK_REPORT_URL. Batchwright is retired (D-56).
   return schema.parse({
     ...env,
     DATABASE_URL: env.DATABASE_URL || env.DEVIATIONS_DATABASE_URL,
     LOGBOOK_REPORT_URL: env.LOGBOOK_REPORT_URL?.trim() || env.LOGBOOK_DATABASE_URL,
-    BATCHWRIGHT_REPORT_URL: env.BATCHWRIGHT_REPORT_URL?.trim() || env.EBMR_DATABASE_URL,
   });
 }

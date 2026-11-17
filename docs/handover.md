@@ -68,11 +68,10 @@ Decisions D-01 to D-46: `docs/decisions.md`. Rule → test list: `docs/traceabil
 
 ## For the server session (S17 deployment)
 
-- Set in `ops/.env`: `LOGBOOK_REPORT_URL=postgres://logbook_report:<pw>@<logbook db host>:5432/logbook` and
-  `BATCHWRIGHT_REPORT_URL=postgres://ebmr_report:<pw>@<host>:5432/ebmr_tablets_demo` (the hosted demo database).
+- Set in `ops/.env`: `LOGBOOK_REPORT_URL=postgres://logbook_report:<pw>@<logbook db host>:5432/logbook`.
+  Batchwright is retired (D-56) and no longer read; on the platform TrueBatch is the batch record (D-51).
 - The Logbook role needs LOGIN and a password and a `pg_hba` line (Logbook README, "Database roles"); the Logbook
-  migration 0013 must have run (Logbook v0.5.0). Batchwright's `ebmr_report` already has LOGIN; it needs a `pg_hba`
-  line for the deviations container's address, and Batchwright's new views from its S16 PR.
+  migration 0013 must have run (Logbook v0.5.0).
 - Network: the deviations container must reach the Logbook database container (join its Docker network or publish
   its port on a private address) and the host PostgreSQL 5432 (e.g. `host.docker.internal` with
   `extra_hosts: ["host.docker.internal:host-gateway"]`). Not on the public interface.

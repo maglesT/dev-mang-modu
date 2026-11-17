@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { call, freshApp, login, seedUser, sig, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
-// D-49: report.deviation_v1 for Batchwright's release check: read-only, one row per batch the deviation names.
+// D-49: report.deviation_v1, read by the batch records (TrueBatch reads the number back, D-51): read-only, one row per batch the deviation names.
 let t: TestApp;
 let schema: string;
 const c: Record<string, string> = {};

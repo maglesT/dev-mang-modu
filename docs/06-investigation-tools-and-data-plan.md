@@ -1,5 +1,7 @@
 # Plan: investigation tools and data from the Logbook and Batchwright (draft for owner approval)
 
+Note: Batchwright retired 17 Nov 2026 (D-56); TrueBatch is the batch record read since D-51.
+
 Status: approved by the owner · 2026-10-31 (D-32, D-33). Owner request of 31 Oct: initial impact assessment, action taken, a data
 collection step (PDF uploads and data fetched from the Logbook, SOPs and the batch record system), the
 fishbone in Analysis, and the investigation tools of the owner's guide (5 Whys, 6M with evidence, Is / Is Not,

@@ -25,8 +25,8 @@ written, not run.
 - Reads the Logbook: `links.deviations.logbook: [equipment_v1, entry_v1, calibration_v1, logbook_sop_v1]`;
   `LOGBOOK_DATABASE_URL` from apply (`LOGBOOK_REPORT_URL` still accepted). A cut link shows "Connection to Logbook is off".
 - Reads identity: `links.deviations.identity: [employee_v1]` for the write-time check.
-- Reads Batchwright (product `ebmr`, D-48): `links.deviations.ebmr: [the 10 report views]`; `EBMR_DATABASE_URL` from
-  apply (standalone keeps `BATCHWRIGHT_REPORT_URL`). A cut link shows "Connection to Batchwright is off".
+- Batchwright (product `ebmr`, D-48) is retired (D-56): no `links.deviations.ebmr`, no `EBMR_DATABASE_URL`; copies
+  fetched from it before stay readable. TrueBatch is the batch record read (D-51).
 - Publishes `report.capa_v1` unchanged for the QMS: `links.qms.deviations: [capa_v1]`. The `capa_report` role is
   standalone only (0010 creates it only where the migration login may create roles).
 
