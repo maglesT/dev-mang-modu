@@ -21,6 +21,8 @@ const sources = {
 const packing = config.TRUEBATCH_PACKING_DATABASE_URL ? reader(config.TRUEBATCH_PACKING_DATABASE_URL) : undefined;
 // D-54: TrueBatch Injectables, the same way (its deviation notes only).
 const injectables = config.TRUEBATCH_INJECTABLES_DATABASE_URL ? reader(config.TRUEBATCH_INJECTABLES_DATABASE_URL) : undefined;
+// D-55: TrueBatch Injectables Packing, the same way (its deviation notes only).
+const injectablesPacking = config.TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL ? reader(config.TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL) : undefined;
 // Core's employee view: a small second pool, read with this app's own login (PL-08).
 const identity = connect(config.IDENTITY_DATABASE_URL, {}, 2);
 const signOn = oidcSignOn({ issuer: config.OIDC_ISSUER, clientId: config.OIDC_CLIENT_ID, clientSecret: config.OIDC_CLIENT_SECRET,
@@ -33,8 +35,9 @@ await app.listen({ port: config.PORT, host: config.HOST });
 const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));
 // D-50, D-51, D-53: missed limits the Logbook publishes and the deviation notes without a number of TrueBatch and
 // TrueBatch Packing are filed as deviations (each only with its link).
-const stopAuto = sources.logbook || sources.truebatch || packing || injectables
-  ? scheduleAutoRaise(sql, { logbook: sources.logbook, truebatch: sources.truebatch, truebatch_packing: packing, truebatch_injectables: injectables }, (msg) => app.log.info(msg)) : () => {};
+const stopAuto = sources.logbook || sources.truebatch || packing || injectables || injectablesPacking
+  ? scheduleAutoRaise(sql, { logbook: sources.logbook, truebatch: sources.truebatch, truebatch_packing: packing, truebatch_injectables: injectables,
+    truebatch_injectables_packing: injectablesPacking }, (msg) => app.log.info(msg)) : () => {};
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
@@ -43,7 +46,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     await app.close();
     await sql.end();
     // The read-only connections to the Logbook, Batchwright, TrueBatch and Packing too.
-    await Promise.all([...[...Object.values(sources), ...(packing ? [packing] : []), ...(injectables ? [injectables] : [])].map((x) => x.sql.end()), identity.end()]);
+    await Promise.all([...[...Object.values(sources), ...(packing ? [packing] : []), ...(injectables ? [injectables] : []), ...(injectablesPacking ? [injectablesPacking] : [])].map((x) => x.sql.end()), identity.end()]);
     process.exit(0);
   });
 }

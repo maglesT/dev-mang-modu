@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Sql } from '../server/db.js';
-import { AUTO_AREA, fileInjectablesNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
+import { AUTO_AREA, fileInjectablesNotes, fileInjectablesPackingNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBIP_AREA, TBIP_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
 import { APP_ROLE, TEST_DATABASE_URL, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): missed limits the Logbook publishes in report.overdue_v1 are filed here once,
@@ -11,6 +11,7 @@ const lb = `lbod_${process.pid}`;
 const tb = `tbnote_${process.pid}`;
 const tbp = `tbpnote_${process.pid}`;
 const tbi = `tbinote_${process.pid}`;
+const tbip = `tbipnote_${process.pid}`;
 const c: Record<string, string> = {};
 const src = () => ({ sql: reader, schema: lb });
 
@@ -30,8 +31,8 @@ beforeAll(async () => {
     title text, description text, immediate_action text, impact_notes text)`);
   await t.owner.unsafe(`grant usage on schema ${lb} to ${APP_ROLE}; grant select on ${lb}.overdue_v1 to ${APP_ROLE}`);
   // A stand-in for TrueBatch's report.deviation_note_v1 (its migration 0006), readable the same way.
-  // And for TrueBatch Tablets Packing's and TrueBatch Injectables', which have the same columns (D-53, D-54).
-  for (const x of [tb, tbp, tbi]) {
+  // And for TrueBatch Tablets Packing's, TrueBatch Injectables' and TrueBatch Injectables Packing's, which have the same columns (D-53, D-54, D-55).
+  for (const x of [tb, tbp, tbi, tbip]) {
     await t.owner.unsafe(`create schema ${x}`);
     await t.owner.unsafe(`create table ${x}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
       reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now())`);
@@ -41,7 +42,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await reader?.end();
-  await t.owner.unsafe(`drop schema if exists ${lb} cascade; drop schema if exists ${tb} cascade; drop schema if exists ${tbp} cascade; drop schema if exists ${tbi} cascade`);
+  await t.owner.unsafe(`drop schema if exists ${lb} cascade; drop schema if exists ${tb} cascade; drop schema if exists ${tbp} cascade; drop schema if exists ${tbi} cascade; drop schema if exists ${tbip} cascade`);
   await t.close();
 });
 
@@ -83,7 +84,7 @@ describe('missed limits from the Logbook (D-50)', () => {
   it('DV-01: the automatic reporter cannot sign in (no core employee) and a person\'s own report keeps no source', async () => {
     const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'logbook.auto'`;
     expect(u!.employee_id).toBeNull();
-    const own = await t.owner`select count(*)::int as n from deviations d join users u on u.id = d.reporter_id where u.username not in ('logbook.auto', 'truebatch.auto', 'truebatch_packing.auto', 'truebatch_injectables.auto') and d.source_ref is not null`;
+    const own = await t.owner`select count(*)::int as n from deviations d join users u on u.id = d.reporter_id where u.username not in ('logbook.auto', 'truebatch.auto', 'truebatch_packing.auto', 'truebatch_injectables.auto', 'truebatch_injectables_packing.auto') and d.source_ref is not null`;
     expect(own[0]!.n).toBe(0);
   });
 });
@@ -217,6 +218,33 @@ describe('deviation notes from TrueBatch Injectables (D-54)', () => {
     // The same note number in TrueBatch or Packing is another note: each system numbers its own.
     expect(await t.owner`select 1 from deviations where source_ref in (${TB_PREFIX + '41'}, ${TBP_PREFIX + '41'}, ${TBI_PREFIX + '41'})`).toHaveLength(3);
     const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'truebatch_injectables.auto'`;
+    expect(u!.employee_id).toBeNull();
+  });
+});
+
+describe('deviation notes from TrueBatch Injectables Packing (D-55)', () => {
+  const ipsrc = () => ({ sql: reader, schema: tbip });
+  const injp = { schema: tbip, prefix: TBIP_PREFIX, product: 'FG-INJ-EXM2' };
+
+  it('DV-01: an Injectables Packing note without a deviation number is filed once, for its product and packing batch, as the Injectables Packing automatic reporter', async () => {
+    await note(41, 'IP260001', 'Labels short by 120: reconciliation stopped', null, 2, 'Labelling › Label reconciliation', injp);
+    await note(62, 'IP260001', 'Carton printer jammed', 'DEV-2026-0011', 1, 'Cartoning › Cartoning', injp);   // has a number: never filed
+    await note(63, 'IP260002', 'Old note', null, 24 * 40, 'Labelling › Labelling', injp);   // older than the look-back
+    const first = await fileInjectablesPackingNotes(t.sql, ipsrc());
+    expect(first.filed).toHaveLength(1);
+    expect(await fileInjectablesPackingNotes(t.sql, ipsrc())).toEqual({ filed: [], problems: [] });   // never twice
+    const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string }[];
+    const d = list.find((x) => x.number === first.filed[0])!;
+    expect(d).toMatchObject({ title: 'Batch IP260001, Labelling › Label reconciliation: Labels short by 120: reconciliation stopped', area: TBIP_AREA,
+      reporter: 'TrueBatch Injectables Packing (automatic report)' });
+    const [row] = await t.owner<{ source_ref: string; description: string; batch: string; product: string }[]>`
+      select d.source_ref, s.data->>'description' as description, b.batch, b.product from deviations d
+      join latest_sections s on s.deviation_id = d.id and s.kind = 'report' join batches b on b.section_id = s.id where d.id = ${d.id}`;
+    expect(row).toMatchObject({ source_ref: `${TBIP_PREFIX}41`, batch: 'IP260001', product: 'FG-INJ-EXM2' });
+    expect(row!.description).toContain('in the TrueBatch Injectables Packing batch record of IP260001, step Labelling › Label reconciliation. Filed automatically from TrueBatch Injectables Packing.');
+    // The same note number in TrueBatch, Packing or Injectables is another note: each system numbers its own.
+    expect(await t.owner`select 1 from deviations where source_ref in (${TB_PREFIX + '41'}, ${TBP_PREFIX + '41'}, ${TBI_PREFIX + '41'}, ${TBIP_PREFIX + '41'})`).toHaveLength(4);
+    const [u] = await t.owner<{ employee_id: string | null }[]>`select employee_id from users where username = 'truebatch_injectables_packing.auto'`;
     expect(u!.employee_id).toBeNull();
   });
 });

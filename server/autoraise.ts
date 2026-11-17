@@ -16,6 +16,8 @@ import type { Source } from './readers/logbook.js';
 // source_ref 'truebatch_packing:note:<note_id>'.
 // D-54 (owner 2026-11-16): TrueBatch Injectables the same way, by truebatch_injectables.auto in the area
 // "TrueBatch Injectables (automatic)"; source_ref 'truebatch_injectables:note:<note_id>'.
+// D-55 (owner 2026-11-17): TrueBatch Injectables Packing the same way, by truebatch_injectables_packing.auto in the area
+// "TrueBatch Injectables Packing (automatic)"; source_ref 'truebatch_injectables_packing:note:<note_id>'.
 
 export const AUTO_REPORTER = 'logbook.auto';
 export const AUTO_AREA = 'Logbook (automatic)';
@@ -29,6 +31,9 @@ export const TBP_PREFIX = 'truebatch_packing:note:';
 export const TBI_REPORTER = 'truebatch_injectables.auto';
 export const TBI_AREA = 'TrueBatch Injectables (automatic)';
 export const TBI_PREFIX = 'truebatch_injectables:note:';
+export const TBIP_REPORTER = 'truebatch_injectables_packing.auto';
+export const TBIP_AREA = 'TrueBatch Injectables Packing (automatic)';
+export const TBIP_PREFIX = 'truebatch_injectables_packing:note:';
 // Records older than this are not filed (e.g. when the link is first switched on at a site with a long history).
 export const LOOKBACK_DAYS = 30;
 
@@ -38,6 +43,8 @@ const LOGBOOK: Feed = { username: AUTO_REPORTER, fullName: 'Logbook (automatic r
 const TRUEBATCH: Feed = { username: TB_REPORTER, fullName: 'TrueBatch (automatic report)', area: TB_AREA, prefix: TB_PREFIX, what: 'deviation notes from TrueBatch' };
 const PACKING: Feed = { username: TBP_REPORTER, fullName: 'TrueBatch Packing (automatic report)', area: TBP_AREA, prefix: TBP_PREFIX, what: 'deviation notes from TrueBatch Packing' };
 const INJECTABLES: Feed = { username: TBI_REPORTER, fullName: 'TrueBatch Injectables (automatic report)', area: TBI_AREA, prefix: TBI_PREFIX, what: 'deviation notes from TrueBatch Injectables' };
+const INJECTABLES_PACKING: Feed = { username: TBIP_REPORTER, fullName: 'TrueBatch Injectables Packing (automatic report)', area: TBIP_AREA, prefix: TBIP_PREFIX,
+  what: 'deviation notes from TrueBatch Injectables Packing' };
 
 interface OverdueRow {
   event_id: string; equipment_code: string; kind: string; due_at: Date;
@@ -114,6 +121,8 @@ export const fileTrueBatchNotes = (sql: Sql, src: Source) => fileNotes(sql, src,
 export const filePackingNotes = (sql: Sql, src: Source) => fileNotes(sql, src, PACKING, 'TrueBatch Packing');
 /** D-54: the same for TrueBatch Injectables, which publishes deviation_note_v1 with the same columns. */
 export const fileInjectablesNotes = (sql: Sql, src: Source) => fileNotes(sql, src, INJECTABLES, 'TrueBatch Injectables');
+/** D-55: the same for TrueBatch Injectables Packing, which publishes deviation_note_v1 with the same columns. */
+export const fileInjectablesPackingNotes = (sql: Sql, src: Source) => fileNotes(sql, src, INJECTABLES_PACKING, 'TrueBatch Injectables Packing');
 
 async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Promise<Filed> {
   const rows = await src.sql.begin('read only', async (tx) => {
@@ -140,13 +149,15 @@ async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Pro
 }
 
 /** Checks every minute inside the server process (as the integrity check does), each linked source on its own. */
-export function scheduleAutoRaise(sql: Sql, src: { logbook?: Source; truebatch?: Source; truebatch_packing?: Source; truebatch_injectables?: Source }, log: (msg: string) => void, everyMs = 60_000): () => void {
+export function scheduleAutoRaise(sql: Sql, src: { logbook?: Source; truebatch?: Source; truebatch_packing?: Source; truebatch_injectables?: Source;
+  truebatch_injectables_packing?: Source }, log: (msg: string) => void, everyMs = 60_000): () => void {
   let running = false;
   const jobs = [
     ...(src.logbook ? [{ f: LOGBOOK, run: () => fileLogbookOverdue(sql, src.logbook!) }] : []),
     ...(src.truebatch ? [{ f: TRUEBATCH, run: () => fileTrueBatchNotes(sql, src.truebatch!) }] : []),
     ...(src.truebatch_packing ? [{ f: PACKING, run: () => filePackingNotes(sql, src.truebatch_packing!) }] : []),
     ...(src.truebatch_injectables ? [{ f: INJECTABLES, run: () => fileInjectablesNotes(sql, src.truebatch_injectables!) }] : []),
+    ...(src.truebatch_injectables_packing ? [{ f: INJECTABLES_PACKING, run: () => fileInjectablesPackingNotes(sql, src.truebatch_injectables_packing!) }] : []),
   ];
   const tick = async () => {
     if (running) return;
