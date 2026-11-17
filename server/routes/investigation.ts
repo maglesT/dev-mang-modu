@@ -3,11 +3,14 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
+import type { Sources } from '../readers/fetch.js';
+import { confirmPicks } from '../readers/picks.js';
+import type { BatchProduct } from '../readers/truebatch.js';
 import { assignable } from '../people.js';
 import { INVESTIGATES, can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, applyContext, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches,
+  addSection, applyContext, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches, ownRows,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -59,7 +62,7 @@ const signFail = (reply: FastifyReply, e: unknown) => {
 };
 const otherRows = (d: InvestigationData) => d.otherBatches.map((b) => ({ product: b.product, batch: b.batch, outcome: b.outcome, role: 'other' as const }));
 
-export function investigationRoutes(app: FastifyInstance, sql: Sql) {
+export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sources = {}) {
   // The investigator, or whoever holds deviations.qa.oversee, acts on an investigation; QA's oversee code is enough on
   // its own (it does not also need investigation.write: e2e finding of 15 November).
   const actor = { preHandler: requirePermission(...INVESTIGATES) };
@@ -176,6 +179,13 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
     if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(data.error) });
     const user = req.user as SessionUser;
     const oversee = can(user, 'deviations.qa.oversee');
+    if (kind === 'report') {
+      // D-57: a newly picked batch is checked in its TrueBatch product; one picked before and kept is not read again.
+      const [prev] = await sql<{ data: { products?: { batch: string; from?: BatchProduct }[] } }[]>`
+        select data from latest_sections where deviation_id = ${id} and kind = 'report'`;
+      const picks = await confirmPicks(sources, (data.data as ReportData).products, prev?.data.products ?? []);
+      if (picks.length) return reply.code(400).send({ error: 'invalid_request', problems: picks });
+    }
     const out = await sql.begin(async (tx) => {
       const d = await lockHeader(tx, id);
       if (!d) return { status: 404, error: 'not_found' };
@@ -211,7 +221,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql) {
       const section = await addSection(tx, id, kind, content, user.id, reason);
       if (kind === 'report') {
         const r = data.data as ReportData;
-        await writeBatches(tx, id, section.id, r.products.map((p) => ({ ...p, role: 'own' as const })));
+        await writeBatches(tx, id, section.id, ownRows(r.products));
         // The approval of a planned deviation covers the report; a new classification version carries the renewed approval.
         const cls = await tx<{ data: unknown }[]>`select data from latest_sections where deviation_id = ${id} and kind = 'classification'`;
         if (d.planned && cls[0]) await addSection(tx, id, 'classification', cls[0].data, user.id, 'Report corrected: approval to be renewed');

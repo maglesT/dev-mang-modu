@@ -75,8 +75,8 @@ export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger
   alertRoutes(app, sql);
   auditRoutes(app, sql);
   listRoutes(app, sql);
-  deviationRoutes(app, sql);
-  investigationRoutes(app, sql);
+  deviationRoutes(app, sql, sources);
+  investigationRoutes(app, sql, sources);
   signalRoutes(app, sql);
   aiRoutes(app, sql, ai);
   dataRoutes(app, sql, sources);

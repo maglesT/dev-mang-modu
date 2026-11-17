@@ -109,10 +109,11 @@ describe('deviation notes from TrueBatch (D-51)', () => {
     const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string; step: string }[];
     const d = list.find((x) => x.number === first.filed[0])!;
     expect(d).toMatchObject({ title: 'Batch MGL26001, compression/compress: Hardness 48 N below the 60 N limit at 10:20', area: TB_AREA, reporter: 'TrueBatch (automatic report)', step: 'classification' });
-    const [row] = await t.owner<{ source_ref: string; event_at: string; batch: string; product: string }[]>`
-      select d.source_ref, s.data->>'eventAt' as event_at, b.batch, b.product from deviations d
+    const [row] = await t.owner<{ source_ref: string; event_at: string; batch: string; product: string; batch_typed: boolean; from: string }[]>`
+      select d.source_ref, s.data->>'eventAt' as event_at, b.batch, b.product, b.batch_typed, s.data->'products'->0->>'from' as from from deviations d
       join latest_sections s on s.deviation_id = d.id and s.kind = 'report' join batches b on b.section_id = s.id where d.id = ${d.id}`;
-    expect(row).toMatchObject({ source_ref: `${TB_PREFIX}41`, batch: 'MGL26001', product: 'MGL-SR-500' });
+    // D-57: the batch comes from TrueBatch's own note: pulled, not typed by hand.
+    expect(row).toMatchObject({ source_ref: `${TB_PREFIX}41`, batch: 'MGL26001', product: 'MGL-SR-500', batch_typed: false, from: 'truebatch' });
     expect(Math.abs(Date.parse(row!.event_at) - (Date.now() - 3 * 3_600_000))).toBeLessThan(120_000);
 
     // deviation_v1 gives TrueBatch the number back, by source_ref and by the batch.

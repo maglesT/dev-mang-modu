@@ -1,4 +1,4 @@
-# Data read from the Logbook, TrueBatch and TrueBatch Packing (contracts for S15, S17, D-51, D-53)
+# Data read from the Logbook and the four TrueBatch products (contracts for S15, S17, D-51, D-53, D-57)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -41,11 +41,25 @@ Packing publishes `report.deviation_note_v1` with the columns of TrueBatch's abo
 with no `reference` is filed once as a deviation (reporter `truebatch_packing.auto`, area "TrueBatch Packing
 (automatic)"); Packing finds the number in `report.deviation_v1` by `source_ref` or by the batch.
 
-Not read: `report.packing_batch_v1` (its columns are not those of `batch_fact_v1`, and filing needs only the
-note), `equipment_use_v1` and `material_use_v1`. "Fetch related data" does not read Packing; for a packing deviation
-the investigator adds the bulk batch (printed on the packs) to the report, and that batch is read in TrueBatch.
+## All four TrueBatch products: batches and machines (D-57)
 
-## Shared demo scenario (Logbook test data)
+TrueBatch Tablets (`truebatch`), TrueBatch Injectables (`truebatch_injectables`, link
+`TRUEBATCH_INJECTABLES_DATABASE_URL`), TrueBatch Tablets Packing (`truebatch_packing`) and TrueBatch Injectables
+Packing (`truebatch_injectables_packing`, link `TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL`) are each read through
+their own link; a product not linked is not read, one off or down is noted (stored as a failed copy, "Connection to
+… is off") and the others are still read. All four publish the same `deviation_note_v1` (filed as above, D-53 to D-55).
+
+| Product | Batch fact view | Machines |
+|---------|-----------------|----------|
+| `truebatch`, `truebatch_injectables` | `report.batch_fact_v1` (columns above; Injectables and newer Tablets add `product_name`) | `report.equipment_use_v1` |
+| `truebatch_packing`, `truebatch_injectables_packing` | `report.packing_batch_v1`: `batch_number` (the packing batch), `coded_batch_number` (the batch printed on the packs), `product_code` (the pack), `bulk_product_code`, `status`, `issued_at`, `completed_at`, `released`, `read_at`, `data_as_of` (and pack columns not read) | `report.equipment_use_v1` |
+
+The fact views differ in columns, so each row is read as JSON (`to_jsonb`): a column a product does not publish reads
+as null. Used for (1) "Fetch related data": each product's copy is its own row, source = the product key, views
+named in the copy; (2) the report form's batch list: the newest 300 batches per product (batch number, product code,
+product name, status); (3) the check on saving that a picked batch is in the product it was picked from.
+
+## Shared demo scenario## Shared demo scenario (Logbook test data)
 
 - Product **`RAB-GR-20`** "Rabeprazole sodium 20 mg gastro-resistant tablets (DEMO-ONLY)".
 - Batch **`RAB26004`** (the deviation); earlier normal batch `RAB26002` on the same equipment.

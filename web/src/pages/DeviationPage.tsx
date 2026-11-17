@@ -142,7 +142,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
             ['Area', str(d.area)],
             ['Equipment', str(report.equipment)],
             [d.planned ? 'Planned for' : 'When it happened', plantTime(str(report.eventAt))],
-            ['Product / batch', own.length ? own.map((b) => `${b.product} / ${b.batch}`).join('; ') : 'None concerned'],
+            ['Product / batch', own.length ? own.map((b) => `${b.product} / ${b.batch}${b.typed ? ' (typed by hand)' : ''}`).join('; ') : 'None concerned'],
             ...(report.initialImpact ? [['Initial impact', <ImpactView v={report.initialImpact as Record<string, string>} />] as [string, ReactNode]] : []),
             ['Action taken', <>{str(report.immediateAction)}{report.actionTakenAt ? <span className="muted small"> · {plantTime(str(report.actionTakenAt))}</span> : null}</>],
             ['Reported by', `${d.reporter} · ${plantTime(d.reportedAt)}`],

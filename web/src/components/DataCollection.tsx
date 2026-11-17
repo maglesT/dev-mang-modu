@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 import { api, plantTime } from '../api.js';
 
-// S17 (D-37, DV-23): data from TrueBatch (D-51) and the Logbook for this deviation. Each fetch is a kept copy
+// S17 (D-37, DV-23): data from the TrueBatch products (D-51, D-57) and the Logbook for this deviation. Each fetch is a kept copy
 // (read-only, checksummed); the newest per source is shown, older ones are listed. Copies read from Batchwright before it
 // was retired (D-56) are still shown as kept, with the tables of its other views.
 type Row = Record<string, unknown>;
 interface Fetch {
-  id: number; source: 'logbook' | 'batchwright' | 'truebatch'; status: 'ok' | 'not_configured' | 'failed';
+  id: number; source: keyof typeof NAME; status: 'ok' | 'not_configured' | 'failed';
   params: { batches: string[]; equipment: string[]; from: string; to: string }; views: string[];
   data: Row & { findings?: string[]; readAt?: string; dataAsOf?: string | null };
   rowCount: number; sha256: string; error: string | null; fetchedAt: string; fetchedBy: string;
 }
-const NAME = { logbook: 'Logbook', batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)' } as const;
-const SOURCES = ['truebatch', 'logbook', 'batchwright'] as const;
+// D-57: all four TrueBatch products, each its own copy.
+const NAME = { logbook: 'Logbook', batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)', truebatch_injectables: 'Batch record (TrueBatch Injectables)',
+  truebatch_packing: 'Batch record (TrueBatch Packing)', truebatch_injectables_packing: 'Batch record (TrueBatch Injectables Packing)' } as const;
+const SOURCES = ['truebatch', 'truebatch_injectables', 'truebatch_packing', 'truebatch_injectables_packing', 'logbook', 'batchwright'] as const;
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const time = (v: unknown) => (v ? plantTime(String(v)) : '—');
 const list = (v: unknown) => (Array.isArray(v) ? (v as Row[]) : []);
@@ -40,7 +42,8 @@ function SourceView({ f }: { f: Fetch }) {
       {f.status === 'ok' && <>
         {(d.findings ?? []).length > 0 && <ul className="flags" aria-label={`${NAME[f.source]}: what the data shows`}>{d.findings!.map((x, i) => <li key={i}>{x}</li>)}</ul>}
         {f.source !== 'logbook' ? <>
-          <Table title="Batches" rows={list(d.batches)} cols={[['Batch', (r) => s(r.batch_number)], ['Product', (r) => s(r.product_code)], ['Status', (r) => s(r.status)], ['Issued', (r) => time(r.issued_at)], ['Released', (r) => (r.released ? 'yes' : 'no')]]} />
+          <Table title="Batches" rows={list(d.batches)} cols={[['Batch', (r) => s(r.batch_number)], ['Product', (r) => s(r.product_code)], ['Status', (r) => s(r.status)], ['Issued', (r) => time(r.issued_at)], ['Released', (r) => (r.released ? 'yes' : 'no')],
+            ...(list(d.batches).some((r) => r.coded_batch_number) ? [['Batch on the packs', (r: Row) => s(r.coded_batch_number)] as [string, (r: Row) => string]] : [])]} />
           <Table title="In-process checks" rows={list(d.ipc)} bad={(r) => /fail/i.test(String(r.result ?? ''))}
             cols={[['Batch', (r) => s(r.batch_number)], ['Step', (r) => s(r.step_title ?? r.step)], ['Check', (r) => s(r.item)], ['Instrument', (r) => s(r.instrument_code)],
               ['Reading', (r) => (r.aggregate ? s(r.aggregate) : s(r.reading))], ['Value', (r) => `${s(r.value_text)} ${r.unit ?? ''}`], ['Limits', (r) => `${s(r.lower_text)} – ${s(r.upper_text)}`],
@@ -89,7 +92,7 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
       <div className="section-head"><h2>Data collection</h2>
         {canFetch && <button onClick={fetchNow} disabled={busy}>{busy ? 'Fetching…' : fetches?.length ? 'Fetch again' : 'Fetch related data'}</button>}
       </div>
-      <p className="muted small">Reads the batch record and the Logbook for this deviation's batch, its equipment and the equipment the batch used, from {7} days before to 1 day after the event. Each fetch is kept as a read-only copy; nothing is changed in the other systems.</p>
+      <p className="muted small">Reads the batch records (each linked TrueBatch product) and the Logbook for this deviation's batch, its equipment and the equipment the batch used, from {7} days before to 1 day after the event. Each fetch is kept as a read-only copy; nothing is changed in the other systems.</p>
       {error && <p className="error">{error}</p>}
       {first && <p className="small">Matched: batch {first.params.batches.join(', ') || 'none'} · equipment {first.params.equipment.join(', ') || 'none'} · {time(first.params.from)} to {time(first.params.to)}</p>}
       {SOURCES.map((src) => { const f = latest(src); return f ? <SourceView key={src} f={f} /> : null; })}

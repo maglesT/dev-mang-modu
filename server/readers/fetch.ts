@@ -2,14 +2,15 @@ import type { Sql } from '../db.js';
 import { audit } from '../audit.js';
 import { normaliseBatch } from '../deviations.js';
 import { LOGBOOK_VIEWS, logbookFindings, readLogbook, type Query, type Source } from './logbook.js';
-import { TRUEBATCH_VIEWS, readTrueBatch, trueBatchFindings } from './truebatch.js';
+import { BATCH_PRODUCTS, PRODUCT_NAME, readTrueBatch, trueBatchFindings, viewsOf, type BatchProduct } from './truebatch.js';
 
-// S17 (D-37, DV-23): "Fetch related data". Reads TrueBatch (D-51) and the Logbook through their read-only views,
+// S17 (D-37, DV-23): "Fetch related data". Reads the TrueBatch products (D-51, D-57) and the Logbook through their read-only views,
 // matched on this deviation's batches, equipment and event time, and keeps each result as an insert-only
 // copy with a SHA-256. Advice for the investigation; the other systems are never written to.
 // The equipment the batch record names is looked up in the Logbook too.
 // D-56: Batchwright is retired and no longer read; copies fetched from it before (source 'batchwright') stay readable.
-export interface Sources { logbook?: Source; truebatch?: Source }
+// D-57: all four TrueBatch products are read, each through its own link and kept as its own copy (source = the product).
+export type Sources = { logbook?: Source } & Partial<Record<BatchProduct, Source>>;
 export const WINDOW_BEFORE_DAYS = 7;
 export const WINDOW_AFTER_DAYS = 1;
 const NOT_A_BATCH = new Set(['none', 'na', 'nil', 'nan', 'null', 'nobatch', 'notapplicable', '0']);
@@ -45,10 +46,11 @@ export function plainError(e: unknown): string {
 // On the platform the Logbook is a link (D-42 slice 4, PL-08): a revoked grant (42501) or a login switched off (28000)
 // means the link is cut. The fetch stores this, reads nothing else, and never serves older data.
 export const LOGBOOK_OFF = 'Connection to Logbook is off. Ask your administrator.';
-export const TRUEBATCH_OFF = 'Connection to TrueBatch is off. Ask your administrator.';
+export const offMessage = (p: BatchProduct) => `Connection to ${PRODUCT_NAME[p]} is off. Ask your administrator.`;
+export const TRUEBATCH_OFF = offMessage('truebatch');
 const linkCut = (e: unknown) => ['42501', '28000'].includes((e as { code?: string }).code ?? '');
 
-type Outcome = { source: 'logbook' | 'truebatch'; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
+type Outcome = { source: 'logbook' | BatchProduct; status: 'ok' | 'not_configured' | 'failed'; data: unknown; rows: number; error: string | null; views: string[] };
 // Rows read from the other system (not the bookkeeping lists).
 const count = (d: Record<string, unknown>) => Object.entries(d).reduce<number>((n, [k, v]) => n + (Array.isArray(v) && !['viewsRead', 'equipmentUsed', 'findings'].includes(k) ? v.length : 0), 0);
 
@@ -56,17 +58,20 @@ export async function fetchRelated(sql: Sql, sources: Sources, deviationId: numb
   const q = await buildQuery(sql, deviationId);
   if (!q) return null;
   const outcomes: Outcome[] = [];
-  // The batch record first: the equipment the batch actually used is then also looked up in the Logbook.
-  let usedEquipment: string[] = [];
-  if (!sources.truebatch) outcomes.push({ source: 'truebatch', status: 'not_configured', data: {}, rows: 0, error: null, views: [] });
-  else {
+  // The batch records first: the equipment the batches actually used is then also looked up in the Logbook.
+  // D-57: each linked product is read on its own; one off or down is noted and the others are still read. A product
+  // not linked on this installation is skipped (only when none is linked is that noted, as before).
+  const usedEquipment: string[] = [];
+  const linked = BATCH_PRODUCTS.filter((p) => sources[p]);
+  if (!linked.length) outcomes.push({ source: 'truebatch', status: 'not_configured', data: {}, rows: 0, error: null, views: [] });
+  for (const p of linked) {
     try {
-      const d = await readTrueBatch(sources.truebatch, q);
-      usedEquipment = d.equipmentUsed;
-      outcomes.push({ source: 'truebatch', status: 'ok', data: { ...d, findings: trueBatchFindings(d) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: d.viewsRead });
+      const d = await readTrueBatch(sources[p]!, q, p);
+      usedEquipment.push(...d.equipmentUsed);
+      outcomes.push({ source: p, status: 'ok', data: { ...d, findings: trueBatchFindings(d, p) }, rows: count(d as unknown as Record<string, unknown>), error: null, views: d.viewsRead });
     } catch (e) {
-      log(`TrueBatch read failed: ${e instanceof Error ? e.message : String(e)}`);
-      outcomes.push({ source: 'truebatch', status: 'failed', data: {}, rows: 0, error: linkCut(e) ? TRUEBATCH_OFF : plainError(e), views: TRUEBATCH_VIEWS });
+      log(`${PRODUCT_NAME[p]} read failed: ${e instanceof Error ? e.message : String(e)}`);
+      outcomes.push({ source: p, status: 'failed', data: {}, rows: 0, error: linkCut(e) ? offMessage(p) : plainError(e), views: viewsOf(p) });
     }
   }
   const lq = { ...q, equipment: [...new Set([...q.equipment, ...usedEquipment])] };

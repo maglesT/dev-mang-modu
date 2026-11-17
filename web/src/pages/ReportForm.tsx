@@ -6,8 +6,12 @@ export interface InitialImpact { productQuality: Answer; patientSafety: Answer; 
 export interface ReportValues {
   planned: boolean; title: string; description: string; areaId: number; equipment: string; eventAt: string;
   immediateAction: string; actionTakenAt?: string | null; initialImpact?: InitialImpact;
-  plannedReason: string; noBatch: boolean; products: { product: string; batch: string }[];
+  plannedReason: string; noBatch: boolean; products: ProductRow[];
 }
+// D-57: a batch picked from a linked TrueBatch product names it (`from`); without it the batch was typed by hand.
+export interface ProductRow { product: string; batch: string; from?: string }
+interface BatchPick { batch: string; product: string | null; productName: string | null; status: string | null; from: string }
+const statusText = (x: string | null) => (x ? x.toLowerCase().replace(/_/g, ' ') : '');
 export const ANSWER_LABEL: Record<string, string> = { yes: 'Yes', no: 'No', unknown: 'Not known yet' };
 const IMPACT_QUESTIONS: [keyof Omit<InitialImpact, 'notes'>, string][] = [
   ['productQuality', 'Could product quality be affected?'],
@@ -29,13 +33,23 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
     ? { ...initial, eventAt: localInputValue(new Date(initial.eventAt)), actionTakenAt: initial.actionTakenAt ? localInputValue(new Date(initial.actionTakenAt)) : '' }
     : { planned: false, title: '', description: '', areaId: 0, equipment: '', eventAt: localInputValue(), immediateAction: '', actionTakenAt: '', plannedReason: '', noBatch: false });
   const [impact, setImpact] = useState<InitialImpact>(initial?.initialImpact ?? noImpact);
-  const [products, setProducts] = useState(initial?.products.length ? initial.products : [{ product: '', batch: '' }]);
+  const [products, setProducts] = useState<ProductRow[]>(initial?.products.length ? initial.products : [{ product: '', batch: '' }]);
+  // D-57: the batches of the linked TrueBatch products (none listed when no product is linked or the list cannot be read).
+  const [picks, setPicks] = useState<{ batches: BatchPick[]; notes: string[] }>({ batches: [], notes: [] });
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     void api<NamedItem[]>('GET', '/api/areas').then((a) => setAreas(a.filter((x) => x.active)));
+    void api<{ batches: BatchPick[]; notes: string[] }>('GET', '/api/batches').then(setPicks).catch(() => {});
   }, []);
+  // A batch from the list brings its product; any other text is a batch typed by hand (the product is then typed too).
+  const setBatch = (i: number, value: string) => {
+    const pick = picks.batches.find((b) => b.batch === value);
+    setProducts(products.map((x, j) => (j !== i ? x
+      : pick ? { product: pick.product ?? pick.productName ?? '', batch: pick.batch, from: pick.from }
+      : { product: x.from ? '' : x.product, batch: value })));
+  };
 
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const submit = async (e: FormEvent) => {
@@ -84,10 +98,17 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
       </div>
       <div>
         <b>Product and batch *</b>
+        {!f.noBatch && picks.batches.length > 0 && <p className="muted small">Pick the batch from the list; its product comes with it. A batch not in the list may be typed: it is saved as typed by hand.</p>}
+        {!f.noBatch && picks.notes.map((n) => <p className="muted small" key={n}>{n}</p>)}
+        <datalist id="batch-picks">
+          {picks.batches.map((b) => <option key={`${b.from}:${b.batch}`} value={b.batch}>{[b.product, b.productName, statusText(b.status)].filter(Boolean).join(' · ')}</option>)}
+        </datalist>
         {!f.noBatch && products.map((p, i) => (
           <div className="row" key={i}>
-            <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, product: e.target.value } : x)))} />
-            <input aria-label={`Batch ${i + 1}`} placeholder="Batch number" value={p.batch} onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, batch: e.target.value } : x)))} />
+            <input aria-label={`Batch ${i + 1}`} placeholder={picks.batches.length ? 'Pick or type the batch number' : 'Batch number'} list="batch-picks" value={p.batch} onChange={(e) => setBatch(i, e.target.value)} />
+            <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} readOnly={!!p.from} title={p.from ? 'From the picked batch' : undefined}
+              onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, product: e.target.value } : x)))} />
+            {p.batch.trim() && !p.from && <span className="chip chip-warn">Typed by hand</span>}
             {products.length > 1 && <button type="button" onClick={() => setProducts(products.filter((_, j) => j !== i))}>Remove</button>}
           </div>
         ))}

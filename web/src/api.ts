@@ -167,7 +167,8 @@ export interface Deviation {
   area: string | null;
   sections: SectionVersion[];
   signatures: { id: number; sectionId: number; printedName: string; meaning: string; signedAt: string }[];
-  batches: { role: 'own' | 'other'; product: string; batch: string; outcome: string | null }[];
+  // typed: the report's batch was typed by hand (true) or picked from a TrueBatch product (false); null before D-57.
+  batches: { role: 'own' | 'other'; product: string; batch: string; outcome: string | null; typed?: boolean | null }[];
   history: { id: number; at: string; actor: string | null; action: string; oldValue: unknown; newValue: unknown; reason: string | null }[];
   approvalHash: string | null;
   investigationHash: string | null;

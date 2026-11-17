@@ -141,7 +141,8 @@ async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Pro
       planned: false, title: `Batch ${r.batch_number}, ${step}: ${text}`.slice(0, 200),
       description: `${text}\n\nDeviation note ${r.note_id} in the ${system} batch record of ${r.batch_number}, step ${step}. Filed automatically from ${system}.`.slice(0, 5000),
       areaId, equipment: '', eventAt: new Date(r.noted_at).toISOString(),
-      products: [{ product: (r.product_code ?? '').trim() || `not named in ${system}`, batch: r.batch_number }], noBatch: false,
+      // D-57: the batch comes from the product's own note, so it is pulled, not typed by hand.
+      products: [{ product: (r.product_code ?? '').trim() || `not named in ${system}`, batch: r.batch_number, from: feed.prefix.split(':')[0] }], noBatch: false,
       immediateAction: `As written in the ${system} note and batch record of ${r.batch_number} (step ${step}).`, actionTakenAt: null,
       initialImpact: { productQuality: 'unknown', patientSafety: 'unknown', otherBatches: 'unknown', notes: `Filed automatically from ${system}; QA to assess the impact.` },
     };
