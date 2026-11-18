@@ -27,9 +27,15 @@ await stand.unsafe(`drop schema if exists ${TBI} cascade; create schema ${TBI};
   create table ${TBI}.batch_fact_v1 (batch_number text, product_code text, product_name text, status text, issued_at timestamptz, released boolean,
     read_at timestamptz default now(), data_as_of timestamptz default now());
   insert into ${TBI}.batch_fact_v1 values ('TI26E01', 'FG-INJ-EX25', 'Example injection 25 mg/mL (invented)', 'IN_PRODUCTION', now() - interval '1 day', false);`);
+// D-59: and for TrueBatch Capsules Packing (a new product of the one list), with its packing_batch_v1.
+const TCP = `${E2E_SCHEMA}_tcp`;
+await stand.unsafe(`drop schema if exists ${TCP} cascade; create schema ${TCP};
+  create table ${TCP}.packing_batch_v1 (batch_number text, coded_batch_number text, product_code text, bulk_product_code text, status text, issued_at timestamptz,
+    released boolean, read_at timestamptz default now(), data_as_of timestamptz default now());
+  insert into ${TCP}.packing_batch_v1 values ('CP26E01', 'TC26E01', 'PK-CAP-EX20-B10', 'FG-CAP-EX20', 'IN_PRODUCTION', now() - interval '2 hours', false);`);
 
 const sql = connect(TEST_DATABASE_URL, { role: APP_ROLE, searchPath: E2E_SCHEMA });
 // Sign-on and signing go through a stand-in for Medhanta core (D-43), which signs in whoever login_hint names.
 const app = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: new URL('../dist/web', import.meta.url).pathname, cookieSecure: false,
-  sources: { truebatch_injectables: { sql: stand, schema: TBI } } });
+  sources: { truebatch_injectables: { sql: stand, schema: TBI }, truebatch_capsules_packing: { sql: stand, schema: TCP } } });
 await app.listen({ port: E2E_PORT, host: '127.0.0.1' });

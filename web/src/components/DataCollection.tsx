@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
 import { api, plantTime } from '../api.js';
+import { BATCH_PRODUCTS, PRODUCT_NAME } from '../../../server/readers/products.js';
 
-// S17 (D-37, DV-23): data from the TrueBatch products (D-51, D-57) and the Logbook for this deviation. Each fetch is a kept copy
+// S17 (D-37, DV-23): data from the TrueBatch products (D-51, D-57, D-59) and the Logbook for this deviation. Each fetch is a kept copy
 // (read-only, checksummed); the newest per source is shown, older ones are listed. Copies read from Batchwright before it
 // was retired (D-56) are still shown as kept, with the tables of its other views.
 type Row = Record<string, unknown>;
 interface Fetch {
-  id: number; source: keyof typeof NAME; status: 'ok' | 'not_configured' | 'failed';
+  id: number; source: string; status: 'ok' | 'not_configured' | 'failed';
   params: { batches: string[]; equipment: string[]; from: string; to: string }; views: string[];
   data: Row & { findings?: string[]; readAt?: string; dataAsOf?: string | null };
   rowCount: number; sha256: string; error: string | null; fetchedAt: string; fetchedBy: string;
 }
-// D-57: all four TrueBatch products, each its own copy.
-const NAME = { logbook: 'Logbook', batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)', truebatch_injectables: 'Batch record (TrueBatch Injectables)',
-  truebatch_packing: 'Batch record (TrueBatch Packing)', truebatch_injectables_packing: 'Batch record (TrueBatch Injectables Packing)' } as const;
-const SOURCES = ['truebatch', 'truebatch_injectables', 'truebatch_packing', 'truebatch_injectables_packing', 'logbook', 'batchwright'] as const;
+// D-57, D-59: every TrueBatch product (the one list, shared with the server), each its own copy.
+const NAME: Record<string, string> = { ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])), logbook: 'Logbook', batchwright: 'Batch record (Batchwright)' };
+const SOURCES = [...BATCH_PRODUCTS, 'logbook', 'batchwright'];
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const time = (v: unknown) => (v ? plantTime(String(v)) : '—');
 const list = (v: unknown) => (Array.isArray(v) ? (v as Row[]) : []);

@@ -1,19 +1,16 @@
 import type { Query, Source } from './logbook.js';
 import type { Sql, Tx } from '../db.js';
+import { PRODUCT_NAME, isPacking, type BatchProduct } from './products.js';
 
 // S17 (D-37, DV-23), D-51: reads TrueBatch's read-only report views (contract: docs/07-data-contracts.md). Never a write.
 // Text comparisons only. equipment_use_v1 is optional: read when present and readable. D-56: Batchwright is retired; its
 // other views are no longer read (copies fetched before stay readable).
-// D-57: all four TrueBatch products are read, each through its own link: Tablets and Injectables publish the batch fact
+// D-57: all the TrueBatch products are read, each through its own link: Tablets and Injectables publish the batch fact
 // as batch_fact_v1, the two Packing products as packing_batch_v1. The fact views differ in columns, so each row is read
 // as JSON (to_jsonb) and a column a product does not publish reads as null.
-export const BATCH_PRODUCTS = ['truebatch', 'truebatch_injectables', 'truebatch_packing', 'truebatch_injectables_packing'] as const;
-export type BatchProduct = (typeof BATCH_PRODUCTS)[number];
-export const PRODUCT_NAME: Record<BatchProduct, string> = {
-  truebatch: 'TrueBatch', truebatch_injectables: 'TrueBatch Injectables',
-  truebatch_packing: 'TrueBatch Packing', truebatch_injectables_packing: 'TrueBatch Injectables Packing',
-};
-export const factView = (p: BatchProduct) => (p.endsWith('_packing') ? 'packing_batch_v1' : 'batch_fact_v1');
+// D-59: the products are listed once, in products.ts (bulk products batch_fact_v1, packing products packing_batch_v1).
+export { BATCH_PRODUCTS, PRODUCT_NAME, type BatchProduct } from './products.js';
+export const factView = (p: BatchProduct) => (isPacking(p) ? 'packing_batch_v1' : 'batch_fact_v1');
 export const viewsOf = (p: BatchProduct) => [factView(p), 'equipment_use_v1'];
 export const TRUEBATCH_VIEWS = viewsOf('truebatch');
 

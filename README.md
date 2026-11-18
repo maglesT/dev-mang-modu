@@ -38,8 +38,9 @@ the trend view and PDF copies support reviews and inspections.
    On the platform, apply writes `TRUEBATCH_DATABASE_URL` while the link to TrueBatch is on (D-51): its batch views are
    read by "Fetch related data", and its deviation notes without a deviation number are filed as deviations.
    Batchwright is retired (D-56): it is no longer read; data fetched from it before stays readable.
-   Likewise `TRUEBATCH_PACKING_DATABASE_URL` while the link to TrueBatch Tablets Packing is on (D-53): its deviation
-   notes without a deviation number are filed as deviations too (area "TrueBatch Packing (automatic)").
+   Likewise each other TrueBatch product of the one list in `server/readers/products.ts` (D-57, D-59), by its own link
+   `<PRODUCT>_DATABASE_URL` (e.g. `TRUEBATCH_PACKING_DATABASE_URL`, `TRUEBATCH_CAPSULES_DATABASE_URL`): its batches are
+   read and picked, and its deviation notes without a number are filed (area "<product name> (automatic)"). No link = off.
 7. Optional, the QMS product reads the CAPA register (D-40): give the read-only role `capa_report` a login,
    `ALTER ROLE capa_report LOGIN PASSWORD '...'` (typed by the site), and a `pg_hba` line for the QMS host only, followed by
    `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,

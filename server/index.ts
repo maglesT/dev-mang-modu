@@ -6,20 +6,19 @@ import { scheduleIntegrityCheck } from './integrity.js';
 import { oidcSignOn } from './signon.js';
 import { sqlPeople } from './people.js';
 import { scheduleAutoRaise } from './autoraise.js';
+import type { Sources } from './readers/fetch.js';
+import { BATCH_PRODUCTS, linkSetting } from './readers/products.js';
 
 const config = loadConfig();
 const sql = connect(config.DATABASE_URL, { role: config.DB_APP_ROLE });
 const ai = config.GEMINI_API_KEY ? { apiKey: config.GEMINI_API_KEY, model: config.GEMINI_MODEL } : undefined;
 // Read-only connections, a few at most (the other systems limit their report roles' connections).
 const reader = (url: string) => ({ sql: connect(url, {}, 2), schema: 'report' });
-// D-51, D-53, D-54, D-55, D-57: the four TrueBatch products, each through its own link (apply writes each URL only while
+// D-51, D-53, D-54, D-55, D-57, D-59: the TrueBatch products, each through its own link (apply writes each URL only while
 // that link is on): read by "Fetch related data", for the report form's batch list, and for their deviation notes.
-const sources = {
+const sources: Sources = {
   ...(config.LOGBOOK_REPORT_URL ? { logbook: reader(config.LOGBOOK_REPORT_URL) } : {}),
-  ...(config.TRUEBATCH_DATABASE_URL ? { truebatch: reader(config.TRUEBATCH_DATABASE_URL) } : {}),
-  ...(config.TRUEBATCH_PACKING_DATABASE_URL ? { truebatch_packing: reader(config.TRUEBATCH_PACKING_DATABASE_URL) } : {}),
-  ...(config.TRUEBATCH_INJECTABLES_DATABASE_URL ? { truebatch_injectables: reader(config.TRUEBATCH_INJECTABLES_DATABASE_URL) } : {}),
-  ...(config.TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL ? { truebatch_injectables_packing: reader(config.TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL) } : {}),
+  ...Object.fromEntries(BATCH_PRODUCTS.flatMap((p) => { const url = config[linkSetting(p)]; return url ? [[p, reader(url)]] : []; })),
 };
 // Core's employee view: a small second pool, read with this app's own login (PL-08).
 const identity = connect(config.IDENTITY_DATABASE_URL, {}, 2);
@@ -31,8 +30,8 @@ const app = await buildApp({ sql, signOn, proofKey, logger: true, cookieSecure: 
 
 await app.listen({ port: config.PORT, host: config.HOST });
 const stopIntegrity = scheduleIntegrityCheck(sql, (msg) => app.log.info(msg), (msg) => app.log.error(msg));
-// D-50, D-51, D-53: missed limits the Logbook publishes and the deviation notes without a number of TrueBatch and
-// TrueBatch Packing are filed as deviations (each only with its link).
+// D-50, D-51, D-53, D-59: missed limits the Logbook publishes and the deviation notes without a number of each TrueBatch
+// product are filed as deviations (each only with its link).
 const stopAuto = Object.keys(sources).length ? scheduleAutoRaise(sql, sources, (msg) => app.log.info(msg)) : () => {};
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -42,7 +41,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     await app.close();
     await sql.end();
     // The read-only connections to the Logbook and the TrueBatch products too.
-    await Promise.all([...Object.values(sources).map((x) => x.sql.end()), identity.end()]);
+    await Promise.all([...Object.values(sources).map((x) => x!.sql.end()), identity.end()]);
     process.exit(0);
   });
 }

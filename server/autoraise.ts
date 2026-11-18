@@ -3,6 +3,8 @@ import { fileDeviation, reportData } from './deviations.js';
 import { audit } from './audit.js';
 import type { Source } from './readers/logbook.js';
 import { canRead } from './readers/truebatch.js';
+import type { Sources } from './readers/fetch.js';
+import { BATCH_PRODUCTS, PRODUCT_NAME, type BatchProduct } from './readers/products.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): every missed limit the Logbook publishes in report.overdue_v1 (overdue
 // cleaning, preventive maintenance, calibration, requalification) is filed here once, as a deviation from the automatic
@@ -19,6 +21,8 @@ import { canRead } from './readers/truebatch.js';
 // "TrueBatch Injectables (automatic)"; source_ref 'truebatch_injectables:note:<note_id>'.
 // D-55 (owner 2026-11-17): TrueBatch Injectables Packing the same way, by truebatch_injectables_packing.auto in the area
 // "TrueBatch Injectables Packing (automatic)"; source_ref 'truebatch_injectables_packing:note:<note_id>'.
+// D-59 (owner 2026-11-18): every TrueBatch product in readers/products.ts the same way: by <key>.auto in the area
+// "<name> (automatic)"; source_ref '<key>:note:<note_id>' (Capsules, Oral Liquids, their Packing, and API).
 // D-58 (suite run S21): the report's Equipment is pulled from the product's equipment_use_v1 for the note's batch: the
 // rooms and machines used at the note's step, or, when none was used at that very step (e.g. a line clearance), in the
 // note's stage. Empty when the view is not there or not readable.
@@ -26,29 +30,24 @@ import { canRead } from './readers/truebatch.js';
 export const AUTO_REPORTER = 'logbook.auto';
 export const AUTO_AREA = 'Logbook (automatic)';
 export const SOURCE_PREFIX = 'logbook:overdue:';
-export const TB_REPORTER = 'truebatch.auto';
-export const TB_AREA = 'TrueBatch (automatic)';
-export const TB_PREFIX = 'truebatch:note:';
-export const TBP_REPORTER = 'truebatch_packing.auto';
-export const TBP_AREA = 'TrueBatch Packing (automatic)';
-export const TBP_PREFIX = 'truebatch_packing:note:';
-export const TBI_REPORTER = 'truebatch_injectables.auto';
-export const TBI_AREA = 'TrueBatch Injectables (automatic)';
-export const TBI_PREFIX = 'truebatch_injectables:note:';
-export const TBIP_REPORTER = 'truebatch_injectables_packing.auto';
-export const TBIP_AREA = 'TrueBatch Injectables Packing (automatic)';
-export const TBIP_PREFIX = 'truebatch_injectables_packing:note:';
 // Records older than this are not filed (e.g. when the link is first switched on at a site with a long history).
 export const LOOKBACK_DAYS = 30;
 
 /** One automatic source: who files, in which area, and how its records are named in source_ref. */
 interface Feed { username: string; fullName: string; area: string; prefix: string; what: string }
 const LOGBOOK: Feed = { username: AUTO_REPORTER, fullName: 'Logbook (automatic report)', area: AUTO_AREA, prefix: SOURCE_PREFIX, what: 'missed limits from the Logbook' };
-const TRUEBATCH: Feed = { username: TB_REPORTER, fullName: 'TrueBatch (automatic report)', area: TB_AREA, prefix: TB_PREFIX, what: 'deviation notes from TrueBatch' };
-const PACKING: Feed = { username: TBP_REPORTER, fullName: 'TrueBatch Packing (automatic report)', area: TBP_AREA, prefix: TBP_PREFIX, what: 'deviation notes from TrueBatch Packing' };
-const INJECTABLES: Feed = { username: TBI_REPORTER, fullName: 'TrueBatch Injectables (automatic report)', area: TBI_AREA, prefix: TBI_PREFIX, what: 'deviation notes from TrueBatch Injectables' };
-const INJECTABLES_PACKING: Feed = { username: TBIP_REPORTER, fullName: 'TrueBatch Injectables Packing (automatic report)', area: TBIP_AREA, prefix: TBIP_PREFIX,
-  what: 'deviation notes from TrueBatch Injectables Packing' };
+/** D-51, D-53 to D-55, D-59: a TrueBatch product's notes, named after the product (one list: readers/products.ts). */
+export const noteFeed = (p: BatchProduct): Feed => ({ username: `${p}.auto`, fullName: `${PRODUCT_NAME[p]} (automatic report)`,
+  area: `${PRODUCT_NAME[p]} (automatic)`, prefix: `${p}:note:`, what: `deviation notes from ${PRODUCT_NAME[p]}` });
+export const TB_REPORTER = noteFeed('truebatch').username;
+export const TB_AREA = noteFeed('truebatch').area;
+export const TB_PREFIX = noteFeed('truebatch').prefix;
+export const TBP_AREA = noteFeed('truebatch_packing').area;
+export const TBP_PREFIX = noteFeed('truebatch_packing').prefix;
+export const TBI_AREA = noteFeed('truebatch_injectables').area;
+export const TBI_PREFIX = noteFeed('truebatch_injectables').prefix;
+export const TBIP_AREA = noteFeed('truebatch_injectables_packing').area;
+export const TBIP_PREFIX = noteFeed('truebatch_injectables_packing').prefix;
 
 interface OverdueRow {
   event_id: string; equipment_code: string; kind: string; due_at: Date;
@@ -147,16 +146,14 @@ export function equipmentAt(step: string | null, uses: UseRow[]): { text: string
   return { text: (text.charAt(0).toUpperCase() + text.slice(1)).slice(0, 200), at };
 }
 
-/** D-51: TrueBatch's deviation notes without a deviation number, each filed once for its product and batch. */
-export const fileTrueBatchNotes = (sql: Sql, src: Source) => fileNotes(sql, src, TRUEBATCH, 'TrueBatch');
-/** D-53: the same for TrueBatch Tablets Packing, which publishes deviation_note_v1 with the same columns. */
-export const filePackingNotes = (sql: Sql, src: Source) => fileNotes(sql, src, PACKING, 'TrueBatch Packing');
-/** D-54: the same for TrueBatch Injectables, which publishes deviation_note_v1 with the same columns. */
-export const fileInjectablesNotes = (sql: Sql, src: Source) => fileNotes(sql, src, INJECTABLES, 'TrueBatch Injectables');
-/** D-55: the same for TrueBatch Injectables Packing, which publishes deviation_note_v1 with the same columns. */
-export const fileInjectablesPackingNotes = (sql: Sql, src: Source) => fileNotes(sql, src, INJECTABLES_PACKING, 'TrueBatch Injectables Packing');
+/** D-51, D-53 to D-55, D-59: a TrueBatch product's deviation notes without a deviation number, each filed once for its product and batch. */
+export const fileProductNotes = (sql: Sql, src: Source, p: BatchProduct) => fileNotes(sql, src, noteFeed(p), PRODUCT_NAME[p], p);
+export const fileTrueBatchNotes = (sql: Sql, src: Source) => fileProductNotes(sql, src, 'truebatch');
+export const filePackingNotes = (sql: Sql, src: Source) => fileProductNotes(sql, src, 'truebatch_packing');
+export const fileInjectablesNotes = (sql: Sql, src: Source) => fileProductNotes(sql, src, 'truebatch_injectables');
+export const fileInjectablesPackingNotes = (sql: Sql, src: Source) => fileProductNotes(sql, src, 'truebatch_injectables_packing');
 
-async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Promise<Filed> {
+async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string, product: BatchProduct): Promise<Filed> {
   const { rows, uses } = await src.sql.begin('read only', async (tx) => {
     await tx`set local statement_timeout = '15s'`;
     const rows = await tx<NoteRow[]>`
@@ -182,7 +179,7 @@ async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Pro
       description: `${text}\n\nDeviation note ${r.note_id} in the ${system} batch record of ${r.batch_number}, step ${step}. Filed automatically from ${system}.${eqLine}`.slice(0, 5000),
       areaId, equipment: eq?.text ?? '', eventAt: new Date(r.noted_at).toISOString(),
       // D-57: the batch comes from the product's own note, so it is pulled, not typed by hand.
-      products: [{ product: (r.product_code ?? '').trim() || `not named in ${system}`, batch: r.batch_number, from: feed.prefix.split(':')[0] }], noBatch: false,
+      products: [{ product: (r.product_code ?? '').trim() || `not named in ${system}`, batch: r.batch_number, from: product }], noBatch: false,
       immediateAction: `As written in the ${system} note and batch record of ${r.batch_number} (step ${step}).`, actionTakenAt: null,
       initialImpact: { productQuality: 'unknown', patientSafety: 'unknown', otherBatches: 'unknown', notes: `Filed automatically from ${system}; QA to assess the impact.` },
     };
@@ -190,15 +187,12 @@ async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string): Pro
 }
 
 /** Checks every minute inside the server process (as the integrity check does), each linked source on its own. */
-export function scheduleAutoRaise(sql: Sql, src: { logbook?: Source; truebatch?: Source; truebatch_packing?: Source; truebatch_injectables?: Source;
-  truebatch_injectables_packing?: Source }, log: (msg: string) => void, everyMs = 60_000): () => void {
+export function scheduleAutoRaise(sql: Sql, src: Sources, log: (msg: string) => void, everyMs = 60_000): () => void {
   let running = false;
   const jobs = [
     ...(src.logbook ? [{ f: LOGBOOK, run: () => fileLogbookOverdue(sql, src.logbook!) }] : []),
-    ...(src.truebatch ? [{ f: TRUEBATCH, run: () => fileTrueBatchNotes(sql, src.truebatch!) }] : []),
-    ...(src.truebatch_packing ? [{ f: PACKING, run: () => filePackingNotes(sql, src.truebatch_packing!) }] : []),
-    ...(src.truebatch_injectables ? [{ f: INJECTABLES, run: () => fileInjectablesNotes(sql, src.truebatch_injectables!) }] : []),
-    ...(src.truebatch_injectables_packing ? [{ f: INJECTABLES_PACKING, run: () => fileInjectablesPackingNotes(sql, src.truebatch_injectables_packing!) }] : []),
+    // D-59: each linked TrueBatch product, in the order of the one list.
+    ...BATCH_PRODUCTS.filter((p) => src[p]).map((p) => ({ f: noteFeed(p), run: () => fileProductNotes(sql, src[p]!, p) })),
   ];
   const tick = async () => {
     if (running) return;

@@ -48,6 +48,27 @@ test('D-57: a reporter picks the batch from the list (product filled), and a bat
   await expect(page.getByText('FG-INJ-EX25 / TI26E01; Saline 500 mL / PAPER-9 (typed by hand)')).toBeVisible();
 });
 
+// D-59: a batch of a new TrueBatch product (Capsules Packing on the test server) is picked the same way.
+test('D-59: a batch of TrueBatch Capsules Packing is picked from the list, its product filled', async ({ page }) => {
+  await logIn(page, 'us1');
+  await page.getByRole('button', { name: 'Report a deviation' }).click();
+  await page.getByLabel('Title *').fill('Blister seal weak');
+  await page.getByLabel('What happened *').fill('Weak seals on two blister strips at the seal check.');
+  await page.getByLabel('Area *').selectOption({ label: 'Packing' });
+  await page.getByLabel('Batch 1').fill('CP26E01');
+  await expect(page.getByLabel('Product 1')).toHaveValue('PK-CAP-EX20-B10');
+  await expect(page.getByLabel('Product 1')).not.toBeEditable();
+  await expect(page.getByText('Typed by hand', { exact: true })).toHaveCount(0);
+  await page.getByRole('radiogroup', { name: 'Could product quality be affected?' }).getByLabel('Not known yet').check();
+  await page.getByRole('radiogroup', { name: 'Could patient safety be at risk?' }).getByLabel('No', { exact: true }).check();
+  await page.getByRole('radiogroup', { name: 'Could other batches be affected?' }).getByLabel('No', { exact: true }).check();
+  await page.getByLabel('Short assessment *').fill('Strips segregated.');
+  await page.getByLabel('Action taken (immediate action) *').fill('Sealing temperature checked.');
+  await page.getByRole('button', { name: 'Save and get a number' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Blister seal weak');
+  await expect(page.getByText('PK-CAP-EX20-B10 / CP26E01')).toBeVisible();
+});
+
 // D-58: a batch picked from TrueBatch was checked there: QA classifies without the tick, and the record says so.
 test('D-58: a picked batch needs no "checked product and batch" tick at classification', async ({ page }) => {
   await logIn(page, 'us1');

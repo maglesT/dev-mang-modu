@@ -1,4 +1,4 @@
-# Data read from the Logbook and the four TrueBatch products (contracts for S15, S17, D-51, D-53, D-57)
+# Data read from the Logbook and the TrueBatch products (contracts for S15, S17, D-51, D-53, D-57, D-59)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -62,6 +62,27 @@ The fact views differ in columns, so each row is read as JSON (`to_jsonb`): a co
 as null. Used for (1) "Fetch related data": each product's copy is its own row, source = the product key, views
 named in the copy; (2) the report form's batch list: the newest 300 batches per product (batch number, product code,
 product name, status); (3) the check on saving that a picked batch is in the product it was picked from.
+
+## The one list of TrueBatch products (D-59)
+
+Every TrueBatch product is one line in `server/readers/products.ts` (key, display name, bulk or packing). Its link
+setting (`<KEY>_DATABASE_URL`), its fact view (bulk `batch_fact_v1`, packing `packing_batch_v1`), the automatic
+reporter (`<key>.auto`), area ("<name> (automatic)") and `source_ref` (`<key>:note:<note_id>`) of its notes, and the
+names on screen and in the PDF follow from that line. No link = the product is off (not read, no error).
+
+| Product key | Name | Batch fact view | Link setting |
+|-------------|------|-----------------|--------------|
+| `truebatch` | TrueBatch | `batch_fact_v1` | `TRUEBATCH_DATABASE_URL` |
+| `truebatch_injectables` | TrueBatch Injectables | `batch_fact_v1` | `TRUEBATCH_INJECTABLES_DATABASE_URL` |
+| `truebatch_packing` | TrueBatch Packing | `packing_batch_v1` | `TRUEBATCH_PACKING_DATABASE_URL` |
+| `truebatch_injectables_packing` | TrueBatch Injectables Packing | `packing_batch_v1` | `TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL` |
+| `truebatch_capsules` | TrueBatch Capsules | `batch_fact_v1` | `TRUEBATCH_CAPSULES_DATABASE_URL` |
+| `truebatch_capsules_packing` | TrueBatch Capsules Packing | `packing_batch_v1` | `TRUEBATCH_CAPSULES_PACKING_DATABASE_URL` |
+| `truebatch_liquids` | TrueBatch Oral Liquids | `batch_fact_v1` | `TRUEBATCH_LIQUIDS_DATABASE_URL` |
+| `truebatch_liquids_packing` | TrueBatch Oral Liquids Packing | `packing_batch_v1` | `TRUEBATCH_LIQUIDS_PACKING_DATABASE_URL` |
+| `truebatch_api` | TrueBatch API (one product; packing is its last stage) | `batch_fact_v1` | `TRUEBATCH_API_DATABASE_URL` |
+
+Each also publishes `report.equipment_use_v1` and `report.deviation_note_v1` with the columns above.
 
 ## Shared demo scenario## Shared demo scenario (Logbook test data)
 

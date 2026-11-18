@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Sql } from '../server/db.js';
-import { AUTO_AREA, equipmentAt, fileInjectablesNotes, fileInjectablesPackingNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBIP_AREA, TBIP_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
+import { AUTO_AREA, equipmentAt, fileInjectablesNotes, fileProductNotes, noteFeed, scheduleAutoRaise, fileInjectablesPackingNotes, fileLogbookOverdue, filePackingNotes, fileTrueBatchNotes, SOURCE_PREFIX, TB_AREA, TB_PREFIX, TBI_AREA, TBI_PREFIX, TBIP_AREA, TBIP_PREFIX, TBP_AREA, TBP_PREFIX } from '../server/autoraise.js';
 import { APP_ROLE, TEST_DATABASE_URL, call, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import type { BatchProduct } from '../server/readers/products.js';
 
 // D-50 (owner 2026-11-12, Logbook D-37): missed limits the Logbook publishes in report.overdue_v1 are filed here once,
 // as deviations from the automatic reporter; deviation_v1 gives the Logbook the number back through source_ref.
@@ -290,5 +291,76 @@ describe('equipment of a filed note (D-58)', () => {
       join latest_sections s on s.deviation_id = d.id and s.kind = 'report' where d.source_ref in (${TBI_PREFIX + '71'}, ${TBI_PREFIX + '72'}) order by d.source_ref`;
     expect(rows.map((r) => r.equipment)).toEqual(['', 'Room RM-207; equipment EQS-VFM-01']);
     expect(rows[1]!.description).toContain('Equipment pulled from the TrueBatch Injectables equipment use of TI260014 at this step.');
+  });
+});
+
+// D-59 (owner 2026-11-18): the new TrueBatch products (one list, server/readers/products.ts) publish the same
+// deviation_note_v1; each note is filed by the product's own automatic reporter, in its own area, with its own source_ref.
+describe('deviation notes from the new TrueBatch products (D-59)', () => {
+  const NEW = [
+    { p: 'truebatch_capsules', name: 'TrueBatch Capsules', batch: 'TC260001', product: 'FG-CAP-EX20', step: 'Encapsulation › Fill the capsules' },
+    { p: 'truebatch_capsules_packing', name: 'TrueBatch Capsules Packing', batch: 'CP260001', product: 'PK-CAP-EX20-B10', step: 'Blistering › Blister' },
+    { p: 'truebatch_liquids', name: 'TrueBatch Oral Liquids', batch: 'TL260001', product: 'FG-SYR-EX5', step: 'Compounding › Dissolve' },
+    { p: 'truebatch_liquids_packing', name: 'TrueBatch Oral Liquids Packing', batch: 'LP260001', product: 'PK-SYR-EX5-100', step: 'Filling › Fill the bottles' },
+    { p: 'truebatch_api', name: 'TrueBatch API', batch: 'TA260001', product: 'API-EX-01', step: 'Packing › Drum and label' },
+  ] as const satisfies readonly { p: BatchProduct; name: string; batch: string; product: string; step: string }[];
+  const schemaOf = (p: BatchProduct) => `${p.replace('truebatch_', 'n59')}_${process.pid}`;
+  beforeAll(async () => {
+    for (const { p } of NEW) {
+      const x = schemaOf(p);
+      await t.owner.unsafe(`create schema ${x}; create table ${x}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
+        reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+        grant usage on schema ${x} to ${APP_ROLE}; grant select on ${x}.deviation_note_v1 to ${APP_ROLE}`);
+    }
+  });
+  afterAll(async () => {
+    await t.owner.unsafe(NEW.map(({ p }) => `drop schema if exists ${schemaOf(p)} cascade;`).join(' '));
+  });
+
+  it('D-59: each product is named after the one list (reporter <key>.auto, area "<name> (automatic)", source_ref <key>:note:)', () => {
+    for (const { p, name } of NEW) {
+      expect(noteFeed(p)).toEqual({ username: `${p}.auto`, fullName: `${name} (automatic report)`, area: `${name} (automatic)`, prefix: `${p}:note:`, what: `deviation notes from ${name}` });
+    }
+    // The four products before keep their names exactly.
+    expect([TB_AREA, TBP_AREA, TBI_AREA, TBIP_AREA]).toEqual(['TrueBatch (automatic)', 'TrueBatch Packing (automatic)', 'TrueBatch Injectables (automatic)', 'TrueBatch Injectables Packing (automatic)']);
+    expect([TB_PREFIX, TBP_PREFIX, TBI_PREFIX, TBIP_PREFIX]).toEqual(['truebatch:note:', 'truebatch_packing:note:', 'truebatch_injectables:note:', 'truebatch_injectables_packing:note:']);
+  });
+
+  it('DV-01: a note without a deviation number in each new product is filed once, by its own reporter, in its own area, its batch pulled', async () => {
+    for (const { p, name, batch, product, step } of NEW) {
+      const where = { schema: schemaOf(p), prefix: noteFeed(p).prefix, product };
+      await note(41, batch, 'Out of limits: line stopped', null, 2, step, where);
+      await note(42, batch, 'Already reported', 'DEV-2026-0012', 1, step, where);   // has a number: never filed
+      const first = await fileProductNotes(t.sql, { sql: reader, schema: schemaOf(p) }, p);
+      expect(first).toEqual({ filed: [expect.stringMatching(/^DEV-\d{4}-\d{4}$/)], problems: [] });
+      expect(await fileProductNotes(t.sql, { sql: reader, schema: schemaOf(p) }, p)).toEqual({ filed: [], problems: [] });   // never twice
+      const [row] = await t.owner<{ source_ref: string; area: string; reporter: string; description: string; batch: string; product: string; typed: boolean; from: string }[]>`
+        select d.source_ref, a.name as area, u.full_name as reporter, s.data->>'description' as description, b.batch, b.product, b.batch_typed as typed,
+          s.data->'products'->0->>'from' as from
+        from deviations d join users u on u.id = d.reporter_id join latest_sections s on s.deviation_id = d.id and s.kind = 'report'
+        join areas a on a.id = (s.data->>'areaId')::int join batches b on b.section_id = s.id where d.number = ${first.filed[0]!}`;
+      expect(row).toEqual({ source_ref: `${p}:note:41`, area: `${name} (automatic)`, reporter: `${name} (automatic report)`,
+        description: `Out of limits: line stopped\n\nDeviation note 41 in the ${name} batch record of ${batch}, step ${step}. Filed automatically from ${name}.`,
+        batch, product, typed: false, from: p });
+    }
+    // Note 41 of every product is its own deviation (each system numbers its own notes).
+    expect(await t.owner`select 1 from deviations where source_ref like '%:note:41'`).toHaveLength(4 + NEW.length);
+  });
+
+  it('D-59: the schedule files the notes of every linked product; a product without a link is not read, and no error', async () => {
+    const [p1, p2] = [NEW[0], NEW[4]];
+    await note(43, p1.batch, 'Shell weight low', null, 1, p1.step, { schema: schemaOf(p1.p), prefix: noteFeed(p1.p).prefix, product: p1.product });
+    await note(43, p2.batch, 'Drum label torn', null, 1, p2.step, { schema: schemaOf(p2.p), prefix: noteFeed(p2.p).prefix, product: p2.product });
+    // Oral Liquids has a note too but no link here: it stays unfiled.
+    await note(43, NEW[2].batch, 'Not read', null, 1, NEW[2].step, { schema: schemaOf(NEW[2].p), prefix: noteFeed(NEW[2].p).prefix, product: NEW[2].product });
+    const logged: string[] = [];
+    const stop = scheduleAutoRaise(t.sql, { [p1.p]: { sql: reader, schema: schemaOf(p1.p) }, [p2.p]: { sql: reader, schema: schemaOf(p2.p) } }, (m) => logged.push(m), 100);
+    try {
+      for (let i = 0; i < 50 && logged.length < 2; i++) await new Promise((r) => setTimeout(r, 100));
+    } finally { stop(); }
+    expect(logged.sort()).toEqual([
+      expect.stringMatching(/^deviation notes from TrueBatch API filed as DEV-/), expect.stringMatching(/^deviation notes from TrueBatch Capsules filed as DEV-/)]);
+    const refs = (await t.owner<{ r: string }[]>`select source_ref as r from deviations where source_ref like '%:note:43' order by 1`).map((x) => x.r);
+    expect(refs).toEqual(['truebatch_api:note:43', 'truebatch_capsules:note:43']);
   });
 });

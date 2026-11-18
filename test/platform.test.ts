@@ -5,6 +5,7 @@ import { connect, type Sql } from '../server/db.js';
 import { MIGRATIONS_DIR } from '../db/migrate.js';
 import { loadConfig } from '../server/config.js';
 import { APP_ROLE, freshDb, TEST_DATABASE_URL, type TestDb } from './helpers.js';
+import { BATCH_PRODUCTS, linkSetting, type BatchProduct } from '../server/readers/products.js';
 
 // D-42 (slice 1): the Deviations migrations on a Medhanta platform database. test/platform/database.sql is a copy of
 // the platform's db/server/database.sql (maglesT/databsee aa81e20). As on the platform, each migration runs in its own
@@ -142,5 +143,14 @@ describe('Deviations on a platform database (D-42)', () => {
     expect(loadConfig(env).TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL).toBeUndefined();
     const injPacking = 'postgres://deviations_app:pw@db:5432/truebatch_injectables_packing';
     expect(loadConfig({ ...env, TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL: injPacking }).TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL).toBe(injPacking);
+    // D-59: and to every product of the one list, by its database (<KEY>_DATABASE_URL); absent or empty = off.
+    for (const p of BATCH_PRODUCTS) {
+      const key = linkSetting(p);
+      expect(loadConfig(env)[key]).toBeUndefined();
+      expect(loadConfig({ ...env, [key]: ' ' })[key]).toBeUndefined();
+      expect(loadConfig({ ...env, [key]: `postgres://deviations_app:pw@db:5432/${p}` })[key]).toBe(`postgres://deviations_app:pw@db:5432/${p}`);
+    }
+    expect(['truebatch_capsules', 'truebatch_capsules_packing', 'truebatch_liquids', 'truebatch_liquids_packing', 'truebatch_api'].map((p) => linkSetting(p as BatchProduct)))
+      .toEqual(['TRUEBATCH_CAPSULES_DATABASE_URL', 'TRUEBATCH_CAPSULES_PACKING_DATABASE_URL', 'TRUEBATCH_LIQUIDS_DATABASE_URL', 'TRUEBATCH_LIQUIDS_PACKING_DATABASE_URL', 'TRUEBATCH_API_DATABASE_URL']);
   });
 });

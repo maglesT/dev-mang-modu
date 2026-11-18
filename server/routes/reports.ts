@@ -5,6 +5,10 @@ import type { Sql } from '../db.js';
 import { parseId, requirePermission } from '../auth.js';
 import { FISHBONE, PLANT_TZ, normaliseBatch } from '../deviations.js';
 import { fields, heading, plant, render, t, table } from '../pdf.js';
+import { BATCH_PRODUCTS, PRODUCT_NAME } from '../readers/products.js';
+
+// D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
+const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (Batchwright)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const trendQuery = z.object({
@@ -275,8 +279,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     if (fetches.length) {
       content.push(heading('Data collected (read from other systems)'));
       for (const f of fetches) {
-        content.push(t(`${({ batchwright: 'Batch record (Batchwright)', truebatch: 'Batch record (TrueBatch)', truebatch_injectables: 'Batch record (TrueBatch Injectables)',
-          truebatch_packing: 'Batch record (TrueBatch Packing)', truebatch_injectables_packing: 'Batch record (TrueBatch Injectables Packing)' } as Record<string, string>)[f.source] ?? 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        content.push(t(`${SOURCE_NAME[f.source] ?? 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
       }

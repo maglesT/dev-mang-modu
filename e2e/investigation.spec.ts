@@ -154,6 +154,9 @@ test('DV-23: the Measure band fetches related data; a system that is not connect
   // D-57: the linked TrueBatch product (Injectables on the test server) is read; the Logbook is not connected.
   await expect(card).toContainText('Batch record (TrueBatch Injectables)');
   await expect(card).toContainText('No batch with this number was found in TrueBatch Injectables.');
+  // D-59: and the new product linked on the test server, under its own name.
+  await expect(card).toContainText('Batch record (TrueBatch Capsules Packing)');
+  await expect(card).toContainText('No batch with this number was found in TrueBatch Capsules Packing.');
   await expect(card).toContainText('Not connected on this installation.');
   await expect(card.getByRole('button', { name: 'Fetch again' })).toBeVisible();
 });

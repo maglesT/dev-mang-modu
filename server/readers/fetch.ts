@@ -9,7 +9,8 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, readTrueBatch, trueBatchFindings, viewsOf
 // copy with a SHA-256. Advice for the investigation; the other systems are never written to.
 // The equipment the batch record names is looked up in the Logbook too.
 // D-56: Batchwright is retired and no longer read; copies fetched from it before (source 'batchwright') stay readable.
-// D-57: all four TrueBatch products are read, each through its own link and kept as its own copy (source = the product).
+// D-57, D-59: every TrueBatch product of the one list (products.ts) is read, each through its own link and kept as its own
+// copy (source = the product).
 export type Sources = { logbook?: Source } & Partial<Record<BatchProduct, Source>>;
 export const WINDOW_BEFORE_DAYS = 7;
 export const WINDOW_AFTER_DAYS = 1;

@@ -1,6 +1,13 @@
 import { z } from 'zod';
+import { BATCH_PRODUCTS, linkSetting, type LinkSetting } from './readers/products.js';
+
+// D-51, D-53 to D-55, D-57, D-59: each TrueBatch product's link (TRUEBATCH_DATABASE_URL, TRUEBATCH_PACKING_DATABASE_URL,
+// TRUEBATCH_CAPSULES_DATABASE_URL, ...), written by the platform's apply only while that link is on. Absent = off.
+const optional = z.string().trim().optional().transform((v) => v || undefined);
+const links = Object.fromEntries(BATCH_PRODUCTS.map((p) => [linkSetting(p), optional])) as Record<LinkSetting, typeof optional>;
 
 const schema = z.object({
+  ...links,
   // The app connects as the restricted role deviations_app (DV-14, DV-15); migrations use MIGRATION_DATABASE_URL.
   DATABASE_URL: z.string().url(),
   MIGRATION_DATABASE_URL: z.string().url().optional(),
@@ -24,14 +31,6 @@ const schema = z.object({
   // source shows as "not configured" and nothing else changes.
   // On the Medhanta platform (D-42) apply writes LOGBOOK_DATABASE_URL for the link to the Logbook's views instead.
   LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-51: TrueBatch's batch views (written by the platform's apply only while the link to TrueBatch is on).
-  TRUEBATCH_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-53, D-57: TrueBatch Tablets Packing (written by apply only while the link to Packing is on).
-  TRUEBATCH_PACKING_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-54, D-57: TrueBatch Injectables (written by apply only while the link to Injectables is on).
-  TRUEBATCH_INJECTABLES_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // D-55, D-57: TrueBatch Injectables Packing (written by apply only while the link to it is on).
-  TRUEBATCH_INJECTABLES_PACKING_DATABASE_URL: z.string().trim().optional().transform((v) => v || undefined),
   // Core's employee view (identity report.employee_v1), read with this app's own login (D-42 slice 4, PL-08).
   IDENTITY_DATABASE_URL: z.string().url(),
 });
