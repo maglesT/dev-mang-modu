@@ -10,6 +10,8 @@ interface Trends {
   counts: { key: string; month: string; n: number }[];
   products: { product: string; n: number }[];
   capas: { source: string; step: string; outcome: string; n: number }[];
+  // D-63: the QMS owns CAPA: its CAPAs are counted in QMS; these are the local ones only.
+  capasInQms?: boolean;
   // S10 (D-30): months above their own usual level (key null = all deviations).
   spikes: { key: string | null; month: string; n: number; mean: number; limit: number }[];
   // S14 (D-36): root-cause categories, most frequent first; repeats in the last 6 months.
@@ -177,6 +179,7 @@ function TrendView() {
             <p className="muted small">Fix the top one or two causes at the system level first.</p>
           </div>
           <h3>CAPAs raised in the period</h3>
+          {data.capasInQms && <p className="muted small">QMS owns CAPA: CAPAs raised in QMS are counted in QMS. Below: CAPAs recorded here before QMS was linked.</p>}
           <div className="grid3">
             <table><thead><tr><th>Source</th><th>Count</th></tr></thead><tbody>{sum((c) => SOURCE_LABEL[c.source] ?? c.source).map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody></table>
             <table><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>{sum((c) => (c.step === 'closed' ? 'Closed' : 'Not closed')).map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody></table>

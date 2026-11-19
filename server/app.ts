@@ -80,8 +80,8 @@ export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger
   signalRoutes(app, sql);
   aiRoutes(app, sql, ai);
   dataRoutes(app, sql, sources);
-  capaRoutes(app, sql);
-  reportRoutes(app, sql);
+  capaRoutes(app, sql, sources.qms);
+  reportRoutes(app, sql, sources.qms);
   integrityRoutes(app, sql);
 
   // In production the built web UI is served from the same process.

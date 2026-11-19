@@ -7,6 +7,7 @@ import type { Sources } from '../readers/fetch.js';
 import { confirmPicks } from '../readers/picks.js';
 import type { BatchProduct } from '../readers/truebatch.js';
 import type { OosRef } from '../readers/lims.js';
+import { CANCELLED, capasFor, QMS_OFF } from '../readers/qms.js';
 import { assignable } from '../people.js';
 import { INVESTIGATES, can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
@@ -264,6 +265,18 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
     const data = closureData.safeParse(body.data.data);
     if (!data.success) return reply.code(400).send({ error: 'invalid_request', problems: [...new Set(data.error.issues.map((i) => i.message))] });
     const user = req.user as SessionUser;
+    // D-63: while the QMS is linked it owns CAPA. The CAPA rules below are checked once, here, against the QMS's
+    // CAPAs for this deviation (a cancelled one does not count), with any old local CAPAs; not answering = refused.
+    let qmsCapas: string[] | null = null;
+    if (sources.qms) {
+      const [h] = await sql<{ number: string }[]>`select number from deviations where id = ${id}`;
+      if (!h) return reply.code(404).send({ error: 'not_found' });
+      try {
+        qmsCapas = (await capasFor(sources.qms, [h.number])).filter((c) => c.status !== CANCELLED).map((c) => c.capa_number);
+      } catch {
+        return reply.code(503).send({ error: 'qms_off', problems: [QMS_OFF] });
+      }
+    }
     try {
       const signed = await signer(user, body.data.signature, id, 'closed');
       return await sql.begin(async (tx) => {
@@ -276,7 +289,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
         const toolsNow = contextProblems(inv?.data ?? {}, await investigationContext(tx, id));
         if (toolsNow.length) return reply.code(409).send({ error: 'tools_missing', problems: [...toolsNow, 'The classification or type changed after the investigation was signed: correct the investigation to add them.'] });
         const [count] = await tx<{ n: number }[]>`select count(*)::int as n from capas where deviation_id = ${id}`;
-        const n = count!.n;
+        const n = count!.n + (qmsCapas?.length ?? 0);
         if (n === 0 && d.classification !== 'minor') {
           return reply.code(409).send({ error: 'capa_required', problems: ['A major or critical deviation needs at least one CAPA before closure.'] });
         }
@@ -286,11 +299,14 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
         const [w] = await tx<{ weak: boolean }[]>`
           select coalesce(bool_and(coalesce(v.data->>'strength', 'weak') = 'weak'), false) as weak
           from capas c join latest_capa_versions v on v.capa_id = c.id where c.deviation_id = ${id}`;
-        const allWeak = d.classification === 'critical' && n > 0 && w!.weak;
+        // D-63: the QMS decides the strength of its own CAPAs; only local CAPAs alone are checked for it here.
+        const allWeak = d.classification === 'critical' && n > 0 && !qmsCapas?.length && w!.weak;
         if (allWeak && !data.data.weakCapaJustification) {
           return reply.code(409).send({ error: 'weak_capas', problems: ['A critical deviation needs a strong or medium CAPA (mistake-proofing, interlock, automation, alarm), or QA must say why weak CAPAs (training, SOP revision) are enough.'] });
         }
-        const content = { ...data.data, noCapaReason: n === 0 ? data.data.noCapaReason : '', weakCapaJustification: allWeak ? data.data.weakCapaJustification : '' };
+        const content = { ...data.data, noCapaReason: n === 0 ? data.data.noCapaReason : '', weakCapaJustification: allWeak ? data.data.weakCapaJustification : '',
+          // D-63: the QMS CAPAs this closure was checked against, kept with the signed closure.
+          ...(qmsCapas ? { qmsCapas } : {}) };
         const section = await addSection(tx, id, 'closure', content, user.id, (await latestId(tx, id, 'closure')) ? 'closed again after reopening' : null);
         await sign(tx, { signer: signed, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'closed', content });
         await tx`update deviations set step = 'closed' where id = ${id}`;

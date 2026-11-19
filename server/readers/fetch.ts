@@ -1,6 +1,7 @@
 import type { Sql } from '../db.js';
 import { audit } from '../audit.js';
 import { normaliseBatch } from '../deviations.js';
+import type { QmsSource } from './qms.js';
 import { LOGBOOK_VIEWS, logbookFindings, readLogbook, type Query, type Source } from './logbook.js';
 import { BATCH_PRODUCTS, PRODUCT_NAME, readTrueBatch, trueBatchFindings, viewsOf, type BatchProduct } from './truebatch.js';
 
@@ -12,7 +13,8 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, readTrueBatch, trueBatchFindings, viewsOf
 // D-57, D-59: every TrueBatch product of the one list (products.ts) is read, each through its own link and kept as its own
 // copy (source = the product).
 // D-60: LIMS (oos_v1) for the OOS pick list and the filing of an OOS phase II investigation; not read by this fetch.
-export type Sources = { logbook?: Source; lims?: Source } & Partial<Record<BatchProduct, Source>>;
+// D-63: the QMS (capa_v1) and its web address, for the CAPAs when the QMS owns them; not read by this fetch.
+export type Sources = { logbook?: Source; lims?: Source; qms?: QmsSource } & Partial<Record<BatchProduct, Source>>;
 export const WINDOW_BEFORE_DAYS = 7;
 export const WINDOW_AFTER_DAYS = 1;
 const NOT_A_BATCH = new Set(['none', 'na', 'nil', 'nan', 'null', 'nobatch', 'notapplicable', '0']);

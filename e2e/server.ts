@@ -4,7 +4,7 @@ import { migrate } from '../db/migrate.js';
 import { buildApp } from '../server/app.js';
 import globalSetup from '../test/global-setup.js';
 import { APP_ROLE, TEST_DATABASE_URL, TEST_PROOF_KEY, directory, fakePeople, fakeSignOn, seedUser } from '../test/helpers.js';
-import { E2E_PORT, E2E_SCHEMA, REPORT_ONLY, USERS } from './config.js';
+import { E2E_PORT, E2E_QMS_PORT, E2E_SCHEMA, QMS_URL, REPORT_ONLY, USERS } from './config.js';
 
 await globalSetup();
 const owner = connect(TEST_DATABASE_URL);
@@ -54,3 +54,12 @@ const app = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), pr
   sources: { truebatch_injectables: { sql: stand, schema: TBI }, truebatch_capsules_packing: { sql: stand, schema: TCP },
     lims: { sql: stand, schema: LIMS } } });
 await app.listen({ port: E2E_PORT, host: '127.0.0.1' });
+
+// D-63: a stand-in for the QMS's published CAPAs (capa_v1, fixed columns) and the app with the QMS linked: the QMS owns CAPA.
+const QMS = `${E2E_SCHEMA}_qms`;
+await stand.unsafe(`drop schema if exists ${QMS} cascade; create schema ${QMS};
+  create table ${QMS}.capa_v1 (capa_number text, title text, status text, status_text text, source_kind text, source_ref text, owner_name text,
+    due_date date, closed_at timestamptz, effective boolean, data_as_of timestamptz default now());`);
+const linked = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: new URL('../dist/web', import.meta.url).pathname, cookieSecure: false,
+  sources: { qms: { sql: stand, schema: QMS, url: QMS_URL } } });
+await linked.listen({ port: E2E_QMS_PORT, host: '127.0.0.1' });

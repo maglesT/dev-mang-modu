@@ -6,6 +6,7 @@ import { parseId, requirePermission } from '../auth.js';
 import { FISHBONE, PLANT_TZ, normaliseBatch } from '../deviations.js';
 import { fields, heading, plant, render, t, table } from '../pdf.js';
 import { BATCH_PRODUCTS, PRODUCT_NAME } from '../readers/products.js';
+import { withQmsOpen, type QmsCapa, type QmsSource } from '../readers/qms.js';
 
 // D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
 const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (Batchwright)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
@@ -91,6 +92,8 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
       const o = v as Row;
       return [['LIMS OOS', `${val(o.number)}: ${val(o.test)} of ${[o.itemCode, o.itemName].filter(Boolean).map(val).join(' ')}, lot ${val(o.lot)}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
     }
+    // D-63: the QMS CAPAs a closure was checked against.
+    if (k === 'qmsCapas' && Array.isArray(v)) return [['CAPAs in QMS (checked at closure)', v.length ? v.join(', ') : 'none']];
     // S13 tools print readably (D-35).
     if (k === 'isIsNot' && v && typeof v === 'object') {
       return Object.entries(v as Record<string, Row>).map(([q, r]): [string, unknown] => [`is / is not: ${q}`, `is: ${val(r.is)} | is not: ${val(r.isNot)} | tells: ${val(r.tells)}`]);
@@ -160,14 +163,15 @@ async function loadNames(sql: Sql): Promise<Names> {
   };
 }
 
-export function reportRoutes(app: FastifyInstance, sql: Sql) {
+export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
   const reader = { preHandler: requirePermission() };
 
   // DV-11: every deviation that names a batch, as its own batch or as an "other batch" checked, with status.
   app.get<{ Querystring: { batch?: string } }>('/api/batch-lookup', reader, async (req, reply) => {
     const norm = normaliseBatch((req.query.batch ?? '').slice(0, 80));
     if (!norm) return reply.code(400).send({ error: 'invalid_request', problems: ['Type a batch number.'] });
-    return sql`
+    // D-63: open CAPAs counted once, the QMS's included when it owns CAPA.
+    return withQmsOpen(qms, await sql<{ number: string; openCapas: number }[]>`
       select d.id::int, d.number, d.step, d.classification, to_char(d.target_date, 'YYYY-MM-DD') as "targetDate",
         r.data->>'title' as title, b.role, b.product, b.batch, b.outcome,
         (d.step not in ('closed', 'rejected')) as open,
@@ -176,7 +180,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       join deviations d on d.id = b.deviation_id
       join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
       where b.batch_norm = ${norm}
-      order by (d.step not in ('closed', 'rejected')) desc, d.id desc`;
+      order by (d.step not in ('closed', 'rejected')) desc, d.id desc`, (m) => req.log.warn(m));
   });
 
   // DV-12: counts by month split by area, type or classification, for a period and product; CAPA counts too.
@@ -239,7 +243,8 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
       group by 1 order by 2 desc, 1`;
     const pareto = await byCategory(from, to);
     const repeats = (await byCategory(addMonths(to, -5), to)).filter((r) => r.n >= 3);
-    return { from, to, by, counts, products, capas, spikes, pareto, repeats };
+    // D-63: while the QMS owns CAPA, its CAPAs are counted in the QMS; the counts here are the old local CAPAs only.
+    return { from, to, by, counts, products, capas, capasInQms: !!qms, spikes, pareto, repeats };
   });
 
   // DV-21: one PDF per deviation: every section with all versions, signatures, CAPAs, attachments and history.
@@ -249,6 +254,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
     const { status, body: d } = await asUser<Row & { sections: Row[]; signatures: Row[]; batches: Row[]; history: Row[]; attachments: Row[] }>(app, req, `/api/deviations/${id}`);
     if (status !== 200) return reply.code(status).send(d);
     const { body: capas } = await asUser<Row[]>(app, req, `/api/capas?deviationId=${id}&status=all`);
+    const { body: fromQms } = await asUser<{ linked: boolean; off: boolean; note: string | null; capas: QmsCapa[] }>(app, req, `/api/qms/capas?deviationId=${id}`);
     const [s] = await sql<{ site_name: string }[]>`select site_name from settings`;
     const latestIds = new Set(d.sections.filter((x) => x.latest).map((x) => x.id));
     const names = await loadNames(sql);
@@ -289,7 +295,13 @@ export function reportRoutes(app: FastifyInstance, sql: Sql) {
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
       }
     }
-    content.push(heading('CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], c.dueDate]), [60, 50, '*', 70, 70, 50]));
+    // D-63: the QMS's CAPAs for this deviation, as read now (the QMS owns CAPA while linked); then any local CAPAs.
+    if (fromQms.linked) {
+      content.push(heading('CAPAs in QMS (read from QMS)'));
+      if (fromQms.off) content.push(t(val(fromQms.note), { fontSize: 8 }));
+      else content.push(table(['Number', 'Title', 'Status', 'Owner', 'Due', 'Effective'], fromQms.capas.map((c) => [c.capa_number, c.title, c.status_text, c.owner_name ?? '', c.due_date ?? '', c.effective === null ? '' : c.effective ? 'yes' : 'no']), [60, '*', 70, 70, 50, 40]));
+    }
+    if (!fromQms.linked || capas.length) content.push(heading(fromQms.linked ? 'CAPAs recorded here before QMS was linked' : 'CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], c.dueDate]), [60, 50, '*', 70, 70, 50]));
     content.push(heading('Attachments'), table(['File', 'Size', 'SHA-256', 'By', 'When', 'Withdrawn'], d.attachments.map((a) => [a.filename, a.size, a.sha256, a.uploadedBy, plant(a.uploadedAt as string), a.withdrawnReason ?? '']), ['*', 30, 120, 50, 60, 60]));
     content.push(heading('History (audit trail)'), table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], d.history.map((h) => [plant(h.at as string), h.actor ?? 'System', h.action, val(h.oldValue), val(h.newValue), h.reason ?? '']), [60, 50, 60, '*', '*', 60]));
     return sendPdf(reply, String(d.number), await render(s!.site_name, `Deviation ${d.number}`, req.user!.fullName, content));
