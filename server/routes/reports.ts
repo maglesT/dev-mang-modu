@@ -86,6 +86,11 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     if (k === 'fishbone' && v && typeof v === 'object') {
       return FISHBONE.filter(([key]) => (v as Row)[key]).map(([key, label]) => [`fishbone: ${label}`, val((v as Row)[key])]);
     }
+    // D-60: the LIMS OOS of an OOS phase II investigation, as read from LIMS when it was filed.
+    if (k === 'oos' && v && typeof v === 'object') {
+      const o = v as Row;
+      return [['LIMS OOS', `${val(o.number)}: ${val(o.test)} of ${[o.itemCode, o.itemName].filter(Boolean).map(val).join(' ')}, lot ${val(o.lot)}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
+    }
     // S13 tools print readably (D-35).
     if (k === 'isIsNot' && v && typeof v === 'object') {
       return Object.entries(v as Record<string, Row>).map(([q, r]): [string, unknown] => [`is / is not: ${q}`, `is: ${val(r.is)} | is not: ${val(r.isNot)} | tells: ${val(r.tells)}`]);

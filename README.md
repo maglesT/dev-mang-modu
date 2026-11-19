@@ -41,6 +41,8 @@ the trend view and PDF copies support reviews and inspections.
    Likewise each other TrueBatch product of the one list in `server/readers/products.ts` (D-57, D-59), by its own link
    `<PRODUCT>_DATABASE_URL` (e.g. `TRUEBATCH_PACKING_DATABASE_URL`, `TRUEBATCH_CAPSULES_DATABASE_URL`): its batches are
    read and picked, and its deviation notes without a number are filed (area "<product name> (automatic)"). No link = off.
+   The link to Medhanta LIMS, `LIMS_DATABASE_URL` (D-60), lists its open OOS on the report form: QA files an OOS phase II
+   investigation by picking the OOS (its details come from LIMS, and an OOS is filed once). No link = no OOS pick.
 7. Optional, the QMS product reads the CAPA register (D-40): give the read-only role `capa_report` a login,
    `ALTER ROLE capa_report LOGIN PASSWORD '...'` (typed by the site), and a `pg_hba` line for the QMS host only, followed by
    `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,

@@ -6,6 +6,7 @@ import { audit } from '../audit.js';
 import type { Sources } from '../readers/fetch.js';
 import { confirmPicks } from '../readers/picks.js';
 import type { BatchProduct } from '../readers/truebatch.js';
+import type { OosRef } from '../readers/lims.js';
 import { assignable } from '../people.js';
 import { INVESTIGATES, can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
@@ -181,9 +182,16 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
     const oversee = can(user, 'deviations.qa.oversee');
     if (kind === 'report') {
       // D-57: a newly picked batch is checked in its TrueBatch product; one picked before and kept is not read again.
-      const [prev] = await sql<{ data: { products?: { batch: string; from?: BatchProduct }[] } }[]>`
+      const [prev] = await sql<{ data: { products?: { product: string; batch: string; from?: BatchProduct | 'lims' }[]; oos?: OosRef } }[]>`
         select data from latest_sections where deviation_id = ${id} and kind = 'report'`;
-      const picks = await confirmPicks(sources, (data.data as ReportData).products, prev?.data.products ?? []);
+      // D-60: the OOS of the report and its lot stay as read from LIMS when the deviation was filed; none is added later.
+      const r = data.data as ReportData;
+      if (r.oos && !prev?.data.oos) return reply.code(400).send({ error: 'invalid_request', problems: ['An OOS is picked only when the deviation is reported.'] });
+      if (prev?.data.oos) {
+        const lots = (prev.data.products ?? []).filter((p) => p.from === 'lims');
+        Object.assign(r, { oos: prev.data.oos, noBatch: false, products: [...lots, ...r.products.filter((p) => p.from !== 'lims')].slice(0, 20) });
+      }
+      const picks = await confirmPicks(sources, r.products, prev?.data.products ?? []);
       if (picks.length) return reply.code(400).send({ error: 'invalid_request', problems: picks });
     }
     const out = await sql.begin(async (tx) => {

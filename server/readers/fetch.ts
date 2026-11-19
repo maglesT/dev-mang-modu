@@ -11,7 +11,8 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, readTrueBatch, trueBatchFindings, viewsOf
 // D-56: Batchwright is retired and no longer read; copies fetched from it before (source 'batchwright') stay readable.
 // D-57, D-59: every TrueBatch product of the one list (products.ts) is read, each through its own link and kept as its own
 // copy (source = the product).
-export type Sources = { logbook?: Source } & Partial<Record<BatchProduct, Source>>;
+// D-60: LIMS (oos_v1) for the OOS pick list and the filing of an OOS phase II investigation; not read by this fetch.
+export type Sources = { logbook?: Source; lims?: Source } & Partial<Record<BatchProduct, Source>>;
 export const WINDOW_BEFORE_DAYS = 7;
 export const WINDOW_AFTER_DAYS = 1;
 const NOT_A_BATCH = new Set(['none', 'na', 'nil', 'nan', 'null', 'nobatch', 'notapplicable', '0']);

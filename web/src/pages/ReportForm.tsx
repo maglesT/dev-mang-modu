@@ -6,8 +6,17 @@ export interface InitialImpact { productQuality: Answer; patientSafety: Answer; 
 export interface ReportValues {
   planned: boolean; title: string; description: string; areaId: number; equipment: string; eventAt: string;
   immediateAction: string; actionTakenAt?: string | null; initialImpact?: InitialImpact;
-  plannedReason: string; noBatch: boolean; products: ProductRow[];
+  plannedReason: string; noBatch: boolean; products: ProductRow[]; oos?: Oos;
 }
+// D-60: an OOS of LIMS, as LIMS publishes it (oos_v1); the report keeps it as read when filed.
+export interface Oos {
+  id: string; number: string; sample: string; lot: string; itemKind: string; itemCode: string; itemName: string;
+  analysis: string; test: string; result: string; limit: string; phaseI: string; openedAt: string;
+}
+interface OosPick extends Oos { status: string; phaseII: boolean; filed: string | null }
+const oosItem = (o: Oos) => [o.itemCode, o.itemName].filter(Boolean).join(' ');
+export const oosText = (o: Oos) =>
+  `${o.number}: ${o.test} of ${oosItem(o)}, lot ${o.lot}; result ${o.result}, limit ${o.limit}`;
 // D-57: a batch picked from a linked TrueBatch product names it (`from`); without it the batch was typed by hand.
 export interface ProductRow { product: string; batch: string; from?: string }
 interface BatchPick { batch: string; product: string | null; productName: string | null; status: string | null; from: string }
@@ -36,13 +45,33 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
   const [products, setProducts] = useState<ProductRow[]>(initial?.products.length ? initial.products : [{ product: '', batch: '' }]);
   // D-57: the batches of the linked TrueBatch products (none listed when no product is linked or the list cannot be read).
   const [picks, setPicks] = useState<{ batches: BatchPick[]; notes: string[] }>({ batches: [], notes: [] });
+  // D-60: the open OOS of LIMS (only when LIMS is linked); a picked OOS fills the report and is kept with it.
+  const [oosList, setOosList] = useState<{ linked: boolean; oos: OosPick[]; note: string | null }>({ linked: false, oos: [], note: null });
+  const [oos, setOos] = useState<Oos | undefined>(initial?.oos);
   const [reason, setReason] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     void api<NamedItem[]>('GET', '/api/areas').then((a) => setAreas(a.filter((x) => x.active)));
     void api<{ batches: BatchPick[]; notes: string[] }>('GET', '/api/batches').then(setPicks).catch(() => {});
+    if (!correct) void api<typeof oosList>('GET', '/api/oos').then(setOosList).catch(() => {});
   }, []);
+  // D-60: picking an OOS fills the title, what happened, when and its lot (product and lot pulled, not typed).
+  const pickOos = (id: string) => {
+    const o = oosList.oos.find((x) => x.id === id);
+    const others = products.filter((p) => p.from !== 'lims' && (p.batch.trim() || p.product.trim()));
+    if (!o) {
+      setOos(undefined);
+      setProducts(others.length ? others : [{ product: '', batch: '' }]);
+      return;
+    }
+    setOos(o);
+    setF({ ...f, planned: false, noBatch: false, eventAt: localInputValue(new Date(o.openedAt)),
+      title: `${o.number} phase II: ${o.test} of ${oosItem(o)}, lot ${o.lot}`.slice(0, 200),
+      description: `Phase II investigation of LIMS OOS ${o.number}. ${o.test} of ${oosItem(o)}, lot ${o.lot}, sample ${o.sample}, analysis ${o.analysis}: `
+        + `result ${o.result}, limit ${o.limit}. ${o.phaseI}` });
+    setProducts([{ product: o.itemCode || o.itemName, batch: o.lot || o.sample, from: 'lims' }, ...others]);
+  };
   // A batch from the list brings its product; any other text is a batch typed by hand (the product is then typed too).
   const setBatch = (i: number, value: string) => {
     const pick = picks.batches.find((b) => b.batch === value);
@@ -62,6 +91,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
       const data = {
         ...rest, areaId: Number(f.areaId), eventAt: new Date(f.eventAt).toISOString(), products: rows,
         actionTakenAt: f.actionTakenAt ? new Date(f.actionTakenAt).toISOString() : null, initialImpact: impact,
+        ...(oos ? { oos: correct ? oos : { id: oos.id } } : {}),
       };
       if (correct) {
         await correct(data, reason);
@@ -79,9 +109,26 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
   return (
     <form className="card form" onSubmit={submit}>
       {correct ? <h2>Correct the report</h2> : <h1>Report a deviation</h1>}
+      {!correct && oosList.linked && (
+        <div>
+          <label>OOS from LIMS (phase II investigation)
+            <select value={oos?.id ?? ''} onChange={(e) => pickOos(e.target.value)}>
+              <option value="">None: not an OOS</option>
+              {oosList.oos.map((o) => (
+                <option key={o.id} value={o.id} disabled={!o.phaseII || !!o.filed}>
+                  {`${oosText(o)}${o.filed ? ` · already has ${o.filed}` : !o.phaseII ? ' · phase I not finished' : ''}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {oosList.note && <p className="muted small">{oosList.note}</p>}
+          {!oosList.note && <p className="muted small">The open OOS of LIMS. Pick one whose phase I found no laboratory error; its details come from LIMS. An OOS that already has a deviation cannot be picked again.</p>}
+        </div>
+      )}
+      {oos && <p className="small"><b>LIMS OOS {oos.number}</b> · {oos.test} · {oosItem(oos)} · lot {oos.lot} · result {oos.result} · limit {oos.limit} · {oos.phaseI}</p>}
       {!correct && <fieldset className="choice">
         <label className="check"><input type="radio" checked={!f.planned} onChange={() => setF({ ...f, planned: false })} /> It has happened (unplanned)</label>
-        <label className="check"><input type="radio" checked={f.planned} onChange={() => setF({ ...f, planned: true })} /> It is planned (needs QA approval first)</label>
+        <label className="check"><input type="radio" checked={f.planned} disabled={!!oos} onChange={() => setF({ ...f, planned: true })} /> It is planned (needs QA approval first)</label>
       </fieldset>}
       <label>Title *<input value={f.title} onChange={set('title')} placeholder="Short description, e.g. Mixer stopped during granulation" /></label>
       <label>What happened *<textarea rows={4} value={f.description} onChange={set('description')} /></label>
@@ -105,15 +152,17 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
         </datalist>
         {!f.noBatch && products.map((p, i) => (
           <div className="row" key={i}>
-            <input aria-label={`Batch ${i + 1}`} placeholder={picks.batches.length ? 'Pick or type the batch number' : 'Batch number'} list="batch-picks" value={p.batch} onChange={(e) => setBatch(i, e.target.value)} />
-            <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} readOnly={!!p.from} title={p.from ? 'From the picked batch' : undefined}
+            <input aria-label={`Batch ${i + 1}`} placeholder={picks.batches.length ? 'Pick or type the batch number' : 'Batch number'} list="batch-picks" value={p.batch}
+              readOnly={p.from === 'lims'} title={p.from === 'lims' ? 'The lot of the OOS, from LIMS' : undefined} onChange={(e) => setBatch(i, e.target.value)} />
+            <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} readOnly={!!p.from} title={p.from === 'lims' ? 'From the OOS in LIMS' : p.from ? 'From the picked batch' : undefined}
               onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, product: e.target.value } : x)))} />
             {p.batch.trim() && !p.from && <span className="chip chip-warn">Typed by hand</span>}
-            {products.length > 1 && <button type="button" onClick={() => setProducts(products.filter((_, j) => j !== i))}>Remove</button>}
+            {p.from === 'lims' && <span className="chip">From LIMS OOS</span>}
+            {products.length > 1 && p.from !== 'lims' && <button type="button" onClick={() => setProducts(products.filter((_, j) => j !== i))}>Remove</button>}
           </div>
         ))}
         {!f.noBatch && <button type="button" onClick={() => setProducts([...products, { product: '', batch: '' }])}>Add another batch</button>}
-        <label className="check"><input type="checkbox" checked={f.noBatch} onChange={(e) => setF({ ...f, noBatch: e.target.checked })} /> No product or batch concerned (e.g. a facility event)</label>
+        <label className="check"><input type="checkbox" checked={f.noBatch} disabled={!!oos} onChange={(e) => setF({ ...f, noBatch: e.target.checked })} /> No product or batch concerned (e.g. a facility event)</label>
       </div>
       <fieldset className="impact">
         <legend><b>Initial impact assessment *</b> <span className="muted small">Your first view; QA assesses it again when classifying.</span></legend>

@@ -69,6 +69,37 @@ test('D-59: a batch of TrueBatch Capsules Packing is picked from the list, its p
   await expect(page.getByText('PK-CAP-EX20-B10 / CP26E01')).toBeVisible();
 });
 
+// D-60: QA files the phase II investigation of a LIMS OOS by picking it; the OOS cannot be picked a second time.
+test('D-60: QA picks an OOS from LIMS: its details fill the report, the record keeps the OOS, and it is not offered again', async ({ page }) => {
+  await logIn(page, 'qa1');
+  await page.getByRole('button', { name: 'Report a deviation' }).click();
+  const pick = page.getByLabel('OOS from LIMS (phase II investigation)');
+  // The OOS still in phase I is listed but cannot be picked.
+  await expect(pick.locator('option', { hasText: 'OOS26E002' })).toHaveJSProperty('disabled', true);
+  await pick.selectOption({ label: 'OOS26E001: Assay of FG-EX-10 Example tablets 10 mg (invented), lot EX26E01; result 91.2 %, limit 95.0 to 105.0 %' });
+  await expect(page.getByLabel('Title *')).toHaveValue('OOS26E001 phase II: Assay of FG-EX-10 Example tablets 10 mg (invented), lot EX26E01');
+  await expect(page.getByLabel('What happened *')).toHaveValue(/result 91\.2 %, limit 95\.0 to 105\.0 %\. Phase I found no laboratory error/);
+  await expect(page.getByLabel('Batch 1')).toHaveValue('EX26E01');
+  await expect(page.getByLabel('Batch 1')).not.toBeEditable();
+  await expect(page.getByLabel('Product 1')).toHaveValue('FG-EX-10');
+  await expect(page.getByText('From LIMS OOS', { exact: true })).toBeVisible();
+  await page.getByLabel('Area *').selectOption({ label: 'Granulation' });
+  await page.getByRole('radiogroup', { name: 'Could product quality be affected?' }).getByLabel('Yes', { exact: true }).check();
+  await page.getByRole('radiogroup', { name: 'Could patient safety be at risk?' }).getByLabel('Not known yet').check();
+  await page.getByRole('radiogroup', { name: 'Could other batches be affected?' }).getByLabel('Not known yet').check();
+  await page.getByLabel('Short assessment *').fill('Lot on hold until phase II is concluded.');
+  await page.getByLabel('Action taken (immediate action) *').fill('Lot EX26E01 kept on hold in QC.');
+  await page.getByRole('button', { name: 'Save and get a number' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('OOS26E001 phase II');
+  const number = (await page.getByRole('heading', { level: 1 }).textContent())!.split(' · ')[0]!;
+  await expect(page.getByText('OOS26E001: Assay of FG-EX-10 Example tablets 10 mg (invented), lot EX26E01; result 91.2 %, limit 95.0 to 105.0 %')).toBeVisible();
+  await expect(page.getByText('FG-EX-10 / EX26E01', { exact: true })).toBeVisible();
+  // Back on the form, the OOS shows the deviation it already has and cannot be picked again.
+  await page.getByRole('button', { name: '← All deviations' }).click();
+  await page.getByRole('button', { name: 'Report a deviation' }).click();
+  await expect(page.getByLabel('OOS from LIMS (phase II investigation)').locator('option', { hasText: `already has ${number}` })).toHaveJSProperty('disabled', true);
+});
+
 // D-58: a batch picked from TrueBatch was checked there: QA classifies without the tick, and the record says so.
 test('D-58: a picked batch needs no "checked product and batch" tick at classification', async ({ page }) => {
   await logIn(page, 'us1');

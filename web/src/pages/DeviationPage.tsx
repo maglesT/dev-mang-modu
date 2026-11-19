@@ -13,7 +13,7 @@ import {
   type Deviation, type Me, type NamedItem, type SectionVersion,
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
-import { ANSWER_LABEL, ReportForm, type ReportValues } from './ReportForm.js';
+import { ANSWER_LABEL, ReportForm, oosText, type Oos, type ReportValues } from './ReportForm.js';
 import { CapaTable, RaiseForm } from './Capas.js';
 import type { CapaItem } from '../api.js';
 
@@ -137,6 +137,8 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
           <ReportForm initial={report as unknown as ReportValues} correct={correct('report')} onDone={() => {}} onCancel={() => setCorrecting(null)} />
         ) : (
           <Fields rows={[
+            // D-60: the LIMS OOS whose phase II this is, as read from LIMS when it was filed.
+            ...(report.oos ? [['LIMS OOS', <>{oosText(report.oos as Oos)}<br /><span className="muted small">{(report.oos as Oos).phaseI} Sample {(report.oos as Oos).sample}, analysis {(report.oos as Oos).analysis}; OOS opened {plantTime((report.oos as Oos).openedAt)}.</span></>] as [string, ReactNode]] : []),
             ['What happened', str(report.description)],
             ...(d.planned ? [['Reason for the planned deviation', str(report.plannedReason)] as [string, ReactNode]] : []),
             ['Area', str(d.area)],

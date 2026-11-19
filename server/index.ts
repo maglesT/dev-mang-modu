@@ -18,6 +18,8 @@ const reader = (url: string) => ({ sql: connect(url, {}, 2), schema: 'report' })
 // that link is on): read by "Fetch related data", for the report form's batch list, and for their deviation notes.
 const sources: Sources = {
   ...(config.LOGBOOK_REPORT_URL ? { logbook: reader(config.LOGBOOK_REPORT_URL) } : {}),
+  // D-60: LIMS, for the OOS pick and the filing of an OOS phase II investigation.
+  ...(config.LIMS_DATABASE_URL ? { lims: reader(config.LIMS_DATABASE_URL) } : {}),
   ...Object.fromEntries(BATCH_PRODUCTS.flatMap((p) => { const url = config[linkSetting(p)]; return url ? [[p, reader(url)]] : []; })),
 };
 // Core's employee view: a small second pool, read with this app's own login (PL-08).

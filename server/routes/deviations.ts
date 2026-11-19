@@ -4,6 +4,7 @@ import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
 import type { Sources } from '../readers/fetch.js';
 import { confirmPicks } from '../readers/picks.js';
+import { OOS_PREFIX, oosProduct, pickOos } from '../readers/lims.js';
 import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
@@ -61,11 +62,32 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
   app.post('/api/deviations', reporter, async (req, reply) => {
     const body = reportData.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(body.error) });
-    const d = body.data;
+    let d = body.data;
+    // D-60: an OOS picked from LIMS is read there once, on saving: the report keeps it as read, its lot is the report's
+    // first batch (pulled, not typed), and the OOS is filed once (source_ref, unique).
+    let sourceRef: string | null = null;
+    let oosNumber = '';
+    if (d.oos) {
+      const pick = await pickOos(sql, sources.lims, d.oos.id);
+      if ('problem' in pick) return reply.code(400).send({ error: 'invalid_request', problems: [pick.problem] });
+      d = { ...d, oos: pick.oos, noBatch: false, products: [oosProduct(pick.oos), ...d.products.filter((p) => p.from !== 'lims')].slice(0, 20) };
+      sourceRef = OOS_PREFIX + pick.oos.id;
+      oosNumber = pick.oos.number;
+    }
     // D-57: a batch picked from a TrueBatch product is checked there once, on saving.
     const picks = await confirmPicks(sources, d.products);
     if (picks.length) return reply.code(400).send({ error: 'invalid_request', problems: picks });
-    const result = await sql.begin((tx) => fileDeviation(tx, d, req.user!.id));
+    const report = d;
+    let result;
+    try {
+      result = await sql.begin((tx) => fileDeviation(tx, report, req.user!.id, sourceRef));
+    } catch (e) {
+      // D-60: the same OOS filed by someone else a moment before (unique source_ref).
+      if (sourceRef && (e as { code?: string }).code === '23505') {
+        return reply.code(400).send({ error: 'invalid_request', problems: [`${oosNumber} already has a deviation. Open that deviation instead.`] });
+      }
+      throw e;
+    }
     if (!result) return reply.code(400).send({ error: 'invalid_request', problems: ['Choose an area from the list.'] });
     return reply.code(201).send(result);
   });

@@ -1,4 +1,4 @@
-# Data read from the Logbook and the TrueBatch products (contracts for S15, S17, D-51, D-53, D-57, D-59)
+# Data read from the Logbook, the TrueBatch products and LIMS (contracts for S15, S17, D-51, D-53, D-57, D-59, D-60)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -83,6 +83,21 @@ names on screen and in the PDF follow from that line. No link = the product is o
 | `truebatch_api` | TrueBatch API (one product; packing is its last stage) | `batch_fact_v1` | `TRUEBATCH_API_DATABASE_URL` |
 
 Each also publishes `report.equipment_use_v1` and `report.deviation_note_v1` with the columns above.
+
+## Medhanta LIMS (lims), platform link `LIMS_DATABASE_URL` (D-60)
+
+LIMS publishes `report.oos_v1` (its migrations `0010_oos.sql` and `0022_rules_closed.sql`), one row per OOS. Read
+(first columns only): `oos_id uuid`, `oos_number` (OOS26xxxx), `sample_number`, `lot_number`, `item_kind` (PRODUCT /
+MATERIAL / ...), `item_code`, `item_name`, `analysis_number`, `test_name`, `value`, `unit`, `shown`, `limit_text`,
+`status` (OPEN / CONFIRMED / INVALIDATED), `phase_ii_needed` (phase I reviewed, no laboratory error, not concluded),
+`deviation_number` (the phase II deviation LIMS names), `opened_at`. Later columns (e.g. `outside_lab`) are not read.
+
+Used for (1) the report form's OOS pick: the open OOS, newest 300; each says whether phase II can be filed and which
+deviation already has it (filed here, by `source_ref`, or named in LIMS); (2) the check on filing, once: the OOS is
+read again, must be open, need phase II and have no deviation. The report keeps it as read (report data `oos`: OOS
+number, sample, lot, item, analysis, test, result, limit, phase I outcome, opened at) with its lot as the report's
+batch (`from` `lims`, not typed) and `source_ref` `lims:oos:<oos_id>` (unique: filed once). `deviation_v1` publishes
+that `source_ref` and the lot as `batch`, so LIMS lists the deviation for the OOS. No link = no OOS pick (no error).
 
 ## Shared demo scenario## Shared demo scenario (Logbook test data)
 

@@ -1,6 +1,6 @@
 import { normaliseBatch } from '../deviations.js';
 import type { Sources } from './fetch.js';
-import { BATCH_PRODUCTS, PRODUCT_NAME, hasBatches, listBatches, type BatchPick, type BatchProduct } from './truebatch.js';
+import { BATCH_PRODUCTS, PRODUCT_NAME, hasBatches, listBatches, type BatchPick } from './truebatch.js';
 
 // D-57: the report form's batch is picked from the batches of the linked TrueBatch products (batch · product · status);
 // the product comes with the picked batch. A batch not in the list is typed by hand and kept marked so. A product whose
@@ -20,7 +20,8 @@ export async function batchPicks(sources: Sources, log: (msg: string) => void = 
  * The check, once, on saving: a batch marked as picked from a product is in that product (read now). A row picked
  * before and saved unchanged (a correction of the report) is not read again. Problems in plain words; none = all good.
  */
-export async function confirmPicks(sources: Sources, rows: { batch: string; from?: BatchProduct }[], before: { batch: string; from?: BatchProduct }[] = []): Promise<string[]> {
+// D-60: a lot pulled with a LIMS OOS (`from` 'lims') is not read here: it comes with the OOS, checked by the OOS pick.
+export async function confirmPicks(sources: Sources, rows: { batch: string; from?: string }[], before: { batch: string; from?: string }[] = []): Promise<string[]> {
   const kept = new Set(before.filter((r) => r.from).map((r) => `${r.from}|${normaliseBatch(r.batch)}`));
   const todo = rows.filter((r) => r.from && !kept.has(`${r.from}|${normaliseBatch(r.batch)}`));
   const problems: string[] = [];

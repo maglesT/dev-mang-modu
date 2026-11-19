@@ -21,7 +21,9 @@ const productBatch = z.object({
 
 // D-57: a batch of the report picked from a linked TrueBatch product names that product (`from`); without it the batch
 // was typed by hand. Kept in the report's data and on its batch rows (batches.batch_typed).
-const reportProduct = productBatch.extend({ from: z.enum(BATCH_PRODUCTS).optional() });
+// D-60: 'lims': the lot of an OOS picked from LIMS, pulled with the OOS (never typed; only with the report's OOS).
+export const BATCH_FROM = [...BATCH_PRODUCTS, 'lims'] as const;
+const reportProduct = productBatch.extend({ from: z.enum(BATCH_FROM).optional() });
 export const ownRows = (products: { product: string; batch: string; from?: string }[]) =>
   products.map((p) => ({ product: p.product, batch: p.batch, role: 'own' as const, typed: !p.from }));
 
@@ -52,10 +54,17 @@ export const reportData = z
     initialImpact: initialImpactData,
     // DV-01 / 211.100(b): a planned deviation is justified before it happens.
     plannedReason: z.string().trim().max(5000).default(''),
+    // D-60: the LIMS OOS whose phase II this deviation investigates. Only its id is taken from the form: the server reads
+    // the OOS from LIMS on filing and keeps it here as read (number, product or material, lot, test, result, limit,
+    // phase I outcome); a correction keeps the OOS of the first version.
+    oos: z.object({ id: z.string().uuid('Pick the OOS from the list.') }).passthrough().optional(),
   })
   .superRefine((d, ctx) => {
-    if (d.products.length === 0 && !d.noBatch) ctx.addIssue({ code: 'custom', path: ['products'], message: 'Give the product and batch, or tick "no product or batch concerned".' });
+    // D-60: an OOS brings its lot (read from LIMS on filing).
+    if (d.products.length === 0 && !d.noBatch && !d.oos) ctx.addIssue({ code: 'custom', path: ['products'], message: 'Give the product and batch, or tick "no product or batch concerned".' });
     if (d.products.length > 0 && d.noBatch) ctx.addIssue({ code: 'custom', path: ['noBatch'], message: 'Either list products and batches or tick "none", not both.' });
+    if (d.oos && d.planned) ctx.addIssue({ code: 'custom', path: ['planned'], message: 'An OOS phase II investigation is an unplanned deviation.' });
+    if (!d.oos && d.products.some((p) => p.from === 'lims')) ctx.addIssue({ code: 'custom', path: ['products'], message: 'A lot from LIMS comes only with its OOS: pick the OOS.' });
     if (d.planned && !d.plannedReason) ctx.addIssue({ code: 'custom', path: ['plannedReason'], message: 'Give the reason for the planned deviation.' });
     // DV-13: the event cannot be in the future (2 minutes allowed for clock differences).
     if (new Date(d.eventAt).getTime() > Date.now() + 120_000) ctx.addIssue({ code: 'custom', path: ['eventAt'], message: 'When it happened cannot be in the future.' });
