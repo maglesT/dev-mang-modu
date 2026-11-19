@@ -14,6 +14,7 @@ import {
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
 import { ANSWER_LABEL, ReportForm, oosText, type Oos, type ReportValues } from './ReportForm.js';
+import { isOldFmea } from '../../../server/fmea.js';
 import { CapaTable, QmsCapaTable, RaiseForm, RaiseInQms, useQms } from './Capas.js';
 import { QMS_CLOSED, type CapaItem } from '../api.js';
 
@@ -198,7 +199,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
           {investigation.data.kt ? <details className="tool"><summary>KT checklist</summary><KtEdit value={emptyKt(investigation.data.kt)} /></details> : null}
           {investigation.data.faultTree ? <details className="tool"><summary>Fault tree</summary><FaultTreeEdit value={emptyFaultTree(investigation.data.faultTree)} /></details> : null}
           {investigation.data.barriers ? <details className="tool"><summary>Barrier analysis</summary><BarriersEdit value={emptyBarriers(investigation.data.barriers)} /></details> : null}
-          {investigation.data.fmea ? <details className="tool"><summary>FMEA</summary><FmeaEdit value={emptyFmea(investigation.data.fmea)} /></details> : null}
+          {investigation.data.fmea ? <details className="tool"><summary>FMEA</summary><FmeaEdit value={investigation.data.fmea as Record<string, unknown>} /></details> : null}
           <Fields rows={[
             ...(investigation.data.rootCauseCategory ? [['Root-cause category', ROOT_CAUSE_CATEGORY[String(investigation.data.rootCauseCategory)] ?? str(investigation.data.rootCauseCategory)] as [string, ReactNode]] : []),
             ['Root cause', <>{str(investigation.data.rootCause)}{investigation.data.mostLikely ? <span className="chip chip-warn">most likely cause; not confirmed</span> : null}</>],
@@ -583,7 +584,7 @@ function InvestigationForm({ d, initial, correct, onDone, onCancel }: {
       </details>
       <details className="tool" open>
         <summary>FMEA: risk if the CAPA is not done *</summary>
-        <FmeaEdit value={fmea} onChange={setFmea} />
+        <FmeaEdit value={fmea} onChange={setFmea} old={isOldFmea(start?.fmea) ? start?.fmea : undefined} />
       </details>
       <label>Root cause *<textarea rows={3} value={f.rootCause} onChange={(e) => setF({ ...f, rootCause: e.target.value })} /></label>
       <label>Root-cause category *

@@ -7,6 +7,7 @@ import { FISHBONE, PLANT_TZ, normaliseBatch } from '../deviations.js';
 import { fields, heading, plant, render, t, table } from '../pdf.js';
 import { BATCH_PRODUCTS, PRODUCT_NAME } from '../readers/products.js';
 import { withQmsOpen, type QmsCapa, type QmsSource } from '../readers/qms.js';
+import { fmeaLine } from '../fmea.js';
 
 // D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
 const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (Batchwright)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
@@ -114,7 +115,7 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     }
     if (k === 'fmea' && v && typeof v === 'object') {
       const f = v as Row;
-      return [['FMEA', `severity ${val(f.severity)} x occurrence ${val(f.occurrence)} x detection ${val(f.detection)} = RPN ${Number(f.severity) * Number(f.occurrence) * Number(f.detection)}. Risk to the patient: ${val(f.patientRisk)}`]];
+      return [['FMEA', `${fmeaLine(f)}. Risk to the patient: ${val(f.patientRisk)}`]];
     }
     if (k === 'kt' && v && typeof v === 'object') {
       const x = v as Row & { checklist?: Row; phase1b?: Row };

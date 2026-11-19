@@ -12,7 +12,7 @@ export const TOOLS = {
   },
   rootCauseCategory: 'equipment',
   barriers: [{ barrier: 'Supervisor check', worked: 'no', whyFailed: 'Supervisor not present' }, { barrier: 'Interlock', worked: 'not_present', whyFailed: 'No interlock fitted' }],
-  fmea: { severity: 6, occurrence: 4, detection: 5, patientRisk: 'Soft tablets could break; dose not affected.' },
+  fmea: { scale: 5, severity: 3, occurrence: 2, detection: 4, patientRisk: 'Soft tablets could break; dose not affected.' },
 };
 // S14: the KT checklist (lab / OOS types) and a fault tree (critical deviations).
 export const KT = {

@@ -42,10 +42,11 @@ async function fillTools(page: Page) {
   await page.getByLabel('Barrier 1', { exact: true }).fill('Supervisor check');
   await page.getByLabel('Barrier 1: did it work').selectOption('no');
   await page.getByLabel('Barrier 1: why it failed').fill('Supervisor not present');
-  await page.getByLabel('FMEA: Severity').selectOption('6');
-  await page.getByLabel('FMEA: Occurrence').selectOption('4');
-  await page.getByLabel('FMEA: Detection').selectOption('5');
-  await expect(page.getByText('Risk priority number: 120')).toBeVisible();
+  // D-64: the QMS 1-5 word scales; score S x O x D.
+  await page.getByLabel('FMEA: Severity').selectOption({ label: '3 Moderate: quality defect, patient harm unlikely' });
+  await page.getByLabel('FMEA: Occurrence').selectOption({ label: '2 Low: has happened rarely' });
+  await page.getByLabel('FMEA: Detection').selectOption({ label: '4 Low chance of detection' });
+  await expect(page.getByText('Score (S × O × D, 1–125): 24')).toBeVisible();
   await page.getByLabel('FMEA: risk to the patient').fill('Soft tablets could break.');
 }
 

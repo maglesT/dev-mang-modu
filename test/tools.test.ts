@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { FAULT_TREE, KT, TOOLS } from './fixtures.js';
+import { fmeaLine } from '../server/fmea.js';
 
 // S14 (D-33, D-36): barrier analysis, FMEA, KT for lab / OOS types, fault tree when critical, CAPA strength,
 // weak CAPAs on a critical deviation, and the Pareto of root causes.
@@ -48,9 +49,16 @@ describe('investigation tools II (S14)', () => {
     const problems = async (over: Record<string, unknown>) => (await investigate(id, investigation(over))).json().problems as string[];
     expect(await problems({ barriers: [] })).toContain('Barrier analysis: list at least one barrier that should have prevented it.');
     expect(await problems({ barriers: [{ barrier: 'Self-check', worked: 'no', whyFailed: '' }] })).toContain('Barrier analysis: say why each failed or missing barrier did not stop it.');
-    expect(await problems({ fmea: { ...TOOLS.fmea, severity: 11 } })).toContain('FMEA: severity (1 to 10).');
+    // D-64: the QMS 1-5 scales; an FMEA still on the old 1-10 scale must be picked again.
+    expect(await problems({ fmea: { ...TOOLS.fmea, severity: 6 } })).toContain('FMEA: severity (1 to 5).');
+    expect(await problems({ fmea: { severity: 2, occurrence: 2, detection: 2, patientRisk: 'x' } })).toContain('FMEA: pick severity, occurrence and detection again on the 1 to 5 scale.');
     expect(await problems({ fmea: { ...TOOLS.fmea, patientRisk: '' } })).toContain('FMEA: risk to the patient if the CAPA is not done: required.');
     expect((await investigate(id)).statusCode).toBe(200);
+  });
+
+  it('D-64: FMEA lines: the 1-5 words and score of 125; an old 1-10 record shown as recorded', () => {
+    expect(fmeaLine(TOOLS.fmea)).toBe('severity 3 (Moderate: quality defect, patient harm unlikely) x occurrence 2 (Low: has happened rarely) x detection 4 (Low chance of detection) = score 24 of 125');
+    expect(fmeaLine({ severity: 6, occurrence: 4, detection: 5 })).toBe('severity 6 x occurrence 4 x detection 5 = RPN 120 (old 1-10 scale)');
   });
 
   it('S14: a lab / OOS type needs the KT checklist (Phase 1B when no lab cause); Admin marks the type, with a reason, audited', async () => {
