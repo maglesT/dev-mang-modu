@@ -83,7 +83,12 @@ test('D-60: QA picks an OOS from LIMS: its details fill the report, the record k
   await expect(page.getByLabel('Batch 1')).not.toBeEditable();
   await expect(page.getByLabel('Product 1')).toHaveValue('FG-EX-10');
   await expect(page.getByText('From LIMS OOS', { exact: true })).toBeVisible();
-  await page.getByLabel('Area *').selectOption({ label: 'Granulation' });
+  // D-61: an OOS is a QC laboratory deviation: the area is set, not chosen; the long OOS list stays inside the form card.
+  await expect(page.getByLabel('Area *')).toHaveValue('QC laboratory (Medhanta LIMS)');
+  await expect(page.getByLabel('Area *')).not.toBeEditable();
+  await page.setViewportSize({ width: 760, height: 900 });
+  const [selectBox, cardBox] = [await pick.boundingBox(), await page.locator('form.card').boundingBox()];
+  expect(selectBox!.x + selectBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
   await page.getByRole('radiogroup', { name: 'Could product quality be affected?' }).getByLabel('Yes', { exact: true }).check();
   await page.getByRole('radiogroup', { name: 'Could patient safety be at risk?' }).getByLabel('Not known yet').check();
   await page.getByRole('radiogroup', { name: 'Could other batches be affected?' }).getByLabel('Not known yet').check();
@@ -94,6 +99,7 @@ test('D-60: QA picks an OOS from LIMS: its details fill the report, the record k
   const number = (await page.getByRole('heading', { level: 1 }).textContent())!.split(' · ')[0]!;
   await expect(page.getByText('OOS26E001: Assay of FG-EX-10 Example tablets 10 mg (invented), lot EX26E01; result 91.2 %, limit 95.0 to 105.0 %')).toBeVisible();
   await expect(page.getByText('FG-EX-10 / EX26E01', { exact: true })).toBeVisible();
+  await expect(page.getByText('QC laboratory (Medhanta LIMS)', { exact: true })).toBeVisible();
   // Back on the form, the OOS shows the deviation it already has and cannot be picked again.
   await page.getByRole('button', { name: '← All deviations' }).click();
   await page.getByRole('button', { name: 'Report a deviation' }).click();

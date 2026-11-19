@@ -182,14 +182,15 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
     const oversee = can(user, 'deviations.qa.oversee');
     if (kind === 'report') {
       // D-57: a newly picked batch is checked in its TrueBatch product; one picked before and kept is not read again.
-      const [prev] = await sql<{ data: { products?: { product: string; batch: string; from?: BatchProduct | 'lims' }[]; oos?: OosRef } }[]>`
+      const [prev] = await sql<{ data: { areaId?: number; products?: { product: string; batch: string; from?: BatchProduct | 'lims' }[]; oos?: OosRef } }[]>`
         select data from latest_sections where deviation_id = ${id} and kind = 'report'`;
       // D-60: the OOS of the report and its lot stay as read from LIMS when the deviation was filed; none is added later.
       const r = data.data as ReportData;
       if (r.oos && !prev?.data.oos) return reply.code(400).send({ error: 'invalid_request', problems: ['An OOS is picked only when the deviation is reported.'] });
       if (prev?.data.oos) {
         const lots = (prev.data.products ?? []).filter((p) => p.from === 'lims');
-        Object.assign(r, { oos: prev.data.oos, noBatch: false, products: [...lots, ...r.products.filter((p) => p.from !== 'lims')].slice(0, 20) });
+        // D-61: and so does its area (the QC laboratory area set on filing).
+        Object.assign(r, { oos: prev.data.oos, areaId: prev.data.areaId, noBatch: false, products: [...lots, ...r.products.filter((p) => p.from !== 'lims')].slice(0, 20) });
       }
       const picks = await confirmPicks(sources, r.products, prev?.data.products ?? []);
       if (picks.length) return reply.code(400).send({ error: 'invalid_request', problems: picks });
@@ -216,7 +217,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
       if (kind === 'report' && (data.data as ReportData).planned !== d.planned) return { status: 400, error: 'invalid_request', problems: ['Planned or unplanned cannot be changed.'] };
 
       if (kind === 'report') {
-        const [area] = await tx`select 1 from areas where id = ${(data.data as ReportData).areaId} and active`;
+        const [area] = await tx`select 1 from areas where id = ${(data.data as ReportData).areaId ?? 0} and active`;
         if (!area) return { status: 400, error: 'invalid_request', problems: ['Choose an area from the list.'] };
       }
       if (kind === 'classification') {

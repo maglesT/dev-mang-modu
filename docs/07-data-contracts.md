@@ -98,6 +98,8 @@ read again, must be open, need phase II and have no deviation. The report keeps 
 number, sample, lot, item, analysis, test, result, limit, phase I outcome, opened at) with its lot as the report's
 batch (`from` `lims`, not typed) and `source_ref` `lims:oos:<oos_id>` (unique: filed once). `deviation_v1` publishes
 that `source_ref` and the lot as `batch`, so LIMS lists the deviation for the OOS. No link = no OOS pick (no error).
+The result is `shown` as LIMS gives it (the reported text, unit included); only an empty `shown` is replaced by
+`value` and `unit` (D-61). An OOS report is filed in the area "QC laboratory (Medhanta LIMS)", made the first time (D-61).
 
 ## Shared demo scenario## Shared demo scenario (Logbook test data)
 

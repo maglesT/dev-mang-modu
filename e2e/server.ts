@@ -43,7 +43,7 @@ await stand.unsafe(`drop schema if exists ${LIMS} cascade; create schema ${LIMS}
   insert into ${LIMS}.oos_v1 (oos_id, oos_number, sample_number, lot_number, item_kind, item_code, item_name, analysis_number, test_key, test_name,
     value, unit, shown, limit_text, status, phase_ii_needed, opened_at) values
     (gen_random_uuid(), 'OOS26E001', 'LS26E0001', 'EX26E01', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg (invented)', 'LA26E0001', 'assay', 'Assay',
-      91.2, '%', '91.2', '95.0 to 105.0 %', 'OPEN', true, now() - interval '1 day'),
+      91.2, '%', '91.2 %', '95.0 to 105.0 %', 'OPEN', true, now() - interval '1 day'),
     (gen_random_uuid(), 'OOS26E002', 'LS26E0002', 'EX26E02', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg (invented)', 'LA26E0002', 'diss', 'Dissolution',
       71, '%', '71', 'Q = 80 %', 'OPEN', false, now() - interval '2 hours');`);
 

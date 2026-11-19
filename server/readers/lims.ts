@@ -1,4 +1,5 @@
 import type { Sql, Tx } from '../db.js';
+import { audit } from '../audit.js';
 import type { Source } from './logbook.js';
 
 // D-60: Medhanta LIMS publishes each OOS (out-of-specification result) in report.oos_v1 (database lims; contract:
@@ -31,12 +32,15 @@ const s = (v: string | null | undefined) => (v ?? '').trim();
 export const PHASE_I_DONE = 'Phase I found no laboratory error (reviewed in LIMS): phase II needed.';
 export const PHASE_I_OPEN = 'No phase II now: phase I is not finished or not reviewed in LIMS, or it found a laboratory error.';
 
+// D-61: `shown` is the result as LIMS reports it, unit included ("0.9 %"): kept as it is. Only when LIMS gives no shown
+// text is it built from the value and the unit.
+export const resultText = (r: Pick<OosRow, 'shown' | 'value' | 'unit'>) => s(r.shown) || [s(r.value), s(r.unit)].filter(Boolean).join(' ');
+
 function ref(r: OosRow): OosRef {
-  const result = s(r.shown) || s(r.value);
   return {
     id: r.oos_id, number: r.oos_number, sample: s(r.sample_number), lot: s(r.lot_number), itemKind: s(r.item_kind).toLowerCase(),
     itemCode: s(r.item_code), itemName: s(r.item_name), analysis: s(r.analysis_number), test: s(r.test_name),
-    result: [result, s(r.unit)].filter(Boolean).join(' '), limit: s(r.limit_text),
+    result: resultText(r), limit: s(r.limit_text),
     phaseI: r.phase_ii_needed ? PHASE_I_DONE : PHASE_I_OPEN, openedAt: new Date(r.opened_at).toISOString(),
   };
 }
@@ -95,3 +99,18 @@ export async function pickOos(sql: Sql, src: Source | undefined, id: string): Pr
 
 /** The report's row of product and lot for the OOS: pulled from LIMS (`from` lims), not typed. */
 export const oosProduct = (o: OosRef) => ({ product: o.itemCode || o.itemName || 'not named in LIMS', batch: o.lot || o.sample, from: 'lims' as const });
+
+// D-61: an OOS is a QC laboratory deviation, and the report's areas are the plant's production areas. Picking an OOS sets
+// the area to this one (not chosen on the form). It is made by the app the first time an OOS is filed, audited
+// 'area.created' (automatic), as the areas of the automatic reporters are (D-50). An area an administrator made
+// inactive stays inactive.
+export const LIMS_AREA = 'QC laboratory (Medhanta LIMS)';
+export const LIMS_AREA_OFF = `The area "${LIMS_AREA}" is inactive, so an OOS cannot be filed. Ask your administrator.`;
+
+/** The id of the QC laboratory area (made the first time, in the filing transaction), or null when it is inactive. */
+export async function limsArea(tx: Tx, userId: number): Promise<number | null> {
+  const [made] = await tx<{ id: number }[]>`insert into areas (name) values (${LIMS_AREA}) on conflict (name) do nothing returning id::int`;
+  if (made) await audit(tx, { actorId: userId, action: 'area.created', objectType: 'area', objectId: made.id, new: { name: LIMS_AREA, automatic: true } });
+  const [a] = await tx<{ id: number }[]>`select id::int from areas where name = ${LIMS_AREA} and active`;
+  return a?.id ?? null;
+}

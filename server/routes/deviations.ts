@@ -4,7 +4,7 @@ import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
 import type { Sources } from '../readers/fetch.js';
 import { confirmPicks } from '../readers/picks.js';
-import { OOS_PREFIX, oosProduct, pickOos } from '../readers/lims.js';
+import { LIMS_AREA_OFF, limsArea, OOS_PREFIX, oosProduct, pickOos } from '../readers/lims.js';
 import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
@@ -80,7 +80,12 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
     const report = d;
     let result;
     try {
-      result = await sql.begin((tx) => fileDeviation(tx, report, req.user!.id, sourceRef));
+      result = await sql.begin(async (tx) => {
+        if (!report.oos) return fileDeviation(tx, report, req.user!.id, sourceRef);
+        // D-61: an OOS is filed in the QC laboratory area (made the first time), whatever the form sent.
+        const areaId = await limsArea(tx, req.user!.id);
+        return areaId ? fileDeviation(tx, { ...report, areaId }, req.user!.id, sourceRef) : 'area_off' as const;
+      });
     } catch (e) {
       // D-60: the same OOS filed by someone else a moment before (unique source_ref).
       if (sourceRef && (e as { code?: string }).code === '23505') {
@@ -88,6 +93,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
       }
       throw e;
     }
+    if (result === 'area_off') return reply.code(400).send({ error: 'invalid_request', problems: [LIMS_AREA_OFF] });
     if (!result) return reply.code(400).send({ error: 'invalid_request', problems: ['Choose an area from the list.'] });
     return reply.code(201).send(result);
   });

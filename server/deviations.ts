@@ -43,7 +43,8 @@ export const reportData = z
     planned: z.boolean(),
     title: text(200),
     description: text(5000),
-    areaId: z.number().int().positive(),
+    // D-61: an OOS report's area is set by the server (the QC laboratory area); any other report chooses one.
+    areaId: z.number().int().positive().optional(),
     equipment: z.string().trim().max(200).default(''),
     eventAt: z.string().datetime({ offset: true }),
     products: z.array(reportProduct).max(20),
@@ -60,6 +61,7 @@ export const reportData = z
     oos: z.object({ id: z.string().uuid('Pick the OOS from the list.') }).passthrough().optional(),
   })
   .superRefine((d, ctx) => {
+    if (!d.oos && !d.areaId) ctx.addIssue({ code: 'custom', path: ['areaId'], message: 'Choose an area from the list.' });
     // D-60: an OOS brings its lot (read from LIMS on filing).
     if (d.products.length === 0 && !d.noBatch && !d.oos) ctx.addIssue({ code: 'custom', path: ['products'], message: 'Give the product and batch, or tick "no product or batch concerned".' });
     if (d.products.length > 0 && d.noBatch) ctx.addIssue({ code: 'custom', path: ['noBatch'], message: 'Either list products and batches or tick "none", not both.' });
@@ -125,7 +127,7 @@ export async function addSection(tx: Tx, deviationId: number, kind: string, data
  * area is not an active area. sourceRef: the record of a linked system an automatic report was filed for (D-50).
  */
 export async function fileDeviation(tx: Tx, d: ReportData, reporterId: number, sourceRef: string | null = null): Promise<{ id: number; number: string } | null> {
-  const [area] = await tx`select 1 from areas where id = ${d.areaId} and active`;
+  const [area] = await tx`select 1 from areas where id = ${d.areaId ?? 0} and active`;
   if (!area) return null;
   // Numbers are sequential per year and never reused (the lock serialises numbering).
   await tx`select pg_advisory_xact_lock(hashtext('deviation_number'))`;

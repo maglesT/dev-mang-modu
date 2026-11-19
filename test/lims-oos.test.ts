@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../server/app.js';
 import { connect } from '../server/db.js';
-import { LIMS_OFF, PHASE_I_DONE } from '../server/readers/lims.js';
+import { LIMS_AREA, LIMS_AREA_OFF, LIMS_OFF, PHASE_I_DONE, resultText } from '../server/readers/lims.js';
 import { APP_ROLE, TEST_DATABASE_URL, TEST_PROOF_KEY, call, fakePeople, fakeSignOn, freshDb, login, seedUser, type TestApp } from './helpers.js';
 
 // D-60: QA files the phase II investigation of a LIMS OOS by picking it from LIMS's report.oos_v1. A stand-in schema
 // carries the view's columns (LIMS migration 0010; outside_lab at the end, migration 0022): OOS1 and OOS2 need phase II,
-// OOS3 is still in phase I, OOS4 already names a phase II deviation in LIMS, OOS5 is concluded (not listed).
+// OOS3 is still in phase I, OOS4 already names a phase II deviation in LIMS, OOS5 is concluded (not listed). D-61: LIMS's
+// `shown` carries the unit ("91.2 %"); OOS2 has no shown text (null) and OOS3 an empty one, so value and unit are used.
 let t: TestApp;
 const c: Record<string, string> = {};
 let areaId: number;
@@ -29,11 +30,11 @@ async function standIn(o: TestApp['owner']) {
       read_at timestamptz default now(), data_as_of timestamptz default now(), outside_lab text);
     insert into ${S.lims}.oos_v1 (oos_id, oos_number, sample_number, lot_number, item_kind, item_code, item_name, analysis_number, test_key, test_name,
       value, unit, shown, limit_text, status, phase_ii_needed, deviation_number, opened_at) values
-      ('${ID.o1}', 'OOS260001', 'LS2600011', 'EX26001', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600021', 'assay', 'Assay', 91.2, '%', '91.2', '95.0 to 105.0 %', 'OPEN', true, null, '${opened}'),
-      ('${ID.o2}', 'OOS260002', 'LS2600012', 'RM-LOT-77', 'MATERIAL', 'RM-EX-01', 'Example excipient', 'LA2600022', 'water', 'Water content', 6.4, '%', '6.4', 'NMT 5.0 %', 'OPEN', true, null, now()),
-      ('${ID.o3}', 'OOS260003', 'LS2600013', 'EX26002', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600023', 'diss', 'Dissolution', 71, '%', '71', 'Q = 80 %', 'OPEN', false, null, now()),
-      ('${ID.o4}', 'OOS260004', 'LS2600014', 'EX26003', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600024', 'assay', 'Assay', 106.1, '%', '106.1', '95.0 to 105.0 %', 'OPEN', true, 'DEV-2026-9001', now()),
-      ('${ID.o5}', 'OOS260005', 'LS2600015', 'EX26004', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600025', 'assay', 'Assay', 94.0, '%', '94.0', '95.0 to 105.0 %', 'INVALIDATED', false, null, now());
+      ('${ID.o1}', 'OOS260001', 'LS2600011', 'EX26001', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600021', 'assay', 'Assay', 91.2, '%', '91.2 %', '95.0 to 105.0 %', 'OPEN', true, null, '${opened}'),
+      ('${ID.o2}', 'OOS260002', 'LS2600012', 'RM-LOT-77', 'MATERIAL', 'RM-EX-01', 'Example excipient', 'LA2600022', 'water', 'Water content', 6.4, '%', null, 'NMT 5.0 %', 'OPEN', true, null, now()),
+      ('${ID.o3}', 'OOS260003', 'LS2600013', 'EX26002', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600023', 'diss', 'Dissolution', 71, '%', '', 'Q = 80 %', 'OPEN', false, null, now()),
+      ('${ID.o4}', 'OOS260004', 'LS2600014', 'EX26003', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600024', 'assay', 'Assay', 106.1, '%', '106.1 %', '95.0 to 105.0 %', 'OPEN', true, 'DEV-2026-9001', now()),
+      ('${ID.o5}', 'OOS260005', 'LS2600015', 'EX26004', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600025', 'assay', 'Assay', 94.0, '%', '94.0 %', '95.0 to 105.0 %', 'INVALIDATED', false, null, now());
     create table ${S.cut}.oos_v1 (oos_id uuid);
   `);
 }
@@ -79,18 +80,30 @@ type Pick = { id: string; number: string; lot: string; itemCode: string; test: s
 const list = async (cookie = c.qa60!, app = t.app) => (await call(app, cookie, 'GET', '/api/oos')).json() as { linked: boolean; oos: Pick[]; note: string | null };
 
 describe('OOS phase II from LIMS (D-60)', () => {
+  it('D-61: the result is LIMS\'s shown text as it is; only without it is it the value and the unit', () => {
+    expect(resultText({ shown: '0.9 %', value: '0.9', unit: '%' })).toBe('0.9 %');
+    expect(resultText({ shown: ' Complies ', value: null, unit: null })).toBe('Complies');
+    expect(resultText({ shown: '', value: '0.9', unit: '%' })).toBe('0.9 %');
+    expect(resultText({ shown: null, value: '12', unit: null })).toBe('12');
+    expect(resultText({ shown: null, value: null, unit: null })).toBe('');
+  });
+
   it('DV-23: the OOS list holds the open OOS of LIMS with their result, limit and phase I outcome; concluded ones are not listed', async () => {
     const l = await list();
     expect(l).toMatchObject({ linked: true, note: null });
     expect(l.oos.map((o) => o.number).sort()).toEqual(['OOS260001', 'OOS260002', 'OOS260003', 'OOS260004']);
     expect(l.oos.find((o) => o.number === 'OOS260001')).toMatchObject({ id: ID.o1, lot: 'EX26001', itemCode: 'FG-EX-10', test: 'Assay', result: '91.2 %',
       limit: '95.0 to 105.0 %', phaseI: PHASE_I_DONE, phaseII: true, filed: null });
-    expect(l.oos.find((o) => o.number === 'OOS260003')).toMatchObject({ phaseII: false, filed: null });
+    expect(l.oos.find((o) => o.number === 'OOS260003')).toMatchObject({ phaseII: false, filed: null, result: '71 %' });
+    // D-61: LIMS's shown text is the result as reported, unit included, so the unit is not added again; without it, value and unit.
+    expect(l.oos.find((o) => o.number === 'OOS260002')).toMatchObject({ result: '6.4 %' });
     // LIMS names a phase II deviation for OOS260004 already.
     expect(l.oos.find((o) => o.number === 'OOS260004')).toMatchObject({ filed: 'DEV-2026-9001' });
   });
 
   it('DV-01: a picked OOS is filed once: product, lot, test, result, limit, phase I and the OOS number come from LIMS, not from the form', async () => {
+    // D-61: the QC laboratory area of LIMS is not there before the first OOS is filed.
+    expect(await t.owner`select 1 from areas where name = ${LIMS_AREA}`).toHaveLength(0);
     // Texts typed over the pulled facts are not taken: the OOS is read from LIMS and its lot replaces any product row.
     const res = await call(t.app, c.qa60!, 'POST', '/api/deviations', body(ID.o1, {
       products: [{ product: 'Typed product', batch: 'TYPED-1', from: 'lims' }], oos: { id: ID.o1, number: 'OOS999', result: '100 %' } }));
@@ -102,6 +115,16 @@ describe('OOS phase II from LIMS (D-60)', () => {
     expect(dev!.data.oos).toEqual({ id: ID.o1, number: 'OOS260001', sample: 'LS2600011', lot: 'EX26001', itemKind: 'product', itemCode: 'FG-EX-10',
       itemName: 'Example tablets 10 mg', analysis: 'LA2600021', test: 'Assay', result: '91.2 %', limit: '95.0 to 105.0 %', phaseI: PHASE_I_DONE, openedAt: opened });
     expect(dev!.data.products).toEqual([{ product: 'FG-EX-10', batch: 'EX26001', from: 'lims' }]);
+    // D-61: picking the OOS set the area (the form sent another one): the QC laboratory area, made now, once, audited as automatic.
+    const made = await t.owner<{ id: number; active: boolean }[]>`select id::int, active from areas where name = ${LIMS_AREA}`;
+    expect(made).toHaveLength(1);
+    expect(made[0]!.active).toBe(true);
+    expect(dev!.data.areaId).toBe(made[0]!.id);
+    expect(dev!.data.areaId).not.toBe(areaId);
+    const created = await t.owner<{ actor_id: number; new_value: object }[]>`
+      select actor_id::int, new_value from audit_log where action = 'area.created' and object_id = ${String(made[0]!.id)}`;
+    expect(created).toEqual([{ actor_id: expect.any(Number), new_value: { name: LIMS_AREA, automatic: true } }]);
+    expect((await call(t.app, c.qa60!, 'GET', `/api/deviations/${id}`)).json().area).toBe(LIMS_AREA);
     // The lot was pulled, not typed: QA classifies without the product and batch tick (D-58).
     const d = (await call(t.app, c.qa60!, 'GET', `/api/deviations/${id}`)).json();
     expect(d.batches).toEqual([{ role: 'own', product: 'FG-EX-10', batch: 'EX26001', outcome: null, typed: false }]);
@@ -161,5 +184,38 @@ describe('OOS phase II from LIMS (D-60)', () => {
     const plain = await call(t.app, c.us60!, 'POST', '/api/deviations', { ...body(ID.o2), oos: undefined, products: [], noBatch: true });
     const add = await call(t.app, c.us60!, 'POST', `/api/deviations/${plain.json().id}/correct`, { kind: 'report', reason: 'Is an OOS', data: body(ID.o2) });
     expect(add.json().problems).toEqual(['An OOS is picked only when the deviation is reported.']);
+  });
+
+  it('D-61: a second OOS report reuses the QC laboratory area; a plain report still needs an area chosen; an inactive area stops OOS filing', async () => {
+    const [lab] = await t.owner<{ id: number }[]>`select id::int from areas where name = ${LIMS_AREA}`;
+    // OOS260002 was filed in the correction test above, without the area made again.
+    const [d2] = await t.owner<{ area: number }[]>`
+      select (r.data->>'areaId')::int as area from deviations d join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
+      where d.source_ref = ${`lims:oos:${ID.o2}`}`;
+    expect(d2!.area).toBe(lab!.id);
+    expect(await t.owner`select 1 from areas where name = ${LIMS_AREA}`).toHaveLength(1);
+    expect(await t.owner`select 1 from audit_log where action = 'area.created' and new_value->>'name' = ${LIMS_AREA}`).toHaveLength(1);
+    // An OOS report needs no area from the form; a plain report does, and keeps the area chosen.
+    const o6 = randomUUID();
+    await t.owner.unsafe(`insert into ${S.lims}.oos_v1 (oos_id, oos_number, sample_number, lot_number, item_kind, item_code, item_name, analysis_number,
+      test_name, value, unit, shown, limit_text, status, phase_ii_needed, opened_at)
+      values ('${o6}', 'OOS260006', 'LS2600016', 'EX26006', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600026', 'Assay', 93.0, '%', '93.0 %',
+      '95.0 to 105.0 %', 'OPEN', true, now())`);
+    const plain = { ...body(o6), oos: undefined, products: [], noBatch: true };
+    const none = await call(t.app, c.us60!, 'POST', '/api/deviations', { ...plain, areaId: undefined });
+    expect(none.statusCode).toBe(400);
+    expect(none.json().problems).toEqual(['Choose an area from the list.']);
+    const p = await call(t.app, c.us60!, 'POST', '/api/deviations', plain);
+    expect((await call(t.app, c.us60!, 'GET', `/api/deviations/${p.json().id}`)).json().area).toBe('QC laboratory');
+    // An administrator made the area inactive: an OOS is not filed, and the area is not made again.
+    await t.owner`update areas set active = false where id = ${lab!.id}`;
+    const off6 = await call(t.app, c.qa60!, 'POST', '/api/deviations', body(o6, { areaId: undefined }));
+    expect(off6.statusCode).toBe(400);
+    expect(off6.json().problems).toEqual([LIMS_AREA_OFF]);
+    expect(await t.owner`select 1 from areas where name = ${LIMS_AREA}`).toHaveLength(1);
+    await t.owner`update areas set active = true where id = ${lab!.id}`;
+    const ok6 = await call(t.app, c.qa60!, 'POST', '/api/deviations', body(o6, { areaId: undefined }));
+    expect(ok6.statusCode, ok6.body).toBe(201);
+    expect((await call(t.app, c.qa60!, 'GET', `/api/deviations/${ok6.json().id}`)).json().area).toBe(LIMS_AREA);
   });
 });

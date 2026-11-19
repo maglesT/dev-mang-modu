@@ -233,6 +233,8 @@ table.list tr.click:hover td { background: var(--brand-soft); }
 .form { display: grid; gap: 14px; }
 .form label { display: grid; gap: 4px; }
 .form label.check { display: flex; gap: 8px; align-items: center; }
+/* D-61: a long option (the OOS of LIMS) never makes the select wider than the form card. */
+select.fit { width: 100%; max-width: 100%; min-width: 0; text-overflow: ellipsis; }
 .choice { border: 0; padding: 0; margin: 0; display: flex; gap: 18px; flex-wrap: wrap; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }

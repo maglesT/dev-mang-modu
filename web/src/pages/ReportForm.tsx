@@ -4,7 +4,7 @@ import { api, ApiError, localInputValue, type NamedItem } from '../api.js';
 export type Answer = '' | 'yes' | 'no' | 'unknown';
 export interface InitialImpact { productQuality: Answer; patientSafety: Answer; otherBatches: Answer; notes: string }
 export interface ReportValues {
-  planned: boolean; title: string; description: string; areaId: number; equipment: string; eventAt: string;
+  planned: boolean; title: string; description: string; areaId?: number; equipment: string; eventAt: string;
   immediateAction: string; actionTakenAt?: string | null; initialImpact?: InitialImpact;
   plannedReason: string; noBatch: boolean; products: ProductRow[]; oos?: Oos;
 }
@@ -14,6 +14,8 @@ export interface Oos {
   analysis: string; test: string; result: string; limit: string; phaseI: string; openedAt: string;
 }
 interface OosPick extends Oos { status: string; phaseII: boolean; filed: string | null }
+// D-61: an OOS report is filed in the QC laboratory area, set by the server (made the first time); not chosen here.
+export const LIMS_AREA = 'QC laboratory (Medhanta LIMS)';
 const oosItem = (o: Oos) => [o.itemCode, o.itemName].filter(Boolean).join(' ');
 export const oosText = (o: Oos) =>
   `${o.number}: ${o.test} of ${oosItem(o)}, lot ${o.lot}; result ${o.result}, limit ${o.limit}`;
@@ -39,7 +41,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
 }) {
   const [areas, setAreas] = useState<NamedItem[]>([]);
   const [f, setF] = useState(initial
-    ? { ...initial, eventAt: localInputValue(new Date(initial.eventAt)), actionTakenAt: initial.actionTakenAt ? localInputValue(new Date(initial.actionTakenAt)) : '' }
+    ? { ...initial, areaId: initial.areaId ?? 0, eventAt: localInputValue(new Date(initial.eventAt)), actionTakenAt: initial.actionTakenAt ? localInputValue(new Date(initial.actionTakenAt)) : '' }
     : { planned: false, title: '', description: '', areaId: 0, equipment: '', eventAt: localInputValue(), immediateAction: '', actionTakenAt: '', plannedReason: '', noBatch: false });
   const [impact, setImpact] = useState<InitialImpact>(initial?.initialImpact ?? noImpact);
   const [products, setProducts] = useState<ProductRow[]>(initial?.products.length ? initial.products : [{ product: '', batch: '' }]);
@@ -89,7 +91,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
       const rows = f.noBatch ? [] : products.filter((p) => p.product.trim() || p.batch.trim());
       const { products: _ignored, ...rest } = f as typeof f & { products?: unknown };
       const data = {
-        ...rest, areaId: Number(f.areaId), eventAt: new Date(f.eventAt).toISOString(), products: rows,
+        ...rest, areaId: oos && !correct ? undefined : Number(f.areaId), eventAt: new Date(f.eventAt).toISOString(), products: rows,
         actionTakenAt: f.actionTakenAt ? new Date(f.actionTakenAt).toISOString() : null, initialImpact: impact,
         ...(oos ? { oos: correct ? oos : { id: oos.id } } : {}),
       };
@@ -112,7 +114,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
       {!correct && oosList.linked && (
         <div>
           <label>OOS from LIMS (phase II investigation)
-            <select value={oos?.id ?? ''} onChange={(e) => pickOos(e.target.value)}>
+            <select className="fit" value={oos?.id ?? ''} onChange={(e) => pickOos(e.target.value)}>
               <option value="">None: not an OOS</option>
               {oosList.oos.map((o) => (
                 <option key={o.id} value={o.id} disabled={!o.phaseII || !!o.filed}>
@@ -134,12 +136,18 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
       <label>What happened *<textarea rows={4} value={f.description} onChange={set('description')} /></label>
       {f.planned && <label>Reason for the planned deviation *<textarea rows={3} value={f.plannedReason} onChange={set('plannedReason')} /></label>}
       <div className="grid2">
-        <label>Area *
-          <select value={f.areaId} onChange={set('areaId')}>
-            <option value={0}>Choose…</option>
-            {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        </label>
+        {oos ? (
+          <label>Area *
+            <input readOnly value={correct ? (areas.find((a) => a.id === Number(f.areaId))?.name ?? LIMS_AREA) : LIMS_AREA} title="An OOS is a QC laboratory deviation: the area is set, not chosen." />
+          </label>
+        ) : (
+          <label>Area *
+            <select value={f.areaId} onChange={set('areaId')}>
+              <option value={0}>Choose…</option>
+              {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </label>
+        )}
         <label>Equipment (optional)<input value={f.equipment} onChange={set('equipment')} placeholder="e.g. RMG-01" /></label>
         <label>{f.planned ? 'Planned for *' : 'When it happened *'}<input type="datetime-local" value={f.eventAt} onChange={set('eventAt')} /></label>
       </div>
