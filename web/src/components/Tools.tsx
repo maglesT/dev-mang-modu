@@ -1,4 +1,5 @@
 // S13 (D-33, D-35): investigation tools of the owner's method. Plain forms; required on every deviation.
+import { DETECTION, FMEA_SCALE, OCCURRENCE, SEVERITY, fmeaLine, isOldFmea } from '../../../server/fmea.js';
 export const IS_IS_NOT = [
   ['what', 'What', 'Which defect or problem, and which not?'],
   ['where', 'Where', 'Which machine, room or line, and which not?'],
@@ -108,29 +109,34 @@ export function BarriersEdit({ value, onChange }: { value: Barrier[]; onChange?:
   );
 }
 
-// FMEA: risk to the patient if the CAPA is not done. RPN = severity × occurrence × detection.
-export interface Fmea { severity: number; occurrence: number; detection: number; patientRisk: string }
+// FMEA: risk to the patient if the CAPA is not done. D-64: the QMS 1-5 word scales; score = S x O x D (1-125).
+// An FMEA saved on the old 1-10 scale is shown as recorded; editing it starts the three picks again.
+export interface Fmea { scale: number; severity: number; occurrence: number; detection: number; patientRisk: string }
 export const emptyFmea = (v?: unknown): Fmea => {
   const x = v as Partial<Fmea> | undefined;
-  return { severity: Number(x?.severity ?? 0), occurrence: Number(x?.occurrence ?? 0), detection: Number(x?.detection ?? 0), patientRisk: String(x?.patientRisk ?? '') };
+  const keep = !!x && !isOldFmea(x);
+  return { scale: FMEA_SCALE, severity: keep ? Number(x.severity ?? 0) : 0, occurrence: keep ? Number(x.occurrence ?? 0) : 0,
+    detection: keep ? Number(x.detection ?? 0) : 0, patientRisk: String(x?.patientRisk ?? '') };
 };
-export function FmeaEdit({ value, onChange }: { value: Fmea; onChange?: (v: Fmea) => void }) {
-  const rpn = value.severity * value.occurrence * value.detection;
-  const pick = (k: 'severity' | 'occurrence' | 'detection', label: string, hint: string) => (
-    <label>{label} (1–10)<select aria-label={`FMEA: ${label}`} value={value[k]} onChange={(e) => onChange?.({ ...value, [k]: Number(e.target.value) })} title={hint}>
-      <option value={0}>Choose…</option>{Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+export function FmeaEdit({ value, onChange, old }: { value: Fmea | Record<string, unknown>; onChange?: (v: Fmea) => void; old?: unknown }) {
+  if (!onChange) return <p>{fmeaLine(value)}. {String(value.patientRisk ?? '')}</p>;
+  const v = value as Fmea;
+  const score = v.severity * v.occurrence * v.detection;
+  const pick = (k: 'severity' | 'occurrence' | 'detection', label: string, words: string[]) => (
+    <label>{label}<select aria-label={`FMEA: ${label}`} value={v[k]} onChange={(e) => onChange({ ...v, [k]: Number(e.target.value) })}>
+      <option value={0}>Choose…</option>{words.map((w, i) => <option key={w} value={i + 1}>{i + 1} {w}</option>)}
     </select></label>
   );
-  if (!onChange) return <p>Severity {value.severity} × occurrence {value.occurrence} × detection {value.detection} = <b>RPN {rpn}</b>. {value.patientRisk}</p>;
   return (
     <div className="form">
+      {old && typeof old === 'object' ? <p className="small">Recorded earlier: {fmeaLine(old)}. Pick again on the 1–5 scale.</p> : null}
       <div className="grid3">
-        {pick('severity', 'Severity', '10 = could seriously harm a patient')}
-        {pick('occurrence', 'Occurrence', '10 = will happen again often')}
-        {pick('detection', 'Detection', '10 = would not be detected before release')}
+        {pick('severity', 'Severity', SEVERITY)}
+        {pick('occurrence', 'Occurrence', OCCURRENCE)}
+        {pick('detection', 'Detection', DETECTION)}
       </div>
-      <p className="small">Risk priority number: <b>{rpn || '—'}</b>{rpn >= 100 ? ' · high: the CAPA should be strong' : ''}</p>
-      <label>Risk to the patient if the CAPA is not done<textarea aria-label="FMEA: risk to the patient" rows={2} value={value.patientRisk} onChange={(e) => onChange({ ...value, patientRisk: e.target.value })} /></label>
+      <p className="small">Score (S × O × D, 1–125): <b>{score || '—'}</b></p>
+      <label>Risk to the patient if the CAPA is not done<textarea aria-label="FMEA: risk to the patient" rows={2} value={v.patientRisk} onChange={(e) => onChange({ ...v, patientRisk: e.target.value })} /></label>
     </div>
   );
 }

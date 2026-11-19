@@ -3,6 +3,7 @@ import type { Sql, Tx } from './db.js';
 import { contentHash } from './signatures.js';
 import { audit } from './audit.js';
 import { BATCH_PRODUCTS } from './readers/truebatch.js';
+import { FMEA_SCALE } from './fmea.js';
 
 // Plant time zone for dates (target dates, overdue); storage stays UTC (DV-16).
 export const PLANT_TZ = 'Asia/Kolkata';
@@ -208,9 +209,11 @@ export const barriersData = z.array(z.object({
   whyFailed: z.string().trim().max(1000).default(''),
 }).refine((b) => b.worked === 'yes' || b.whyFailed.length > 0, { message: 'Barrier analysis: say why each failed or missing barrier did not stop it.' }),
 { required_error: 'Barrier analysis: required.' }).min(1, 'Barrier analysis: list at least one barrier that should have prevented it.').max(20);
-const score = (label: string) => z.number({ required_error: `FMEA: ${label} (1 to 10).`, invalid_type_error: `FMEA: ${label} (1 to 10).` })
-  .int(`FMEA: ${label} (1 to 10).`).min(1, `FMEA: ${label} (1 to 10).`).max(10, `FMEA: ${label} (1 to 10).`);
+// D-64: severity, occurrence and detection are picked from the QMS 1-5 word scales (server/fmea.ts); score S x O x D.
+const score = (label: string) => z.number({ required_error: `FMEA: ${label} (1 to 5).`, invalid_type_error: `FMEA: ${label} (1 to 5).` })
+  .int(`FMEA: ${label} (1 to 5).`).min(1, `FMEA: ${label} (1 to 5).`).max(FMEA_SCALE, `FMEA: ${label} (1 to 5).`);
 export const fmeaData = z.object({
+  scale: z.literal(FMEA_SCALE, { errorMap: () => ({ message: 'FMEA: pick severity, occurrence and detection again on the 1 to 5 scale.' }) }),
   severity: score('severity'), occurrence: score('occurrence'), detection: score('detection'),
   patientRisk: req('FMEA: risk to the patient if the CAPA is not done', 2000),
 }, { required_error: 'FMEA: required.' });
