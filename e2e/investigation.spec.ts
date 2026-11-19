@@ -145,6 +145,28 @@ test('S9: the investigator asks the AI, reads simple suggestions and adds one to
   await expect(page.getByLabel('Machine / equipment: what was checked')).toHaveValue('Feeder speed changed');
 });
 
+test('D-62: a reporter without the investigate right opens the deviation without refused background requests', async ({ page }) => {
+  const rep = await apiAs('rep1');
+  const areas = await (await rep.get('/api/areas')).json();
+  const { number } = await post(rep, '/api/deviations', {
+    planned: false, title: 'Label roll jammed', description: 'Labeller stopped twice.', areaId: areas[0].id,
+    eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Paracetamol 500 mg', batch: `RP-${Date.now().toString(36)}` }],
+    initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Line stopped.',
+  });
+  await rep.dispose();
+  const refused: string[] = [];
+  page.on('response', (r) => { if (r.url().includes('/api/') && r.status() >= 400) refused.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+  await logIn(page, 'rep1');
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  await page.getByRole('button', { name: number }).click();
+  await expect(page.getByRole('heading', { name: new RegExp(number) })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Attachments' })).toBeVisible();
+  // The hints and the data collection are for those who investigate (D-27, D-37, D-52): not asked for, not shown.
+  await page.waitForLoadState('networkidle');
+  expect(refused).toEqual([]);
+  await expect(page.getByRole('region', { name: 'Data collection' })).toHaveCount(0);
+});
+
 test('DV-23: the Measure band fetches related data; a system that is not connected says so', async ({ page }) => {
   const number = await inInvestigation(`DC-${Date.now().toString(36)}`);
   await logIn(page, 'us2');

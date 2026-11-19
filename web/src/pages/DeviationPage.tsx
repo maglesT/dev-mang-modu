@@ -97,6 +97,8 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
 
   // UI flags from the permission codes (D-43); the server checks them again on every action.
   const oversee = holds(me, 'deviations.qa.oversee');
+  // D-62: the hints and the data collection are for those who investigate (the server's INVESTIGATES); others never ask for them.
+  const investigates = holds(me, 'deviations.investigation.write') || oversee;
   const classifier = holds(me, 'deviations.deviation.classify') && d.reporterId !== me.id;
   const open = d.step !== 'closed' && d.step !== 'rejected';
   const report = latestOf(d, 'report')!.data as Record<string, unknown>;
@@ -175,8 +177,10 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
 
       {d.step !== 'rejected' && <>
         <PhaseHead k="M" step={d.step} />
-        <Signals id={d.id} onOpen={onOpenDeviation} />
-        <DataCollection deviationId={d.id} canFetch={d.step !== 'closed' && (holds(me, 'deviations.investigation.write') || oversee)} />
+        {investigates && <>
+          <Signals id={d.id} onOpen={onOpenDeviation} />
+          <DataCollection deviationId={d.id} canFetch={d.step !== 'closed'} />
+        </>}
         <Attachments d={d} me={me} open={open} onChange={load} />
         </>}
       {d.step === 'rejected' && <Attachments d={d} me={me} open={open} onChange={load} />}

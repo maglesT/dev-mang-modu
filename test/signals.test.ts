@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { call, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { call, directory, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
 import { TOOLS } from './fixtures.js';
 
 // S8 (D-27): rule-based hints on a deviation. Each test uses its own area, so tests do not see each other's data.
@@ -111,5 +111,21 @@ describe('investigation hints (S8)', () => {
     const id = await report(await newArea());
     expect((await call(t.app, c.admin1!, 'GET', `/api/deviations/${id}/signals`)).statusCode).toBe(403);
     expect((await call(t.app, c.us1!, 'GET', '/api/deviations/999999/signals')).statusCode).toBe(404);
+  });
+
+  it('D-62: a reporter with only the report right is refused the hints and the fetched data (the page does not ask)', async () => {
+    await seedUser(t.owner, 'rep1', ['user']);
+    directory.get('rep1')!.permissions = ['deviations.deviation.report'];
+    const rep = (await login(t.app, 'rep1')).cookie;
+    const r = await call(t.app, rep, 'POST', '/api/deviations', {
+      planned: false, title: 'Label roll jammed', description: 'Labeller stopped twice.', areaId: await newArea(), equipment: '',
+      eventAt: new Date(Date.now() - 600_000).toISOString(), products: [{ product: 'Product R', batch: 'R-62-001' }],
+      initialImpact: { productQuality: 'unknown', patientSafety: 'no', otherBatches: 'unknown', notes: 'Being assessed.' }, immediateAction: 'Line stopped.',
+    });
+    expect(r.statusCode, r.body).toBe(201);
+    const id = r.json().id as number;
+    expect((await call(t.app, rep, 'GET', `/api/deviations/${id}`)).statusCode).toBe(200);
+    expect((await call(t.app, rep, 'GET', `/api/deviations/${id}/signals`)).statusCode).toBe(403);
+    expect((await call(t.app, rep, 'GET', `/api/deviations/${id}/fetches`)).statusCode).toBe(403);
   });
 });
