@@ -6,6 +6,7 @@ import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import { PLANT_TZ } from '../deviations.js';
 import { assignable, type People } from '../people.js';
+import { allCapas, capasFor, newCapaUrl, QMS_OFF, RAISE_IN_QMS, type QmsCapa, type QmsSource } from '../readers/qms.js';
 
 export type CapaStep = 'open' | 'done' | 'check' | 'closed';
 
@@ -76,13 +77,46 @@ const signFail = (reply: FastifyReply, e: unknown) => {
   throw e;
 };
 
-export function capaRoutes(app: FastifyInstance, sql: Sql) {
+export function capaRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
   const raiser = { preHandler: requirePermission('deviations.capa.raise') };
   const verifier = { preHandler: requirePermission('deviations.capa.verify') };
   const reader = { preHandler: requirePermission() };
 
+  // D-63: the QMS's CAPAs, read-only. `deviationId`: those raised for that deviation (source_ref = its number);
+  // `register=1`: the QMS register; neither: only whether the QMS is linked and its new-CAPA link. Not linked: the
+  // local register is the CAPA register (linked false). Linked but not answering: off, with the reason.
+  app.get<{ Querystring: Record<string, string> }>('/api/qms/capas', reader, async (req, reply) => {
+    if (!qms) return { linked: false, off: false, note: null, newCapaUrl: null, capas: [] };
+    let number: string | undefined;
+    if (req.query.deviationId) {
+      const id = parseId(req.query.deviationId);
+      const [d] = id === null ? [] : await sql<{ number: string }[]>`select number from deviations where id = ${id}`;
+      if (!d) return reply.code(404).send({ error: 'not_found' });
+      number = d.number;
+    }
+    const base = { linked: true, newCapaUrl: newCapaUrl(qms.url, number) };
+    if (!number && req.query.register !== '1') return { ...base, off: false, note: null, capas: [] };
+    try {
+      const capas: QmsCapa[] = number ? await capasFor(qms, [number]) : await allCapas(qms);
+      return { ...base, off: false, note: null, capas };
+    } catch (e) {
+      req.log.warn(`QMS CAPA read failed: ${e instanceof Error ? e.message : String(e)}`);
+      return { ...base, off: true, note: QMS_OFF, capas: [] };
+    }
+  });
+
   // DV-08: QA raises a CAPA from a deviation or directly for an audit, complaint or other source.
   app.post('/api/capas', raiser, async (req, reply) => {
+    // D-63: while the QMS is linked it owns CAPA: no local CAPA is raised (answering: raise it in the QMS; not
+    // answering: the link is off, try again). Old local CAPAs stay readable and can still be finished here.
+    if (qms) {
+      try {
+        await capasFor(qms, []);
+      } catch {
+        return reply.code(503).send({ error: 'qms_off', problems: [QMS_OFF] });
+      }
+      return reply.code(409).send({ error: 'capa_in_qms', problems: [RAISE_IN_QMS] });
+    }
     const body = raiseBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_request', problems: problems(body.error) });
     const { source, deviationId, sourceRef, ...fields } = body.data;

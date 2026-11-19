@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   api, ApiError, can, CAPA_STEP_CHIP, CAPA_STEP_LABEL, MEANING_LABEL, plantDate, plantTime, SOURCE_LABEL,
-  type Capa, type CapaItem, type Me,
+  QMS_CLOSED, type Capa, type CapaItem, type Me, type QmsCapa, type QmsCapas,
 } from '../api.js';
 import { SignDialog } from '../components/SignDialog.js';
 
@@ -35,11 +35,54 @@ export function CapaTable({ rows, onOpen, showSource = true }: { rows: CapaItem[
   );
 }
 
+// D-63: the QMS's CAPAs, read-only (the QMS owns CAPA while it is linked); opened and worked on in the QMS.
+export function QmsCapaTable({ q }: { q: QmsCapas }) {
+  if (q.off) return <div className="notice"><span className="chip chip-bad">QMS link off</span> {q.note}</div>;
+  if (q.capas.length === 0) return <p className="muted">No CAPAs in QMS here.</p>;
+  return (
+    <table className="list">
+      <thead><tr><th>Number</th><th>Title</th><th>Owner</th><th>Status</th><th>Due</th><th>Effective</th></tr></thead>
+      <tbody>
+        {q.capas.map((c: QmsCapa) => (
+          <tr key={c.capa_number}>
+            <td>{c.capa_number} <span className="chip chip-info">from QMS</span></td>
+            <td>{c.title}{c.source_kind === 'deviation' && c.source_ref ? <span className="muted small"> · {c.source_ref}</span> : null}</td>
+            <td>{c.owner_name ?? '—'}</td>
+            <td><span className={`chip ${QMS_CLOSED.includes(c.status) ? 'chip-ok' : 'chip-info'}`}>{c.status_text}</span></td>
+            <td>{plantDate(c.due_date)}</td>
+            <td>{c.effective === null ? '—' : c.effective ? 'Yes' : 'No'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** D-63: the link to the QMS new-CAPA screen (pre-filled with the deviation number when given), or why there is none. */
+export function RaiseInQms({ q }: { q: QmsCapas }) {
+  if (q.off) return null;
+  return q.newCapaUrl
+    ? <a className="button primary" href={q.newCapaUrl} target="_blank" rel="noopener">Raise CAPA in QMS</a>
+    : <p className="muted small">CAPAs are raised in QMS.</p>;
+}
+
+const NOT_LINKED: QmsCapas = { linked: false, off: false, note: null, newCapaUrl: null, capas: [] };
+/** D-63: the QMS's CAPAs for a deviation (`deviationId`), the QMS register (`register=1`), or only whether it is linked. */
+export function useQms(query: string, deps: unknown[] = []): QmsCapas {
+  const [q, setQ] = useState<QmsCapas>(NOT_LINKED);
+  useEffect(() => {
+    api<QmsCapas>('GET', `/api/qms/capas${query ? `?${query}` : ''}`).then(setQ, () => setQ(NOT_LINKED));
+  }, deps);
+  return q;
+}
+
 // The CAPA register (D-13): one list, filtered by source, status and overdue.
+// D-63: while the QMS is linked, the register is the QMS's (read-only here); local CAPAs raised before stay listed below.
 export function CapaList({ me, onOpen }: { me: Me; onOpen: (id: number) => void }) {
   const [f, setF] = useState({ mine: false, status: 'open', source: '', overdue: false });
   const [rows, setRows] = useState<CapaItem[]>([]);
   const [raising, setRaising] = useState(false);
+  const qms = useQms('register=1');
   const load = async () => {
     const q = new URLSearchParams({ status: f.status, ...(f.source ? { source: f.source } : {}), ...(f.overdue ? { overdue: '1' } : {}), ...(f.mine ? { mine: '1' } : {}) });
     setRows(await api<CapaItem[]>('GET', `/api/capas?${q}`));
@@ -47,13 +90,23 @@ export function CapaList({ me, onOpen }: { me: Me; onOpen: (id: number) => void 
   useEffect(() => {
     void load();
   }, [f]);
+  const qmsRows = qms.capas.filter((c) => f.status === 'all' || (f.status === 'closed') === QMS_CLOSED.includes(c.status));
   return (
     <>
       <div className="home-head">
         <h1>CAPAs</h1>
-        {can(me, 'deviations.capa.raise') && <button className="primary big" onClick={() => setRaising(true)}>New CAPA (audit, complaint, other)</button>}
+        {qms.linked ? can(me, 'deviations.capa.raise') && <RaiseInQms q={qms} />
+          : can(me, 'deviations.capa.raise') && <button className="primary big" onClick={() => setRaising(true)}>New CAPA (audit, complaint, other)</button>}
       </div>
       {raising && <RaiseForm onCancel={() => setRaising(false)} onDone={(id) => { setRaising(false); onOpen(id); }} />}
+      {qms.linked && (
+        <section className="card">
+          <h2>CAPAs in QMS</h2>
+          <p className="muted small">QMS owns CAPA: these are read from QMS and worked on there. Status filter applies.</p>
+          <QmsCapaTable q={{ ...qms, capas: qmsRows }} />
+        </section>
+      )}
+      {qms.linked && <h2>CAPAs recorded here before QMS was linked</h2>}
       <div className="row filters">
         <label className="check"><input type="checkbox" checked={f.mine} onChange={(e) => setF({ ...f, mine: e.target.checked })} /> Waiting for me</label>
         <label className="check"><input type="checkbox" checked={f.overdue} onChange={(e) => setF({ ...f, overdue: e.target.checked })} /> Overdue only</label>
@@ -142,6 +195,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
   const [check, setCheck] = useState({ effective: true, note: '' });
   const [signing, setSigning] = useState<'verify' | 'check' | null>(null);
   const [followUp, setFollowUp] = useState(false);
+  const qms = useQms('', [id]);
   const [problems, setProblems] = useState<string[]>([]);
   const load = async () => setC(await api<Capa>('GET', `/api/capas/${id}`));
   useEffect(() => {
@@ -224,7 +278,10 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
       )}
 
       {c.step === 'closed' && result && !result.effective && can(me, 'deviations.capa.raise') && (
-        followUp
+        // D-63: while the QMS owns CAPA, the follow-up is raised in the QMS.
+        qms.linked
+          ? <div className="notice">This CAPA was not effective. {qms.off ? qms.note : <RaiseInQms q={qms} />}</div>
+          : followUp
           ? <RaiseForm deviationId={c.deviationId ?? undefined} initial={{ source: c.source, sourceRef: c.sourceRef || c.number, description: `Follow-up of ${c.number}: ` }}
               onCancel={() => setFollowUp(false)} onDone={(newId) => { setFollowUp(false); onOpenCapa(newId); }} />
           : <div className="notice">This CAPA was not effective. <button className="primary" onClick={() => setFollowUp(true)}>Raise a follow-up CAPA</button></div>

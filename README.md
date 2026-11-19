@@ -43,6 +43,9 @@ the trend view and PDF copies support reviews and inspections.
    read and picked, and its deviation notes without a number are filed (area "<product name> (automatic)"). No link = off.
    The link to Medhanta LIMS, `LIMS_DATABASE_URL` (D-60), lists its open OOS on the report form: QA files an OOS phase II
    investigation by picking the OOS (its details come from LIMS, and an OOS is filed once). No link = no OOS pick.
+   The link to the QMS, `QMS_DATABASE_URL` (D-63): the QMS owns CAPA. No CAPA is raised here; "Raise CAPA in QMS"
+   opens the QMS (address `QMS_URL`, else the `qms.` host beside this app) with the deviation number, and the QMS's
+   CAPAs (its `capa_v1`) are shown and checked at closure. Earlier local CAPAs stay readable. No link = CAPAs here.
 7. Optional, the QMS product reads the CAPA register (D-40): give the read-only role `capa_report` a login,
    `ALTER ROLE capa_report LOGIN PASSWORD '...'` (typed by the site), and a `pg_hba` line for the QMS host only, followed by
    `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,

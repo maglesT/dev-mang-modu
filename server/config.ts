@@ -33,6 +33,11 @@ const schema = z.object({
   LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
   // D-60: LIMS's OOS view (report.oos_v1), written by the platform's apply only while the link to LIMS is on. Absent = off.
   LIMS_DATABASE_URL: optional,
+  // D-63: the QMS's CAPA view (report.capa_v1), written by the platform's apply only while the link to the QMS is on.
+  // Set = the QMS owns CAPA (Deviations raises none of its own); absent = Deviations' own CAPA register (sold alone).
+  QMS_DATABASE_URL: optional,
+  // D-63: the QMS's web address for the "Raise CAPA in QMS" link; absent = the QMS host beside this app's own host.
+  QMS_URL: optional,
   // Core's employee view (identity report.employee_v1), read with this app's own login (D-42 slice 4, PL-08).
   IDENTITY_DATABASE_URL: z.string().url(),
 });

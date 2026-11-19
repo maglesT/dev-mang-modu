@@ -4,6 +4,7 @@ import type { Sql, Tx } from '../db.js';
 import { audit } from '../audit.js';
 import type { Sources } from '../readers/fetch.js';
 import { confirmPicks } from '../readers/picks.js';
+import { withQmsOpen } from '../readers/qms.js';
 import { LIMS_AREA_OFF, limsArea, OOS_PREFIX, oosProduct, pickOos } from '../readers/lims.js';
 import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
@@ -121,7 +122,8 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
             or (${norm !== ''} and exists (select 1 from batches b join latest_sections s on s.id = b.section_id
                        where b.deviation_id = d.id and b.batch_norm = ${norm})))`
       : sql`true`;
-    return sql`
+    // D-63: the open CAPAs counted once: local ones, plus the QMS's when the QMS owns CAPA and answers.
+    return withQmsOpen(sources.qms, await sql<{ number: string; openCapas: number }[]>`
       select d.id::int, d.number, d.planned, d.step, d.classification,
         to_char(d.target_date, 'YYYY-MM-DD') as "targetDate", ${overdueSql(sql)} as overdue,
         d.reported_at as "reportedAt", r.data->>'title' as title, a.name as area,
@@ -137,7 +139,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
       left join users inv on inv.id = d.investigator_id
       where ${filter} and ${search}
       order by ${overdueSql(sql)} desc, d.target_date nulls first, d.id desc
-      limit 500`;
+      limit 500`, (m) => req.log.warn(m));
   });
 
   // One deviation: header, every version of every section, signatures, history (DV-14, DV-15, DV-16).
@@ -154,6 +156,9 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
       left join areas a on a.id = (r.data->>'areaId')::bigint
       where d.id = ${id}`;
     if (!d) return reply.code(404).send({ error: 'not_found' });
+    // D-63: open CAPAs counted once, the QMS's included when it owns CAPA.
+    const [counted] = await withQmsOpen(sources.qms, [d as unknown as { number: string; openCapas: number }], (m) => req.log.warn(m));
+    d.openCapas = counted!.openCapas;
     const sections = await sql`
       select s.id::int, s.kind, s.version, s.data, s.saved_at as "savedAt", u.full_name as "savedBy", s.reason,
         (s.id = l.id) as latest

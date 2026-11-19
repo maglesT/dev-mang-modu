@@ -101,6 +101,18 @@ that `source_ref` and the lot as `batch`, so LIMS lists the deviation for the OO
 The result is `shown` as LIMS gives it (the reported text, unit included); only an empty `shown` is replaced by
 `value` and `unit` (D-61). An OOS report is filed in the area "QC laboratory (Medhanta LIMS)", made the first time (D-61).
 
+## Medhanta QMS (qms), platform link `QMS_DATABASE_URL` (D-63)
+
+The QMS publishes `report.capa_v1`, one row per CAPA, fixed columns: `capa_number`, `title`, `status` (open /
+in_progress / effectiveness_check / closed / cancelled), `status_text`, `source_kind`, `source_ref` (the deviation
+number when `source_kind` = deviation), `owner_name`, `due_date`, `closed_at`, `effective` (null until closed),
+`data_as_of`. While the link is set the QMS owns CAPA: no local CAPA is raised; the deviation's CAPAs are the rows with
+`source_kind` deviation and `source_ref` = its number (read-only, for the page, the PDF, the counts and the closure
+check, a cancelled one not counted); the CAPA list shows the register (newest 1000). The QMS new-CAPA screen is
+`/capa/new?source=deviation&ref=<deviation number>` (`QMS_NEW_CAPA_PATH`), at `QMS_URL` or the `qms.` host beside this
+app. A failed read (cut link or down) shows "QMS link off" and refuses a local CAPA and a closure (503). No link =
+Deviations' own CAPA register as before.
+
 ## Shared demo scenario## Shared demo scenario (Logbook test data)
 
 - Product **`RAB-GR-20`** "Rabeprazole sodium 20 mg gastro-resistant tablets (DEMO-ONLY)".

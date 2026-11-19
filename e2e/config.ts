@@ -1,4 +1,7 @@
 export const E2E_PORT = 4173;
+// D-63: the same app and schema with the QMS linked (it owns CAPA), on its own port.
+export const E2E_QMS_PORT = 4174;
+export const QMS_URL = 'https://qms.example.test';
 export const E2E_SCHEMA = 'e2e';
 export const USERS = {
   admin: ['admin'],

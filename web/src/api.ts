@@ -219,3 +219,12 @@ export interface Capa extends Omit<CapaItem, 'type' | 'description' | 'waitingFo
   signatures: { id: number; versionId: number; printedName: string; meaning: string; signedAt: string }[];
   history: { id: number; at: string; actor: string | null; action: string; reason: string | null }[];
 }
+
+// D-63: a CAPA of the QMS (its capa_v1), read-only here while the QMS owns CAPA.
+export interface QmsCapa {
+  capa_number: string; title: string; status: string; status_text: string; source_kind: string; source_ref: string | null;
+  owner_name: string | null; due_date: string | null; closed_at: string | null; effective: boolean | null; data_as_of: string | null;
+}
+/** linked: the QMS owns CAPA (no local CAPA is raised); off: linked but not answering now (note says so). */
+export interface QmsCapas { linked: boolean; off: boolean; note: string | null; newCapaUrl: string | null; capas: QmsCapa[] }
+export const QMS_CLOSED = ['closed', 'cancelled'];
