@@ -1,3 +1,4 @@
+import { actionWords } from '../../../server/words.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   api, ApiError, can, CAPA_STEP_CHIP, CAPA_STEP_LABEL, MEANING_LABEL, plantDate, plantTime, SOURCE_LABEL,
@@ -46,7 +47,7 @@ export function QmsCapaTable({ q }: { q: QmsCapas }) {
         {q.capas.map((c: QmsCapa) => (
           <tr key={c.capa_number}>
             <td>{c.capa_number} <span className="chip chip-info">from QMS</span></td>
-            <td>{c.title}{c.source_kind === 'deviation' && c.source_ref ? <span className="muted small"> · {c.source_ref}</span> : null}</td>
+            <td>{c.title}{c.source_kind === 'deviation' && c.source_ref && !c.title.includes(c.source_ref) ? <span className="muted small"> · {c.source_ref}</span> : null}</td>
             <td>{c.owner_name ?? '—'}</td>
             <td><span className={`chip ${QMS_CLOSED.includes(c.status) ? 'chip-ok' : 'chip-info'}`}>{c.status_text}</span></td>
             <td>{plantDate(c.due_date)}</td>
@@ -292,7 +293,7 @@ export function CapaPage({ me, id, onBack, onOpenDeviation, onOpenCapa }: {
         <h2>History</h2>
         <table>
           <thead><tr><th>When</th><th>Who</th><th>What</th><th>Reason</th></tr></thead>
-          <tbody>{c.history.map((h) => <tr key={h.id}><td>{plantTime(h.at)}</td><td>{h.actor}</td><td>{h.action.replace('capa.', '').replaceAll('_', ' ')}</td><td>{h.reason}</td></tr>)}</tbody>
+          <tbody>{c.history.map((h) => <tr key={h.id}><td>{plantTime(h.at)}</td><td>{h.actor}</td><td>{actionWords(h.action)}</td><td>{h.reason}</td></tr>)}</tbody>
         </table>
       </section>
 

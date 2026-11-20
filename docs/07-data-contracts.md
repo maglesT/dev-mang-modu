@@ -103,6 +103,11 @@ batch (`from` `lims`, not typed) and `source_ref` `lims:oos:<oos_id>` (unique: f
 that `source_ref` and the lot as `batch`, so LIMS lists the deviation for the OOS. No link = no OOS pick (no error).
 The result is `shown` as LIMS gives it (the reported text, unit included); only an empty `shown` is replaced by
 `value` and `unit` (D-61). An OOS report is filed in the area "QC laboratory (Medhanta LIMS)", made the first time (D-61).
+LIMS migration 0031 adds `batch_number`, `point_code` and `room_code` at the end of `oos_v1` (an environmental-monitoring
+OOS). They are read through `to_jsonb` (a view without them still reads; they are then empty). With them the report names
+"point <point>, room <room>, taken during batch <batch>", the batch row is that batch, and the report is filed in the
+room's area (an area named with the room code, or "<room> <room name>" made the first time, audited `area.created`
+automatic) instead of the QC laboratory. Without them an EM OOS (item kind ROOM, ...) calls its `lot_number` the point.
 
 ## Medhanta QMS (qms), platform link `QMS_DATABASE_URL` (D-63)
 

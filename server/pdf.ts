@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import PdfPrinter from 'pdfmake';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces.js';
-import { PLANT_TZ } from './deviations.js';
+import { plantDateTime } from './words.js';
 
 // Copied from the logbook (D-06). Embedded Unicode fonts, so names and symbols print exactly as entered.
 // Characters neither font has are printed as a visible code point, never silently changed.
@@ -34,8 +34,7 @@ export function runs(text: string): { text: string; font?: string }[] {
 }
 
 // DV-16: plant time with the zone label.
-export const plant = (d: Date | string | null) =>
-  d ? `${new Date(d).toLocaleString('en-IN', { timeZone: PLANT_TZ, dateStyle: 'medium', timeStyle: 'short' })} IST` : '—';
+export const plant = (d: Date | string | null) => plantDateTime(d);
 
 export const t = (text: unknown, extra: Record<string, unknown> = {}): Content =>
   ({ text: runs(text === null || text === undefined || text === '' ? '—' : String(text)), ...extra }) as Content;

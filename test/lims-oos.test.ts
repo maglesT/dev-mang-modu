@@ -15,8 +15,8 @@ let areaId: number;
 let typeId: number;
 let qa2: number;
 const tag = Math.random().toString(36).slice(2, 8);
-const S = { lims: `lims60_${tag}`, cut: `limscut60_${tag}` };
-const ID = { o1: randomUUID(), o2: randomUUID(), o3: randomUUID(), o4: randomUUID(), o5: randomUUID() };
+const S = { lims: `lims60_${tag}`, cut: `limscut60_${tag}`, em: `limsem60_${tag}` };
+const ID = { o1: randomUUID(), o2: randomUUID(), o3: randomUUID(), o4: randomUUID(), o5: randomUUID(), em: randomUUID() };
 const opened = new Date(Date.now() - 26 * 3_600_000).toISOString();
 let reader: ReturnType<typeof connect>;
 let apps: Awaited<ReturnType<typeof buildApp>>[] = [];
@@ -36,6 +36,14 @@ async function standIn(o: TestApp['owner']) {
       ('${ID.o4}', 'OOS260004', 'LS2600014', 'EX26003', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600024', 'assay', 'Assay', 106.1, '%', '106.1 %', '95.0 to 105.0 %', 'OPEN', true, 'DEV-2026-9001', now()),
       ('${ID.o5}', 'OOS260005', 'LS2600015', 'EX26004', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600025', 'assay', 'Assay', 94.0, '%', '94.0 %', '95.0 to 105.0 %', 'INVALIDATED', false, null, now());
     create table ${S.cut}.oos_v1 (oos_id uuid);
+    -- LIMS migration 0031: an environmental-monitoring OOS names its batch, point and room (columns at the end).
+    create schema ${S.em};
+    create table ${S.em}.oos_v1 as select * from ${S.lims}.oos_v1 where false;
+    alter table ${S.em}.oos_v1 add column batch_number text, add column point_code text, add column room_code text;
+    insert into ${S.em}.oos_v1 (oos_id, oos_number, sample_number, lot_number, item_kind, item_code, item_name, analysis_number, test_key, test_name,
+      value, unit, shown, limit_text, status, phase_ii_needed, deviation_number, opened_at, batch_number, point_code, room_code) values
+      ('${ID.em}', 'OOS260009', 'LS2600019', 'RM9-CP1', 'ROOM', 'RM-9', 'Example filling room', 'LA2600029', 'cp', 'Contact plate, grade B (CFU/plate)',
+       7, 'CFU', '7 CFU', 'NMT 5 CFU', 'OPEN', true, null, '${opened}', 'TI26009', 'RM9-CP1', 'RM-9');
   `);
 }
 
@@ -66,7 +74,7 @@ beforeAll(async () => {
   typeId = (await call(t.app, c.adm60!, 'POST', '/api/deviation-types', { name: 'Laboratory / OOS' })).json().id;
 });
 afterAll(async () => {
-  await t.owner.unsafe(`drop schema ${S.lims} cascade; drop schema ${S.cut} cascade;`);
+  await t.owner.unsafe(`drop schema ${S.lims} cascade; drop schema ${S.cut} cascade; drop schema ${S.em} cascade;`);
   await t.close();
 });
 
@@ -80,6 +88,7 @@ type Pick = { id: string; number: string; lot: string; itemCode: string; test: s
 const list = async (cookie = c.qa60!, app = t.app) => (await call(app, cookie, 'GET', '/api/oos')).json() as { linked: boolean; oos: Pick[]; note: string | null };
 
 describe('OOS phase II from LIMS (D-60)', () => {
+
   it('D-61: the result is LIMS\'s shown text as it is; only without it is it the value and the unit', () => {
     expect(resultText({ shown: '0.9 %', value: '0.9', unit: '%' })).toBe('0.9 %');
     expect(resultText({ shown: ' Complies ', value: null, unit: null })).toBe('Complies');
@@ -217,5 +226,18 @@ describe('OOS phase II from LIMS (D-60)', () => {
     const ok6 = await call(t.app, c.qa60!, 'POST', '/api/deviations', body(o6, { areaId: undefined }));
     expect(ok6.statusCode, ok6.body).toBe(201);
     expect((await call(t.app, c.qa60!, 'GET', `/api/deviations/${ok6.json().id}`)).json().area).toBe(LIMS_AREA);
+  });
+
+  it('display 19 Nov: an EM OOS (LIMS 0031 columns) names point, room and batch, and is filed in its room', async () => {
+    const em = await appWith(t, { lims: { sql: t.owner, schema: S.em } });
+    const cookie = (await login(em, 'qa60')).cookie;
+    const res = await call(em, cookie, 'POST', '/api/deviations', body(ID.em));
+    expect(res.statusCode, res.body).toBe(201);
+    const { id } = res.json() as { id: number };
+    const [dev] = await t.owner<{ area: string; data: Record<string, unknown> }[]>`
+      select a.name as area, r.data from deviations d join latest_sections r on r.deviation_id = d.id and r.kind = 'report' join areas a on a.id = (r.data->>'areaId')::int where d.id = ${id}`;
+    expect(dev!.area).toBe('RM-9 Example filling room');
+    expect(dev!.data.oos).toMatchObject({ number: 'OOS260009', lot: 'RM9-CP1', batch: 'TI26009', point: 'RM9-CP1', room: 'RM-9' });
+    expect(dev!.data.products).toEqual([{ product: 'RM-9', batch: 'TI26009', from: 'lims' }]);
   });
 });

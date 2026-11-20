@@ -1,21 +1,10 @@
+import { actionWords, valueWords } from '../../../server/words.js';
 import { useEffect, useState } from 'react';
 import { api, plantTime, type AuditRow } from '../api.js';
 
 // DV-15, CP-10: the audit trail for QA and Admin. Each record's own history comes with S2/S3.
-const ACTION: Record<string, string> = {
-  login: 'Logged in',
-  logout: 'Logged out',
-  'login.failed': 'Failed login',
-  'password.changed': 'Password changed',
-  'password.change_failed': 'Password change refused',
-  'user.created': 'User created',
-  'user.updated': 'User changed',
-  'user.locked': 'Account locked (too many wrong passwords)',
-  'user.password_reset': 'Temporary password issued',
-  'alert.acknowledged': 'Security alert acknowledged',
-};
-const actionText = (a: string) => ACTION[a] ?? a.replaceAll(/[._]/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-const value = (v: unknown) => (v === null || v === undefined ? '' : JSON.stringify(v));
+const actionText = actionWords;
+const value = (v: unknown) => valueWords(v, '', false);
 
 export function AuditTrail() {
   const [rows, setRows] = useState<AuditRow[]>([]);

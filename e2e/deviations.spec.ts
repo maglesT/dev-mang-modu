@@ -236,6 +236,11 @@ test('D-67: QA cancels a report as not a deviation: reason, one signature, kept 
   await expect(card).toContainText('QA1');
   await expect(page.getByRole('button', { name: 'Not a deviation (cancel)' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Investigation' })).toHaveCount(0);
+  // Display round 20 Nov 2026: the history in words, times as "20 Nov, 21:21 IST" on screens (this year: no year; no raw keys, no am/pm).
+  const history = page.locator('section.card', { has: page.getByRole('heading', { name: 'History' }) });
+  await expect(history).toContainText('Signed: Cancelled: not a deviation');
+  await expect(history).not.toContainText('signed.');
+  await expect(history.locator('td').first()).toHaveText(/^\d{1,2} [A-Z][a-z]{2}, \d{2}:\d{2} IST$/);
 
   await page.getByRole('button', { name: '← All deviations' }).click();
   await page.getByRole('button', { name: 'Open', exact: true }).click();

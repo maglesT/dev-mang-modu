@@ -1,3 +1,4 @@
+import { actionWords, valueWords } from '../../../server/words.js';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { FISHBONE, Fishbone, SixMDiagram, emptyFishbone, emptySixM, hasFishbone } from '../components/Fishbone.js';
 import {
@@ -69,7 +70,7 @@ function Versions({ d, kind }: { d: Deviation; kind: Kind }) {
               ? FISHBONE.filter(([c]) => String((x as Record<string, unknown>)[c] ?? '').trim()).map(([c, label]) => [`fishbone: ${label}`, str((x as Record<string, unknown>)[c])])
               : (k === 'initialImpact' || k === 'finalImpact') && x && typeof x === 'object'
                 ? [[k === 'initialImpact' ? 'initial impact' : 'final impact', <ImpactView v={x as Record<string, string>} />]]
-                : [[k, typeof x === 'object' ? JSON.stringify(x) : str(x)]])} />
+                : [[k.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase(), valueWords(x, typeof x === 'object' ? '' : k, false)]])} />
         </div>
       ))}
     </details>
@@ -255,7 +256,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
           <thead><tr><th>When</th><th>Who</th><th>What</th><th>Reason</th></tr></thead>
           <tbody>
             {d.history.map((h) => (
-              <tr key={h.id}><td>{plantTime(h.at)}</td><td>{h.actor ?? 'System'}</td><td>{h.action.replace('deviation.', '').replace('.', ' ').replaceAll('_', ' ')}</td><td>{h.reason}</td></tr>
+              <tr key={h.id}><td>{plantTime(h.at)}</td><td>{h.actor ?? 'System'}</td><td>{actionWords(h.action)}</td><td>{h.reason}</td></tr>
             ))}
           </tbody>
         </table>

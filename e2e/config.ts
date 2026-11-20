@@ -1,6 +1,7 @@
-export const E2E_PORT = 4173;
+// E2E_PORT may be set when another app's browser tests hold 4173 on the same machine.
+export const E2E_PORT = Number(process.env.E2E_PORT ?? 4173);
 // D-63: the same app and schema with the QMS linked (it owns CAPA), on its own port.
-export const E2E_QMS_PORT = 4174;
+export const E2E_QMS_PORT = E2E_PORT + 1;
 export const QMS_URL = 'https://qms.example.test';
 export const E2E_SCHEMA = 'e2e';
 export const USERS = {

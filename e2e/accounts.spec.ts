@@ -11,3 +11,11 @@ test('PL-01 a person signs in through core, sees only what their codes allow, an
   await expect(page.getByRole('button', { name: 'Audit trail' })).toBeVisible();
   await logOut(page);
 });
+
+test('display item 7: the first load before sign-in has no refused request (no 401 in the console)', async ({ page }) => {
+  const refused: string[] = [];
+  page.on('response', (r) => { if (r.status() >= 400) refused.push(`${r.status()} ${new URL(r.url()).pathname}`); });
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  expect(refused).toEqual([]);
+});
