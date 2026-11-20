@@ -166,6 +166,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
               onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, product: e.target.value } : x)))} />
             {p.batch.trim() && !p.from && <span className="chip chip-warn">Typed by hand</span>}
             {p.from === 'lims' && <span className="chip">From LIMS OOS</span>}
+            {p.from === 'ops' && <span className="chip">From Operations CPV</span>}
             {products.length > 1 && p.from !== 'lims' && <button type="button" onClick={() => setProducts(products.filter((_, j) => j !== i))}>Remove</button>}
           </div>
         ))}

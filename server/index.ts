@@ -22,6 +22,8 @@ const sources: Sources = {
   // D-60: LIMS, for the OOS pick and the filing of an OOS phase II investigation.
   ...(config.LIMS_DATABASE_URL ? { lims: reader(config.LIMS_DATABASE_URL) } : {}),
   // D-63: the QMS owns CAPA while it is linked: its CAPAs are read here, and new ones are raised in the QMS.
+  // D-66: Operations, for the CPV signals QA sent to Deviations there.
+  ...(config.OPS_DATABASE_URL ? { ops: reader(config.OPS_DATABASE_URL) } : {}),
   ...(config.QMS_DATABASE_URL ? { qms: { ...reader(config.QMS_DATABASE_URL), url: qmsBaseUrl(config.QMS_URL, config.OIDC_REDIRECT_URI) } } : {}),
   ...Object.fromEntries(BATCH_PRODUCTS.flatMap((p) => { const url = config[linkSetting(p)]; return url ? [[p, reader(url)]] : []; })),
 };

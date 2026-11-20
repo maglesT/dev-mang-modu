@@ -46,6 +46,8 @@ the trend view and PDF copies support reviews and inspections.
    The link to the QMS, `QMS_DATABASE_URL` (D-63): the QMS owns CAPA. No CAPA is raised here; "Raise CAPA in QMS"
    opens the QMS (address `QMS_URL`, else the `qms.` host beside this app) with the deviation number, and the QMS's
    CAPAs (its `capa_v1`) are shown and checked at closure. Earlier local CAPAs stay readable. No link = CAPAs here.
+   The link to Operations, `OPS_DATABASE_URL` (D-66): each CPV signal QA sent to Deviations there (`cpv_signal_v1`) is
+   filed once as a deviation in the area "Operations CPV (automatic)". No link = off.
 7. Optional, the QMS product reads the CAPA register (D-40): give the read-only role `capa_report` a login,
    `ALTER ROLE capa_report LOGIN PASSWORD '...'` (typed by the site), and a `pg_hba` line for the QMS host only, followed by
    `host all capa_report all reject`. It can read `report.capa_v1` (CAPA number, status, due date, deviation number,

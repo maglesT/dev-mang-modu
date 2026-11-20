@@ -2,6 +2,7 @@
 import { connect } from '../server/db.js';
 import { migrate } from '../db/migrate.js';
 import { buildApp } from '../server/app.js';
+import { fileCpvSignals } from '../server/autoraise.js';
 import globalSetup from '../test/global-setup.js';
 import { APP_ROLE, TEST_DATABASE_URL, TEST_PROOF_KEY, directory, fakePeople, fakeSignOn, seedUser } from '../test/helpers.js';
 import { E2E_PORT, E2E_QMS_PORT, E2E_SCHEMA, QMS_URL, REPORT_ONLY, USERS } from './config.js';
@@ -54,6 +55,17 @@ const app = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), pr
   sources: { truebatch_injectables: { sql: stand, schema: TBI }, truebatch_capsules_packing: { sql: stand, schema: TCP },
     lims: { sql: stand, schema: LIMS } } });
 await app.listen({ port: E2E_PORT, host: '127.0.0.1' });
+
+// D-66: a stand-in for Operations' published CPV signals (cpv_signal_v1) with one signal QA sent there; filed once at start,
+// as the minute check does on the platform.
+const OPS = `${E2E_SCHEMA}_ops`;
+await stand.unsafe(`drop schema if exists ${OPS} cascade; create schema ${OPS};
+  create table ${OPS}.cpv_signal_v1 (signal_id bigint, product_code text, product_name text, item_label text, batch text, what text, note text,
+    title text, description text, sent_by text, sent_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+  insert into ${OPS}.cpv_signal_v1 (signal_id, product_code, product_name, item_label, batch, what, note, title, description, sent_by, sent_at) values
+    (3, 'FG-EX-10', 'Example tablets 10 mg (invented)', 'Tablet hardness', 'EX26E05', 'Tablet hardness: batch EX26E05 value 61 N; out of trend, Nelson rule 1.', '',
+      'Continued process verification: Tablet hardness, batch EX26E05', 'Tablet hardness: batch EX26E05 value 61 N; out of trend, Nelson rule 1.', 'QA Example', now() - interval '1 hour');`);
+await fileCpvSignals(sql, { sql: stand, schema: OPS });
 
 // D-63: a stand-in for the QMS's published CAPAs (capa_v1, fixed columns) and the app with the QMS linked: the QMS owns CAPA.
 const QMS = `${E2E_SCHEMA}_qms`;

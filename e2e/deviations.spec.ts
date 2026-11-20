@@ -201,3 +201,17 @@ test('DV-02: a planned deviation shows "do not proceed" until QA signs the appro
   await expect(page.locator('.statusbar')).toContainText('Investigation');
   await expect(page.locator('.signature')).toContainText('Approved (planned deviation may proceed) · QA1');
 });
+
+// D-66: a CPV signal QA sent in Operations is filed once as a deviation: QA sees it with its product, batch (pulled) and rule.
+test('D-66: a CPV signal sent from Operations is a deviation in the Operations CPV area, its batch pulled', async ({ page }) => {
+  await logIn(page, 'qa1');
+  const row = page.getByRole('row', { name: /Continued process verification: Tablet hardness, batch EX26E05/ });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('Operations CPV (automatic)');
+  await row.getByRole('button').first().click();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Continued process verification: Tablet hardness, batch EX26E05');
+  await expect(page.getByText('FG-EX-10 / EX26E05', { exact: true })).toBeVisible();
+  await expect(page.getByText(/out of trend, Nelson rule 1\./).first()).toBeVisible();
+  await expect(page.getByText(/CPV\) signal 3 in Operations: product Example tablets 10 mg \(invented\) \(FG-EX-10\), batch EX26E05, parameter Tablet hardness/)).toBeVisible();
+  await expect(page.getByText('Operations CPV (automatic report)').first()).toBeVisible();
+});

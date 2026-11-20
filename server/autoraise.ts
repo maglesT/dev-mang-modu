@@ -33,6 +33,12 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, type BatchProduct } from './readers/produ
 // view has no such column yet (not ported: e.g. Injectables, Capsules) keeps the old way: every row is filed on its own,
 // so nothing goes unfiled during the port (lead, 20 Nov 2026). The look-back counts from when it was sent (old way:
 // from when it was found or noted). source_ref keeps each row filed once, as before. Standalone (no link) is unchanged: nothing is read.
+// D-66 (lead, 20 Nov 2026; Operations D-28): Operations publishes in report.cpv_signal_v1 each out-of-trend or out-of-limit
+// batch of its continued process verification (CPV) that QA chose to "Send to Deviations" there (never automatic: every
+// row is a person's send). Each row is filed once, as the TrueBatch notes are: by ops.auto in the area "Operations CPV
+// (automatic)", source_ref 'ops:cpv:<signal_id>', with the product, the batch (pulled: from 'ops') and the parameter or
+// rule in the report text. Read through the Operations link (OPS_DATABASE_URL, this app's own read-only login); look-back
+// from when it was sent.
 
 export const AUTO_REPORTER = 'logbook.auto';
 export const AUTO_AREA = 'Logbook (automatic)';
@@ -55,6 +61,10 @@ export const TBI_AREA = noteFeed('truebatch_injectables').area;
 export const TBI_PREFIX = noteFeed('truebatch_injectables').prefix;
 export const TBIP_AREA = noteFeed('truebatch_injectables_packing').area;
 export const TBIP_PREFIX = noteFeed('truebatch_injectables_packing').prefix;
+
+/** D-66: CPV signals QA sent to Deviations in Operations. */
+export const CPV_FEED: Feed = { username: 'ops.auto', fullName: 'Operations CPV (automatic report)', area: 'Operations CPV (automatic)',
+  prefix: 'ops:cpv:', what: 'CPV signals from Operations' };
 
 interface OverdueRow {
   event_id: string; equipment_code: string; kind: string; due_at: Date;
@@ -196,6 +206,38 @@ async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string, prod
   });
 }
 
+interface CpvSignalRow {
+  signal_id: string; product_code: string | null; product_name: string | null; item_label: string; batch: string; what: string;
+  note: string | null; title: string | null; description: string | null; sent_by: string | null; sent_at: Date;
+}
+
+/** D-66: each CPV signal Operations publishes (every row was sent by QA there), filed once for its product and batch. */
+export async function fileCpvSignals(sql: Sql, src: Source): Promise<Filed> {
+  const rows = await src.sql.begin('read only', async (tx) => {
+    await tx`set local statement_timeout = '15s'`;
+    return tx<CpvSignalRow[]>`
+      select signal_id::text, product_code, product_name, item_label, batch, what, note, title, description, sent_by, sent_at
+      from ${tx(`${src.schema}.cpv_signal_v1`)} where sent_at > now() - make_interval(days => ${LOOKBACK_DAYS}) order by signal_id`;
+  });
+  return fileAll(sql, CPV_FEED, rows.map((r) => ({ ...r, id: r.signal_id })), (r, areaId) => {
+    const code = (r.product_code ?? '').trim();
+    const name = (r.product_name ?? '').trim();
+    const product = [name, code && `(${code})`].filter(Boolean).join(' ') || 'product not named in Operations';
+    const sent = new Date(r.sent_at).toISOString();
+    const text = (r.description ?? '').trim() || [r.what, r.note].map((x) => (x ?? '').trim()).filter(Boolean).join('\n');
+    return {
+      planned: false, title: ((r.title ?? '').trim() || `Continued process verification: ${r.item_label}, batch ${r.batch}`).slice(0, 200),
+      description: (`${text}\n\nContinued process verification (CPV) signal ${r.signal_id} in Operations: product ${product}, batch ${r.batch}, ` +
+        `parameter ${r.item_label}. Sent to Deviations in Operations by ${(r.sent_by ?? '').trim() || 'QA'}. Filed automatically from Operations.`).slice(0, 5000),
+      areaId, equipment: '', eventAt: sent,
+      // The batch and product come from the signal, so they are pulled, not typed.
+      products: [{ product: (code || name || 'not named in Operations').slice(0, 200), batch: r.batch.slice(0, 80), from: 'ops' }], noBatch: false,
+      immediateAction: `None recorded: the signal was found in the CPV review in Operations (${r.item_label}, batch ${r.batch}).`, actionTakenAt: null,
+      initialImpact: { productQuality: 'unknown', patientSafety: 'unknown', otherBatches: 'unknown', notes: 'Filed automatically from the Operations CPV review; QA to assess the impact.' },
+    };
+  });
+}
+
 /** Checks every minute inside the server process (as the integrity check does), each linked source on its own. */
 export function scheduleAutoRaise(sql: Sql, src: Sources, log: (msg: string) => void, everyMs = 60_000): () => void {
   let running = false;
@@ -203,6 +245,8 @@ export function scheduleAutoRaise(sql: Sql, src: Sources, log: (msg: string) => 
     ...(src.logbook ? [{ f: LOGBOOK, run: () => fileLogbookOverdue(sql, src.logbook!) }] : []),
     // D-59: each linked TrueBatch product, in the order of the one list.
     ...BATCH_PRODUCTS.filter((p) => src[p]).map((p) => ({ f: noteFeed(p), run: () => fileProductNotes(sql, src[p]!, p) })),
+    // D-66: the CPV signals QA sent in Operations.
+    ...(src.ops ? [{ f: CPV_FEED, run: () => fileCpvSignals(sql, src.ops!) }] : []),
   ];
   const tick = async () => {
     if (running) return;

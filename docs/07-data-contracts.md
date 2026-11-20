@@ -1,4 +1,4 @@
-# Data read from the Logbook, the TrueBatch products and LIMS (contracts for S15, S17, D-51, D-53, D-57, D-59, D-60)
+# Data read from the Logbook, the TrueBatch products, LIMS, the QMS and Operations (contracts for S15, S17, D-51, D-53, D-57, D-59, D-60, D-63, D-66)
 
 The Deviations system reads these views through read-only roles. A view is never changed in place: a change
 of columns means a new `_v2` view, and the `_v1` view stays until this system stops reading it. Every row
@@ -115,6 +115,16 @@ check, a cancelled one not counted); the CAPA list shows the register (newest 10
 `/capa/new?source=deviation&ref=<deviation number>` (`QMS_NEW_CAPA_PATH`), at `QMS_URL` or the `qms.` host beside this
 app. A failed read (cut link or down) shows "QMS link off" and refuses a local CAPA and a closure (503). No link =
 Deviations' own CAPA register as before.
+
+## Medhanta Operations (ops), platform link `OPS_DATABASE_URL` (D-66)
+
+Operations publishes `report.cpv_signal_v1` (its migration `0016_cpv.sql`, Operations D-28), one row per CPV signal
+QA chose to "Send to Deviations" there (an out-of-trend or out-of-limit batch of the continued process verification;
+never automatic). Read: `signal_id bigint`, `product_code`, `product_name`, `item_label` (the parameter or plan item),
+`batch`, `what` (value, limits, Nelson rule), `note`, `title`, `description`, `sent_by`, `sent_at`. Each row of the
+last 30 days (from `sent_at`) is filed once (`source_ref` `ops:cpv:<signal_id>`) by `ops.auto` in the area "Operations
+CPV (automatic)": title and text from the view plus the product, batch and parameter, the batch pulled (`from` `ops`,
+not typed; a person cannot set it). Read in a read-only transaction with this app's own login. No link = nothing read.
 
 ## Shared demo scenario## Shared demo scenario (Logbook test data)
 

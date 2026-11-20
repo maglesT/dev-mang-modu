@@ -33,6 +33,8 @@ const schema = z.object({
   LOGBOOK_REPORT_URL: z.string().trim().optional().transform((v) => v || undefined),
   // D-60: LIMS's OOS view (report.oos_v1), written by the platform's apply only while the link to LIMS is on. Absent = off.
   LIMS_DATABASE_URL: optional,
+  // D-66: Operations' CPV signals (report.cpv_signal_v1), written by the platform's apply only while the link is on. Absent = off.
+  OPS_DATABASE_URL: optional,
   // D-63: the QMS's CAPA view (report.capa_v1), written by the platform's apply only while the link to the QMS is on.
   // Set = the QMS owns CAPA (Deviations raises none of its own); absent = Deviations' own CAPA register (sold alone).
   QMS_DATABASE_URL: optional,

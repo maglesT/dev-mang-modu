@@ -23,7 +23,8 @@ const productBatch = z.object({
 // D-57: a batch of the report picked from a linked TrueBatch product names that product (`from`); without it the batch
 // was typed by hand. Kept in the report's data and on its batch rows (batches.batch_typed).
 // D-60: 'lims': the lot of an OOS picked from LIMS, pulled with the OOS (never typed; only with the report's OOS).
-export const BATCH_FROM = [...BATCH_PRODUCTS, 'lims'] as const;
+// D-66: 'ops': the batch of a CPV signal sent from Operations, pulled with the signal (only by the automatic filing).
+export const BATCH_FROM = [...BATCH_PRODUCTS, 'lims', 'ops'] as const;
 const reportProduct = productBatch.extend({ from: z.enum(BATCH_FROM).optional() });
 export const ownRows = (products: { product: string; batch: string; from?: string }[]) =>
   products.map((p) => ({ product: p.product, batch: p.batch, role: 'own' as const, typed: !p.from }));

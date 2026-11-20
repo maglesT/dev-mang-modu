@@ -25,6 +25,8 @@ export async function confirmPicks(sources: Sources, rows: { batch: string; from
   const kept = new Set(before.filter((r) => r.from).map((r) => `${r.from}|${normaliseBatch(r.batch)}`));
   const todo = rows.filter((r) => r.from && !kept.has(`${r.from}|${normaliseBatch(r.batch)}`));
   const problems: string[] = [];
+  // D-66: a batch from Operations comes only with its CPV signal (automatic filing); one already on the report is kept.
+  for (const r of todo.filter((x) => x.from === 'ops')) problems.push(`Batch ${r.batch}: a batch from Operations comes only with its CPV signal. Type it by hand instead.`);
   for (const p of BATCH_PRODUCTS) {
     const mine = todo.filter((r) => r.from === p);
     if (!mine.length) continue;
