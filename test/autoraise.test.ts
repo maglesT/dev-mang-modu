@@ -16,10 +16,15 @@ const tbip = `tbipnote_${process.pid}`;
 const c: Record<string, string> = {};
 const src = () => ({ sql: reader, schema: lb });
 
-async function overdue(id: number, code: string, hoursAgo: number, detectedDaysAgo = 0) {
-  await t.owner.unsafe(`insert into ${lb}.overdue_v1 values (${id}, '${code}', 'pm', now() - interval '${hoursAgo} hours', now() - interval '${detectedDaysAgo} days',
+// D-65: `sent` is when a person sent it to Deviations in the Logbook (SQL; default: when it was found); null: not sent.
+// `schema`: another stand-in (an older Logbook whose view has no sent_at column).
+async function overdue(id: number, code: string, hoursAgo: number, detectedDaysAgo = 0, sent: string | null = `now() - interval '${detectedDaysAgo} days'`, schema = lb) {
+  const cols = schema === lb ? ', decision, sent_at' : '';
+  const vals = schema === lb ? `, '${sent === null ? 'open' : 'sent'}', ${sent ?? 'null'}` : '';
+  await t.owner.unsafe(`insert into ${schema}.overdue_v1 (event_id, equipment_code, kind, due_at, detected_at, title, description, immediate_action, impact_notes${cols})
+    values (${id}, '${code}', 'pm', now() - interval '${hoursAgo} hours', now() - interval '${detectedDaysAgo} days',
     'Preventive maintenance overdue: ${code} (due 2026-11-10)', 'Equipment ${code} has preventive maintenance every 90 days. Raised automatically by the Logbook.',
-    'The Logbook blocks any use of ${code} until its preventive maintenance is recorded and verified.', 'QA to assess the impact.')`);
+    'The Logbook blocks any use of ${code} until its preventive maintenance is recorded and verified.', 'QA to assess the impact.'${vals})`);
 }
 
 beforeAll(async () => {
@@ -29,14 +34,14 @@ beforeAll(async () => {
   // A stand-in for the Logbook's report.overdue_v1, readable by this app's login as through a platform link.
   await t.owner.unsafe(`create schema ${lb}`);
   await t.owner.unsafe(`create table ${lb}.overdue_v1 (event_id bigint, equipment_code text, kind text, due_at timestamptz, detected_at timestamptz,
-    title text, description text, immediate_action text, impact_notes text)`);
+    title text, description text, immediate_action text, impact_notes text, decision text, sent_at timestamptz)`);
   await t.owner.unsafe(`grant usage on schema ${lb} to ${APP_ROLE}; grant select on ${lb}.overdue_v1 to ${APP_ROLE}`);
   // A stand-in for TrueBatch's report.deviation_note_v1 (its migration 0006), readable the same way.
   // And for TrueBatch Tablets Packing's, TrueBatch Injectables' and TrueBatch Injectables Packing's, which have the same columns (D-53, D-54, D-55).
   for (const x of [tb, tbp, tbi, tbip]) {
     await t.owner.unsafe(`create schema ${x}`);
     await t.owner.unsafe(`create table ${x}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
-      reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now())`);
+      reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now(), decision text, sent_at timestamptz)`);
     await t.owner.unsafe(`grant usage on schema ${x} to ${APP_ROLE}; grant select on ${x}.deviation_note_v1 to ${APP_ROLE}`);
   }
   reader = connect(TEST_DATABASE_URL, { role: APP_ROLE }, 1);
@@ -90,10 +95,76 @@ describe('missed limits from the Logbook (D-50)', () => {
   });
 });
 
+// D-65 (owner, 20 Nov 2026): Deviations files nothing on its own; only what a person sent from the Logbook or TrueBatch.
+describe('only what was sent is filed (D-65)', () => {
+  it('DV-01: a missed limit not sent (waiting, or closed in the Logbook) is not filed; once sent it is, once', async () => {
+    await overdue(21, 'TAB-01', 3, 0, null);
+    expect(await fileLogbookOverdue(t.sql, src())).toEqual({ filed: [], problems: [] });
+    await t.owner.unsafe(`update ${lb}.overdue_v1 set decision = 'closed' where event_id = 21`);
+    expect(await fileLogbookOverdue(t.sql, src())).toEqual({ filed: [], problems: [] });
+    await t.owner.unsafe(`update ${lb}.overdue_v1 set decision = 'sent', sent_at = now() where event_id = 21`);
+    const r = await fileLogbookOverdue(t.sql, src());
+    expect(r.filed).toHaveLength(1);
+    expect(await fileLogbookOverdue(t.sql, src())).toEqual({ filed: [], problems: [] });
+    expect(await t.owner`select 1 from deviations where source_ref = ${`${SOURCE_PREFIX}21`}`).toHaveLength(1);
+  });
+
+  it('DV-01: the look-back counts from when it was sent: found 40 days ago but sent today is filed', async () => {
+    await overdue(22, 'TAB-02', 24 * 41, 40, 'now()');
+    expect((await fileLogbookOverdue(t.sql, src())).filed).toHaveLength(1);
+  });
+
+  it('DV-01: a Logbook whose overdue_v1 has no sent_at column yet keeps the old way: filed on its own (look-back from when found)', async () => {
+    const old = `lbold_${process.pid}`;
+    await t.owner.unsafe(`create schema ${old}; create table ${old}.overdue_v1 (event_id bigint, equipment_code text, kind text, due_at timestamptz, detected_at timestamptz,
+      title text, description text, immediate_action text, impact_notes text); grant usage on schema ${old} to ${APP_ROLE}; grant select on ${old}.overdue_v1 to ${APP_ROLE}`);
+    try {
+      await overdue(23, 'TAB-03', 2, 0, null, old);
+      await overdue(24, 'TAB-04', 2, 40, null, old);   // older than the look-back
+      const r = await fileLogbookOverdue(t.sql, { sql: reader, schema: old });
+      expect(r.filed).toHaveLength(1);
+      expect(await t.owner`select 1 from deviations where source_ref = ${`${SOURCE_PREFIX}23`}`).toHaveLength(1);
+    } finally {
+      await t.owner.unsafe(`drop schema ${old} cascade`);
+    }
+  });
+
+  it('DV-01: a product whose deviation_note_v1 has no decision column yet (not ported) keeps the old way: every note without a number is filed', async () => {
+    const old = `tbold_${process.pid}`;
+    await t.owner.unsafe(`create schema ${old}; create table ${old}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
+      reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+      grant usage on schema ${old} to ${APP_ROLE}; grant select on ${old}.deviation_note_v1 to ${APP_ROLE}`);
+    try {
+      await t.owner.unsafe(`insert into ${old}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, noted_at) values
+        (91, 'truebatch_injectables:note:91', 'TI260091', 'FG-TI', 'Filling › Fill', 'Fill weight low', null, now() - interval '1 hour'),
+        (92, 'truebatch_injectables:note:92', 'TI260091', 'FG-TI', 'Filling › Fill', 'Has a number', 'DEV-2026-0099', now() - interval '1 hour')`);
+      const r = await fileInjectablesNotes(t.sql, { sql: reader, schema: old });
+      expect(r.filed).toHaveLength(1);
+      expect(await t.owner`select 1 from deviations where source_ref = ${`${TBI_PREFIX}91`}`).toHaveLength(1);
+    } finally {
+      await t.owner.unsafe(`drop schema ${old} cascade`);
+    }
+  });
+
+  it('DV-01: a TrueBatch note without a number waiting for a decision or closed in TrueBatch is not filed; once sent it is', async () => {
+    await note(81, 'MGL26081', 'Hardness low', null, 2, 'Compression › Compress', undefined, null);
+    expect((await fileTrueBatchNotes(t.sql, { sql: reader, schema: tb })).filed).toEqual([]);
+    await t.owner.unsafe(`update ${tb}.deviation_note_v1 set decision = 'closed' where note_id = 81`);
+    expect((await fileTrueBatchNotes(t.sql, { sql: reader, schema: tb })).filed).toEqual([]);
+    await t.owner.unsafe(`update ${tb}.deviation_note_v1 set decision = 'sent', sent_at = now() where note_id = 81`);
+    expect((await fileTrueBatchNotes(t.sql, { sql: reader, schema: tb })).filed).toHaveLength(1);
+    expect(await t.owner`select 1 from deviations where source_ref = ${`${TB_PREFIX}81`}`).toHaveLength(1);
+  });
+});
+
+// D-65: a note without a number is sent to Deviations by a person in the producing product (`sent`, SQL; default: when
+// it was written; null: not sent, closed there or waiting for a decision).
 async function note(id: number, batch: string, text: string, reference: string | null, hoursAgo: number, step: string | null = 'compression/compress',
-  where = { schema: tb, prefix: TB_PREFIX, product: 'MGL-SR-500' }) {
-  await t.owner.unsafe(`insert into ${where.schema}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, status, noted_at) values
-    (${id}, '${where.prefix}${id}', '${batch}', '${where.product}', ${step === null ? 'null' : `'${step}'`}, '${text}', ${reference ? `'${reference}'` : 'null'}, ${reference ? `'open'` : 'null'}, now() - interval '${hoursAgo} hours')`);
+  where = { schema: tb, prefix: TB_PREFIX, product: 'MGL-SR-500' }, sent: string | null = `now() - interval '${hoursAgo} hours'`) {
+  const decision = reference ? 'null' : sent === null ? `'open'` : `'sent'`;
+  await t.owner.unsafe(`insert into ${where.schema}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, status, noted_at, decision, sent_at) values
+    (${id}, '${where.prefix}${id}', '${batch}', '${where.product}', ${step === null ? 'null' : `'${step}'`}, '${text}', ${reference ? `'${reference}'` : 'null'}, ${reference ? `'open'` : 'null'}, now() - interval '${hoursAgo} hours',
+    ${decision}, ${reference || sent === null ? 'null' : sent})`);
 }
 
 describe('deviation notes from TrueBatch (D-51)', () => {
@@ -309,7 +380,7 @@ describe('deviation notes from the new TrueBatch products (D-59)', () => {
     for (const { p } of NEW) {
       const x = schemaOf(p);
       await t.owner.unsafe(`create schema ${x}; create table ${x}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
-        reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+        reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now(), decision text, sent_at timestamptz);
         grant usage on schema ${x} to ${APP_ROLE}; grant select on ${x}.deviation_note_v1 to ${APP_ROLE}`);
     }
   });

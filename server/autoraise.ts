@@ -26,6 +26,13 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, type BatchProduct } from './readers/produ
 // D-58 (suite run S21): the report's Equipment is pulled from the product's equipment_use_v1 for the note's batch: the
 // rooms and machines used at the note's step, or, when none was used at that very step (e.g. a line clearance), in the
 // note's stage. Empty when the view is not there or not readable.
+// D-65 (owner, 20 Nov 2026; replaces the automatic filing of D-50, D-51, D-53 to D-55 and D-59): nothing is filed on its
+// own any more. The producing product raises an exception and a person who holds that product's exception permission
+// either closes it there (reason and e-signature) or sends it to Deviations. Only rows SENT are filed: overdue_v1 and
+// deviation_note_v1 carry `sent_at` (when it was sent; null otherwise), read through the row as JSON. A producer whose
+// view has no such column yet (not ported: e.g. Injectables, Capsules) keeps the old way: every row is filed on its own,
+// so nothing goes unfiled during the port (lead, 20 Nov 2026). The look-back counts from when it was sent (old way:
+// from when it was found or noted). source_ref keeps each row filed once, as before. Standalone (no link) is unchanged: nothing is read.
 
 export const AUTO_REPORTER = 'logbook.auto';
 export const AUTO_AREA = 'Logbook (automatic)';
@@ -106,7 +113,9 @@ export async function fileLogbookOverdue(sql: Sql, src: Source): Promise<Filed> 
     await tx`set local statement_timeout = '15s'`;
     return tx<OverdueRow[]>`
       select event_id::text, equipment_code, kind, due_at, title, description, immediate_action, impact_notes
-      from ${tx(`${src.schema}.overdue_v1`)} where detected_at > now() - make_interval(days => ${LOOKBACK_DAYS}) order by event_id`;
+      from (select o.*, to_jsonb(o) ? 'sent_at' as chooses, (to_jsonb(o)->>'sent_at')::timestamptz as sent from ${tx(`${src.schema}.overdue_v1`)} o) r
+      where case when chooses then sent > now() - make_interval(days => ${LOOKBACK_DAYS})
+        else detected_at > now() - make_interval(days => ${LOOKBACK_DAYS}) end order by event_id`;
   });
   return fileAll(sql, LOGBOOK, rows.map((r) => ({ ...r, id: r.event_id })), (r, areaId) => ({
     planned: false, title: r.title.slice(0, 200), description: r.description.slice(0, 5000), areaId,
@@ -158,8 +167,9 @@ async function fileNotes(sql: Sql, src: Source, feed: Feed, system: string, prod
     await tx`set local statement_timeout = '15s'`;
     const rows = await tx<NoteRow[]>`
       select note_id::text, batch_number, product_code, step, note, noted_at
-      from ${tx(`${src.schema}.deviation_note_v1`)}
-      where reference is null and noted_at > now() - make_interval(days => ${LOOKBACK_DAYS}) order by note_id`;
+      from (select n.*, to_jsonb(n) ? 'sent_at' as chooses, (to_jsonb(n)->>'sent_at')::timestamptz as sent from ${tx(`${src.schema}.deviation_note_v1`)} n) r
+      where reference is null and case when chooses then sent > now() - make_interval(days => ${LOOKBACK_DAYS})
+        else noted_at > now() - make_interval(days => ${LOOKBACK_DAYS}) end order by note_id`;
     // D-58: the equipment use of these batches (step_name read as JSON: null where a product does not publish it).
     const batches = [...new Set(rows.map((r) => r.batch_number))];
     const uses = batches.length && await canRead(tx, src.schema, 'equipment_use_v1') ? await tx<UseRow[]>`
