@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionWords, oosItemWords, oosLotWord, plantDateTime, plantDay, valueWords } from '../server/words.js';
+import { actionWords, oosRoomArea, oosWhat, plantDateTime, plantDay, valueWords } from '../server/words.js';
 
 // Display round 20 Nov 2026: one date style, plain words in history lines.
 describe('words on screens and PDFs', () => {
@@ -28,10 +28,13 @@ describe('words on screens and PDFs', () => {
     expect(valueWords({ eventAt: '2026-11-20T15:51:00Z', rows: 1200 })).toBe('Event time: 20 Nov 2026, 21:21 IST; Rows: 1,200');
   });
 
-  it('an EM OOS names its sampling point, not a lot', () => {
-    expect(oosLotWord('ROOM')).toBe('sampling point');
-    expect(oosLotWord('PRODUCT')).toBe('lot');
-    expect(oosItemWords({ itemKind: 'ROOM', itemCode: 'RM-207', itemName: 'Aseptic filling room' })).toBe('room RM-207 Aseptic filling room');
-    expect(oosItemWords({ itemKind: 'PRODUCT', itemCode: 'P1', itemName: 'Tablet' })).toBe('P1 Tablet');
+  it('an EM OOS names its point, room and batch, not a lot', () => {
+    const em = { itemKind: 'ROOM', itemCode: 'RM-207', itemName: 'Aseptic filling room', lot: 'RM207-CP1', test: 'Contact plate' };
+    expect(oosWhat({ ...em, point: 'RM207-CP1', room: 'RM-207', batch: 'TI260016' })).toBe('Contact plate, point RM207-CP1, room RM-207, taken during batch TI260016');
+    // A view without the 0031 columns: the lot_number is the point, the room is the item.
+    expect(oosWhat(em)).toBe('Contact plate, point RM207-CP1, room RM-207');
+    expect(oosRoomArea(em)).toBe('RM-207 Aseptic filling room');
+    expect(oosWhat({ itemKind: 'PRODUCT', itemCode: 'P1', itemName: 'Tablet', lot: 'L1', test: 'Assay' })).toBe('Assay of P1 Tablet, lot L1');
+    expect(oosRoomArea({ itemKind: 'PRODUCT', itemCode: 'P1' })).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import { audit } from '../audit.js';
 import type { Sources } from '../readers/fetch.js';
 import { confirmPicks } from '../readers/picks.js';
 import { withQmsOpen } from '../readers/qms.js';
-import { LIMS_AREA_OFF, limsArea, OOS_PREFIX, oosProduct, pickOos } from '../readers/lims.js';
+import { LIMS_AREA_OFF, limsArea, OOS_PREFIX, oosProduct, pickOos, type OosRef } from '../readers/lims.js';
 import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
@@ -85,8 +85,8 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
     try {
       result = await sql.begin(async (tx) => {
         if (!report.oos) return fileDeviation(tx, report, req.user!.id, sourceRef);
-        // D-61: an OOS is filed in the QC laboratory area (made the first time), whatever the form sent.
-        const areaId = await limsArea(tx, req.user!.id);
+        // D-61: an OOS is filed in the QC laboratory area (an EM OOS: its room; made the first time), whatever the form sent.
+        const areaId = await limsArea(tx, req.user!.id, report.oos as OosRef);
         return areaId ? fileDeviation(tx, { ...report, areaId }, req.user!.id, sourceRef) : 'area_off' as const;
       });
     } catch (e) {

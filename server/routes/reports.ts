@@ -8,7 +8,7 @@ import { fields, heading, plant, render, t, table } from '../pdf.js';
 import { BATCH_PRODUCTS, PRODUCT_NAME } from '../readers/products.js';
 import { withQmsOpen, type QmsCapa, type QmsSource } from '../readers/qms.js';
 import { fmeaLine } from '../fmea.js';
-import { MEANING_WORDS, STEP_WORDS, actionWords, oosItemWords, oosLotWord, plantDay, valueWords } from '../words.js';
+import { MEANING_WORDS, STEP_WORDS, actionWords, oosWhat, plantDay, valueWords, type OosWhere } from '../words.js';
 
 // D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
 const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (Batchwright)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
@@ -95,7 +95,7 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     // D-60: the LIMS OOS of an OOS phase II investigation, as read from LIMS when it was filed.
     if (k === 'oos' && v && typeof v === 'object') {
       const o = v as Row;
-      return [['LIMS OOS', `${val(o.number)}: ${val(o.test)} of ${oosItemWords(o as { itemKind?: string; itemCode?: string; itemName?: string })}, ${oosLotWord(o.itemKind as string)} ${val(o.lot)}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
+      return [['LIMS OOS', `${val(o.number)}: ${oosWhat(o as OosWhere & { test?: string })}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
     }
     // D-67: QA's "not a deviation", in words.
     if (k === 'notADeviation') return [['not a deviation', v ? 'yes: cancelled by QA' : 'no']];

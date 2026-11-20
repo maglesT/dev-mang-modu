@@ -138,13 +138,27 @@ export function valueWords(v: unknown, key = '', full = true): string {
   return scalar(key, v, full);
 }
 
-// An OOS's lot_number names a product or material lot; for an environmental-monitoring OOS (item kind ROOM, water
-// system, ...) LIMS puts the sampling point there, so it is called that (display backlog 19 Nov 2026).
-export const oosLotWord = (itemKind: string | null | undefined) =>
-  ['', 'product', 'material'].includes(String(itemKind ?? '').trim().toLowerCase()) ? 'lot' : 'sampling point';
-const KIND_WORD: Record<string, string> = { room: 'room', water: 'water system', water_system: 'water system' };
-// "of RM-207 Aseptic filling room (vials)" stays as it is for products; a room reads "of room RM-207 ...".
-export const oosItemWords = (o: { itemKind?: string; itemCode?: string; itemName?: string }) => {
-  const kind = KIND_WORD[String(o.itemKind ?? '').trim().toLowerCase()];
-  return [kind, o.itemCode, o.itemName].filter(Boolean).join(' ');
-};
+// What an OOS was taken from, in words (display backlog 19 Nov 2026). LIMS migration 0031 adds batch_number, point_code
+// and room_code to oos_v1 for an environmental-monitoring OOS: "point RM207-CP1, room RM-207, taken during batch TI260016".
+// A product or material OOS: "FG-EX-10 Example tablets, lot EX26001". An EM OOS read before those columns (item kind ROOM
+// ...) calls its lot_number the sampling point.
+export interface OosWhere { itemKind?: string; itemCode?: string; itemName?: string; lot?: string; point?: string; room?: string; batch?: string }
+const isProductKind = (k: string | undefined) => ['', 'product', 'material'].includes(String(k ?? '').trim().toLowerCase());
+export const isEmOos = (o: OosWhere) => !!(o.point || o.room) || !isProductKind(o.itemKind);
+export function oosWhere(o: OosWhere): string {
+  if (!isEmOos(o)) return `${[o.itemCode, o.itemName].filter(Boolean).join(' ')}, lot ${o.lot ?? ''}`;
+  const point = o.point || o.lot;
+  const room = o.room || (String(o.itemKind ?? '').toLowerCase() === 'room' ? o.itemCode : '');
+  return [point ? `point ${point}` : '', room ? `room ${room}` : '', o.batch ? `taken during batch ${o.batch}` : ''].filter(Boolean).join(', ')
+    || [o.itemCode, o.itemName].filter(Boolean).join(' ');
+}
+// The area of an EM OOS: its room ("RM-207 Aseptic filling room (vials)" when LIMS names the room), not the QC laboratory.
+export function oosRoomArea(o: OosWhere): string | null {
+  if (!isEmOos(o)) return null;
+  const room = o.room || (String(o.itemKind ?? '').toLowerCase() === 'room' ? o.itemCode : '');
+  if (!room) return null;
+  const name = String(o.itemKind ?? '').toLowerCase() === 'room' && o.itemCode === room ? o.itemName : '';
+  return `${room}${name ? ` ${name}` : ''}`.slice(0, 200);
+}
+// "Assay of FG-EX-10 Example tablets, lot EX26001" / "Contact plate, grade B (CFU/plate), point RM207-CP1, room RM-207, ...".
+export const oosWhat = (o: OosWhere & { test?: string }) => `${o.test ?? ''}${isEmOos(o) ? ',' : ' of'} ${oosWhere(o)}`;
