@@ -13,7 +13,7 @@ the site sets LOGIN and a password at install)
 | `report.entry_v1` | latest version of each entry: `entry_id bigint`, `version int`, `equipment_code text`, `equipment_kind text`, `type text` (logbook type key), `change text`, `activity_start timestamptz`, `activity_end timestamptz`, `product_code text`, `batch text`, `data jsonb`, `entered_by text` (full name), `entered_at timestamptz`, `late boolean`, `signed text[]` (signature meanings on this version), `read_at`, `data_as_of` |
 | `report.calibration_v1` | one row per calibration entry (latest version): `equipment_code text`, `performed_at timestamptz` (activity_end or start), `result text`, `next_due date`, `certificate_ref text`, `read_at`, `data_as_of` |
 | `report.logbook_sop_v1` | `type text` (logbook type key), `sop_ref text` (from the approved settings in force), `read_at`, `data_as_of` |
-| `report.overdue_v1` | one row per missed limit (Logbook D-37): `event_id bigint`, `equipment_code`, `equipment_name`, `equipment_kind`, `location`, `kind`, `due_at`, `detected_at`, `title`, `description`, `immediate_action`, `impact_notes`, `read_at`, `data_as_of`, and (D-65, Logbook D-80) `decision` (open / closed / sent) and `sent_at` (when a person sent it to Deviations; null otherwise). Only rows with `sent_at` are filed (`source_ref` `logbook:overdue:<event_id>`), read as JSON so an older view without the column sends nothing; the 30-day look-back counts from `sent_at`. |
+| `report.overdue_v1` | one row per missed limit (Logbook D-37): `event_id bigint`, `equipment_code`, `equipment_name`, `equipment_kind`, `location`, `kind`, `due_at`, `detected_at`, `title`, `description`, `immediate_action`, `impact_notes`, `read_at`, `data_as_of`, and (D-65, Logbook D-80) `decision` (open / closed / sent) and `sent_at` (when a person sent it to Deviations; null otherwise). Only rows with `sent_at` are filed (`source_ref` `logbook:overdue:<event_id>`), read as JSON; an older view without the column keeps the old way (every row filed, look-back from `detected_at`); the 30-day look-back counts from `sent_at`. |
 
 ## Batchwright (ebmr): retired (D-56)
 
@@ -33,8 +33,8 @@ own row (source `truebatch`).
 | `report.deviation_note_v1` | `note_id bigint`, `source_ref` (`truebatch:note:<note_id>`), `batch_number`, `product_code`, `step` (the readable name of the step as TrueBatch shows it, e.g. "Granulation › Granulate to an end point"; Deviations puts it in the title as given, D-52), `note`, `reference` (the deviation number typed with the note, or null), `status` (TrueBatch's own: open / closed; null without a number), `noted_at`, `read_at`, `data_as_of` |
 
 D-65 (owner, 20 Nov 2026): the view also carries `decision` (open / closed / sent; null with a `reference`) and `sent_at`
-(when a person sent the note to Deviations in the batch record; null otherwise), read as JSON so a product whose view has
-no such column sends nothing. Every note with no `reference` that was sent in the last 30 days (by `sent_at`) is filed once as a deviation (`deviations.source_ref` = its
+(when a person sent the note to Deviations in the batch record; null otherwise), read as JSON; a product whose view has no such
+column yet keeps the old way (every note without a `reference` is filed). Otherwise every note with no `reference` that was sent in the last 30 days (by `sent_at`) is filed once as a deviation (`deviations.source_ref` = its
 `source_ref`); TrueBatch finds the number in `report.deviation_v1` by `source_ref` or by the batch (`batch_norm`).
 D-58: the filed deviation's Equipment is pulled from the same product's `report.equipment_use_v1` for the note's batch
 (`batch_number`, `equipment_code`, `room_code`, `step`, and `step_name`, the readable step name, read as JSON so a

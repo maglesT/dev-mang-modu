@@ -114,13 +114,33 @@ describe('only what was sent is filed (D-65)', () => {
     expect((await fileLogbookOverdue(t.sql, src())).filed).toHaveLength(1);
   });
 
-  it('DV-01: an older Logbook whose overdue_v1 has no sent_at column sends nothing (no automatic filing)', async () => {
+  it('DV-01: a Logbook whose overdue_v1 has no sent_at column yet keeps the old way: filed on its own (look-back from when found)', async () => {
     const old = `lbold_${process.pid}`;
     await t.owner.unsafe(`create schema ${old}; create table ${old}.overdue_v1 (event_id bigint, equipment_code text, kind text, due_at timestamptz, detected_at timestamptz,
       title text, description text, immediate_action text, impact_notes text); grant usage on schema ${old} to ${APP_ROLE}; grant select on ${old}.overdue_v1 to ${APP_ROLE}`);
     try {
-      await overdue(23, 'TAB-03', 2, 0, 'now()', old);
-      expect(await fileLogbookOverdue(t.sql, { sql: reader, schema: old })).toEqual({ filed: [], problems: [] });
+      await overdue(23, 'TAB-03', 2, 0, null, old);
+      await overdue(24, 'TAB-04', 2, 40, null, old);   // older than the look-back
+      const r = await fileLogbookOverdue(t.sql, { sql: reader, schema: old });
+      expect(r.filed).toHaveLength(1);
+      expect(await t.owner`select 1 from deviations where source_ref = ${`${SOURCE_PREFIX}23`}`).toHaveLength(1);
+    } finally {
+      await t.owner.unsafe(`drop schema ${old} cascade`);
+    }
+  });
+
+  it('DV-01: a product whose deviation_note_v1 has no decision column yet (not ported) keeps the old way: every note without a number is filed', async () => {
+    const old = `tbold_${process.pid}`;
+    await t.owner.unsafe(`create schema ${old}; create table ${old}.deviation_note_v1 (note_id bigint, source_ref text, batch_number text, product_code text, step text, note text,
+      reference text, status text, noted_at timestamptz, read_at timestamptz default now(), data_as_of timestamptz default now());
+      grant usage on schema ${old} to ${APP_ROLE}; grant select on ${old}.deviation_note_v1 to ${APP_ROLE}`);
+    try {
+      await t.owner.unsafe(`insert into ${old}.deviation_note_v1 (note_id, source_ref, batch_number, product_code, step, note, reference, noted_at) values
+        (91, 'truebatch_injectables:note:91', 'TI260091', 'FG-TI', 'Filling › Fill', 'Fill weight low', null, now() - interval '1 hour'),
+        (92, 'truebatch_injectables:note:92', 'TI260091', 'FG-TI', 'Filling › Fill', 'Has a number', 'DEV-2026-0099', now() - interval '1 hour')`);
+      const r = await fileInjectablesNotes(t.sql, { sql: reader, schema: old });
+      expect(r.filed).toHaveLength(1);
+      expect(await t.owner`select 1 from deviations where source_ref = ${`${TBI_PREFIX}91`}`).toHaveLength(1);
     } finally {
       await t.owner.unsafe(`drop schema ${old} cascade`);
     }
