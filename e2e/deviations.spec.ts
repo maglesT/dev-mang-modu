@@ -215,3 +215,31 @@ test('D-66: a CPV signal sent from Operations is a deviation in the Operations C
   await expect(page.getByText(/CPV\) signal 3 in Operations: product Example tablets 10 mg \(invented\) \(FG-EX-10\), batch EX26E05, parameter Tablet hardness/)).toBeVisible();
   await expect(page.getByText('Operations CPV (automatic report)').first()).toBeVisible();
 });
+
+// D-67: QA cancels a report as "not a deviation" with a reason and one e-signature; the record stays, under its own filter.
+test('D-67: QA cancels a report as not a deviation: reason, one signature, kept and listed under "Not a deviation"', async ({ page }) => {
+  await logIn(page, 'us1');
+  const number = await report(page, 'Weight check thought missed', `NAD-${Date.now().toString(36)}`);
+  // The reporter holds no cancel right: no button.
+  await expect(page.getByRole('button', { name: 'Not a deviation (cancel)' })).toHaveCount(0);
+  await logOut(page);
+
+  await logIn(page, 'qa1');
+  await page.getByRole('button', { name: number }).click();
+  await page.getByRole('button', { name: 'Not a deviation (cancel)' }).click();
+  await expect(page.getByRole('dialog')).toContainText('Sign: Cancelled: not a deviation');
+  await page.getByLabel('Reason why this is not a deviation').fill('The check was on the paper log at 10:00; it was copied late.');
+  await sign(page);
+  await expect(page.locator('.statusbar')).toContainText('Cancelled by QA: not a deviation');
+  const card = page.locator('section.card', { has: page.getByRole('heading', { name: 'Cancelled by QA: not a deviation' }) });
+  await expect(card).toContainText('copied late');
+  await expect(card).toContainText('QA1');
+  await expect(page.getByRole('button', { name: 'Not a deviation (cancel)' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Investigation' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '← All deviations' }).click();
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  await expect(page.getByRole('row', { name: new RegExp(number) })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Not a deviation', exact: true }).click();
+  await expect(page.getByRole('row', { name: new RegExp(number) })).toContainText('Cancelled by QA: not a deviation');
+});

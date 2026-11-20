@@ -97,7 +97,7 @@ describe('sign-on through core (PL-01)', () => {
   it('DV-18 (D-42): the role table covers every code; Admin keeps only audit reading and settings', () => {
     expect(ROLE_PERMISSIONS.admin).toEqual(['deviations.audit.read', 'deviations.settings.manage']);
     expect(ROLE_PERMISSIONS.qa).toEqual(expect.arrayContaining(ROLE_PERMISSIONS.user));
-    expect(new Set(Object.values(ROLE_PERMISSIONS).flat()).size).toBe(11);   // every code is given by some old role
+    expect(new Set(Object.values(ROLE_PERMISSIONS).flat()).size).toBe(12);   // every code is given by some old role
   });
 
   it('PL-01 a sign-in this browser did not start is refused (no login CSRF)', async () => {

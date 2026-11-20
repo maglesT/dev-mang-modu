@@ -12,7 +12,8 @@ export const PHASES = {
 } as const;
 
 export function dmaicPhases(step: string, capaSteps: string[], noCapaReason: string): Phase[] | null {
-  if (step === 'rejected') return null;
+  // A rejected planned deviation, or a report QA cancelled as not a deviation (D-67), never went through the phases.
+  if (step === 'rejected' || step === 'cancelled') return null;
   const defined = !['classification', 'approval'].includes(step);
   const investigated = step === 'closure' || step === 'closed';
   const closed = step === 'closed';

@@ -73,7 +73,7 @@ export async function computeSignals(sql: Sql, id: number): Promise<Signals | nu
       cross join lateral (select s.id, s.data from sections s where s.deviation_id = d.id and s.kind = 'report' order by s.version desc limit 1) r
       left join lateral (select s.data from sections s where s.deviation_id = d.id and s.kind = 'classification' order by s.version desc limit 1) c on true
       left join lateral (select s.data from sections s where s.deviation_id = d.id and s.kind = 'investigation' order by s.version desc limit 1) i on true
-      where d.id <> ${id} and d.step <> 'rejected'
+      where d.id <> ${id} and d.step not in ('rejected', 'cancelled')
     )
     select * from rows where same_area or same_type or same_equipment or same_product or same_batch
     order by id desc`;

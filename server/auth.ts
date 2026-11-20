@@ -12,6 +12,8 @@ export const PERMISSIONS = {
   'deviations.investigation.write': 'Investigate deviations assigned to you, attachments, fetch related data, AI suggestions',
   'deviations.qa.oversee': "Act on any deviation's investigation, report, attachments or CAPA, not only your own; QA to-do lists",
   'deviations.deviation.close': 'Close and reopen deviations (e-signature)',
+  // D-67: QA's "not a deviation" before the investigation is signed.
+  'deviations.report.cancel': 'Cancel a report as not a deviation (reason and e-signature)',
   'deviations.capa.raise': 'Raise CAPAs, correct them, change due dates',
   'deviations.capa.complete': 'Mark CAPAs you own as done',
   'deviations.capa.verify': 'Verify CAPAs and record effectiveness checks (e-signature)',
@@ -27,7 +29,7 @@ export type Role = (typeof ROLES)[number];
 const USER: Permission[] = ['deviations.deviation.report', 'deviations.investigation.write', 'deviations.capa.complete'];
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   user: USER,
-  qa: [...USER, 'deviations.deviation.classify', 'deviations.deviation.approve', 'deviations.qa.oversee', 'deviations.deviation.close',
+  qa: [...USER, 'deviations.deviation.classify', 'deviations.deviation.approve', 'deviations.qa.oversee', 'deviations.deviation.close', 'deviations.report.cancel',
     'deviations.capa.raise', 'deviations.capa.verify', 'deviations.audit.read'],
   admin: ['deviations.audit.read', 'deviations.settings.manage'],
 };

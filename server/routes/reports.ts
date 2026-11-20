@@ -62,10 +62,10 @@ export function spikeFlags(rows: { key: string; month: string; n: number }[], fr
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
 const STEP: Record<string, string> = {
   classification: 'Awaiting classification', approval: 'Awaiting approval', investigation: 'Investigation',
-  closure: 'Awaiting closure', closed: 'Closed', rejected: 'Rejected', open: 'Open', done: 'Done, awaiting QA', check: 'Effectiveness check due',
+  closure: 'Awaiting closure', closed: 'Closed', rejected: 'Rejected', cancelled: 'Cancelled by QA: not a deviation', open: 'Open', done: 'Done, awaiting QA', check: 'Effectiveness check due',
 };
 const MEANING: Record<string, string> = {
-  approved: 'Approved', rejected: 'Rejected', investigation_complete: 'Investigation complete', verified: 'Verified', closed: 'Closed', reopened: 'Reopened',
+  approved: 'Approved', rejected: 'Rejected', investigation_complete: 'Investigation complete', verified: 'Verified', closed: 'Closed', reopened: 'Reopened', cancelled: 'Cancelled: not a deviation',
 };
 
 // Reads one of this app's own JSON endpoints as the same user, so the PDF shows exactly what the screen shows.
@@ -93,6 +93,9 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
       const o = v as Row;
       return [['LIMS OOS', `${val(o.number)}: ${val(o.test)} of ${[o.itemCode, o.itemName].filter(Boolean).map(val).join(' ')}, lot ${val(o.lot)}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
     }
+    // D-67: QA's "not a deviation", in words.
+    if (k === 'notADeviation') return [['not a deviation', v ? 'yes: cancelled by QA' : 'no']];
+    if (k === 'stepBefore') return [['status before', STEP[String(v)] ?? val(v)]];
     // D-63: the QMS CAPAs a closure was checked against.
     if (k === 'qmsCapas' && Array.isArray(v)) return [['CAPAs in QMS (checked at closure)', v.length ? v.join(', ') : 'none']];
     // S13 tools print readably (D-35).
@@ -175,13 +178,13 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     return withQmsOpen(qms, await sql<{ number: string; openCapas: number }[]>`
       select d.id::int, d.number, d.step, d.classification, to_char(d.target_date, 'YYYY-MM-DD') as "targetDate",
         r.data->>'title' as title, b.role, b.product, b.batch, b.outcome,
-        (d.step not in ('closed', 'rejected')) as open,
+        (d.step not in ('closed', 'rejected', 'cancelled')) as open,
         (select count(*)::int from capas c where c.deviation_id = d.id and c.step <> 'closed') as "openCapas"
       from batches b join latest_sections s on s.id = b.section_id
       join deviations d on d.id = b.deviation_id
       join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
       where b.batch_norm = ${norm}
-      order by (d.step not in ('closed', 'rejected')) desc, d.id desc`, (m) => req.log.warn(m));
+      order by (d.step not in ('closed', 'rejected', 'cancelled')) desc, d.id desc`, (m) => req.log.warn(m));
   });
 
   // DV-12: counts by month split by area, type or classification, for a period and product; CAPA counts too.
@@ -202,6 +205,8 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       left join latest_sections c on c.deviation_id = d.id and c.kind = 'classification'
       left join deviation_types ty on ty.id = (c.data->>'typeId')::bigint
       where to_char(d.reported_at at time zone ${PLANT_TZ}, 'YYYY-MM') between ${from} and ${to}
+        -- D-67: a report QA cancelled as not a deviation is not counted as a deviation.
+        and d.step <> 'cancelled'
         and (${product === ''} or exists (select 1 from batches b where b.section_id = r.id and b.product ilike ${like}))`;
     const key = by === 'area' ? sql`coalesce(area, '—')` : by === 'type' ? sql`coalesce(type, 'Not classified')` : sql`coalesce(classification, 'not classified')`;
     const countsIn = (f: string, t: string) => sql<{ key: string; month: string; n: number }[]>`
@@ -210,14 +215,14 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     const all = await countsIn(addMonths(from, -BASELINE_MONTHS), to);
     const counts = all.filter((r) => r.month >= from);
     // Months before the site's first deviation are not history; quiet months after it count as 0.
-    const [first] = await sql<{ m: string | null }[]>`select to_char(min(reported_at) at time zone ${PLANT_TZ}, 'YYYY-MM') as m from deviations`;
+    const [first] = await sql<{ m: string | null }[]>`select to_char(min(reported_at) at time zone ${PLANT_TZ}, 'YYYY-MM') as m from deviations where step <> 'cancelled'`;
     const spikes = spikeFlags(all, from, to, first?.m ?? to);
     // Every spelling of the product that matched, so variants are seen and not silently missed (DV-12).
     const products = product === '' ? [] : (await sql<{ product: string; n: number }[]>`
       select b.product, count(distinct d.id)::int as n
       from deviations d join latest_sections r on r.deviation_id = d.id and r.kind = 'report'
       join batches b on b.section_id = r.id
-      where to_char(d.reported_at at time zone ${PLANT_TZ}, 'YYYY-MM') between ${from} and ${to} and b.product ilike ${like}
+      where to_char(d.reported_at at time zone ${PLANT_TZ}, 'YYYY-MM') between ${from} and ${to} and b.product ilike ${like} and d.step <> 'cancelled'
       group by b.product order by b.product`);
     // CAPAs raised in the period; with a product filter, those of the matching deviations.
     const capas = await sql<{ source: string; step: string; outcome: string; n: number }[]>`
@@ -269,10 +274,10 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       heading('Product and batches'),
       table(['Role', 'Product', 'Batch', 'Outcome'], d.batches.map((b) => [b.role === 'own' ? 'Concerned' : 'Other batch checked', b.product, `${b.batch}${b.typed ? ' (typed by hand)' : ''}`, b.outcome ?? ''])),
     ];
-    for (const kind of ['report', 'classification', 'investigation_draft', 'investigation', 'closure', 'target_date']) {
+    for (const kind of ['cancellation', 'report', 'classification', 'investigation_draft', 'investigation', 'closure', 'target_date']) {
       const versions = d.sections.filter((x) => x.kind === kind);
       if (!versions.length) continue;
-      content.push(heading({ report: 'Report', classification: 'Classification', investigation_draft: 'Investigation drafts (saved while investigating, not signed)', investigation: 'Investigation', closure: 'Closure', target_date: 'Target date changes' }[kind]!));
+      content.push(heading({ cancellation: 'Cancelled by QA: not a deviation', report: 'Report', classification: 'Classification', investigation_draft: 'Investigation drafts (saved while investigating, not signed)', investigation: 'Investigation', closure: 'Closure', target_date: 'Target date changes' }[kind]!));
       for (const v of [...versions].reverse()) {
         // A draft is never current or superseded: it is a saved working copy (D-35).
         const state = kind === 'investigation_draft' ? ' (draft, not signed)' : latestIds.has(v.id) ? ' (current)' : ' (superseded by a correction)';

@@ -12,7 +12,7 @@ import { assignable } from '../people.js';
 import { INVESTIGATES, can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError } from '../signatures.js';
 import {
-  addSection, applyContext, checkClassification, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches, ownRows,
+  addSection, applyContext, ended, checkClassification, classificationData, contextProblems, investigationContext, investigationData, investigationDraft, latestId, recomputeStep, reportData, targetDate, writeBatches, ownRows,
   type ClassificationData, type InvestigationData, type ReportData, type Step,
 } from '../deviations.js';
 
@@ -200,7 +200,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
       const d = await lockHeader(tx, id);
       if (!d) return { status: 404, error: 'not_found' };
       // A closed or rejected deviation is reopened first; it is never edited in place.
-      if (d.step === 'closed' || d.step === 'rejected') return { status: 409, error: 'closed' };
+      if (ended(d.step)) return { status: 409, error: 'closed' };
       const before = await tx<{ id: number; data: unknown }[]>`select id::int, data from latest_sections where deviation_id = ${id} and kind = ${kind}`;
       if (!before[0]) return { status: 409, error: 'nothing_to_correct' };
       const allowed =
@@ -354,7 +354,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
     const out = await sql.begin(async (tx) => {
       const d = await lockHeader(tx, id);
       if (!d) return null;
-      if (d.step === 'closed' || d.step === 'rejected') return 'closed' as const;
+      if (ended(d.step)) return 'closed' as const;
       const [a] = await tx<{ id: number }[]>`
         insert into attachments (deviation_id, filename, mime, size, sha256, data, uploaded_by)
         values (${id}, ${body.data.filename}, ${body.data.mime}, ${bytes.length}, ${sha256}, ${bytes}, ${req.user!.id}) returning id::int`;
@@ -389,7 +389,7 @@ export function investigationRoutes(app: FastifyInstance, sql: Sql, sources: Sou
           exists (select 1 from attachment_withdrawals w where w.attachment_id = a.id) as withdrawn
         from attachments a join deviations d on d.id = a.deviation_id where a.id = ${id} for update of d`;
       if (!a) return 404;
-      if (a.withdrawn || a.step === 'closed' || a.step === 'rejected') return 409;
+      if (a.withdrawn || ended(a.step)) return 409;
       if (a.uploaded_by !== req.user!.id && !can(req.user!, 'deviations.qa.oversee')) return 403;
       await tx`insert into attachment_withdrawals (attachment_id, reason, withdrawn_by) values (${id}, ${body.data.reason}, ${req.user!.id})`;
       await audit(tx, { actorId: req.user!.id, action: 'attachment.withdrawn', objectType: 'deviation', objectId: a.deviation_id,

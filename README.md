@@ -55,7 +55,9 @@ the trend view and PDF copies support reviews and inspections.
    database setting, not in a backup, so after restoring into a new database run
    `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC; GRANT TEMPORARY ON DATABASE <db> TO deviations_app;`.
    The batch records read the deviations the same way (D-49): role `deviation_report`, view `report.deviation_v1`
-   (deviation number, status, classification, opened and closed times, and each product and batch it names).
+   (deviation number, status, classification, opened and closed times, and each product and batch it names). The status is
+   one of classification, approval, investigation, closure, closed, rejected or cancelled (QA's "not a deviation", D-67);
+   closed, rejected and cancelled are ended.
 8. Schedule the daily backup (DV-22) with an off-host copy, e.g. cron
    `15 1 * * * DATABASE_URL=... BACKUP_DIR=/backups OFFSITE_DIR=/mnt/offsite /opt/deviations/ops/backup.sh`.
    With Docker (no database port on the host), give `COMPOSE="docker compose -p <project> -f ... -f ..."` instead of

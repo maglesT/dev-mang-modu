@@ -10,7 +10,7 @@ import { assignable } from '../people.js';
 import { can, parseId, requirePermission, type SessionUser } from '../auth.js';
 import { authenticateSigner, contentHash, sign, signBody, SignError, type Meaning } from '../signatures.js';
 import {
-  fileDeviation,
+  fileDeviation, ended,
   PLANT_TZ, addSection, checkClassification, classificationData, isSigned, normaliseBatch, overdueSql, recomputeStep, reportData, targetDate, writeBatches,
   type ClassificationData, type ReportData, type Step,
   investigationContext,
@@ -20,6 +20,8 @@ const problems = (e: z.ZodError) => e.issues.map((i) => i.message);
 const reasonSign = signBody.extend({ reason: z.string().trim().min(1).max(2000) });
 // A real calendar date: "2026-02-30" is refused rather than rolled over.
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s), 'Not a valid date.');
+// D-67: the reason and the signing proof for "not a deviation".
+const cancelBody = z.object({ reason: z.string().trim().min(1).max(2000), signature: signBody.pick({ proof: true }) });
 const targetBody = z.object({ targetDate: isoDate, reason: z.string().trim().min(1).max(500) });
 // LIKE wildcards in a search are taken literally.
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
@@ -114,7 +116,9 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
       view === 'all' ? sql`true`
       : view === 'overdue' ? overdueSql(sql)
       : view === 'mine' ? mine
-      : sql`d.step not in ('closed', 'rejected')`;
+      // D-67: a report QA cancelled as not a deviation is listed only under its own filter (and in all).
+      : view === 'cancelled' ? sql`d.step = 'cancelled'`
+      : sql`d.step not in ('closed', 'rejected', 'cancelled')`;
     const like = '%' + likeEscape(q) + '%';
     const norm = normaliseBatch(q);
     const search = q
@@ -281,7 +285,7 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
       const d = await lockHeader(tx, id);
       if (!d) return 404;
       // Not while a planned deviation awaits approval: the approver signs what is on the screen.
-      if (!d.classification || d.step === 'closed' || d.step === 'rejected' || d.step === 'approval') return 409;
+      if (!d.classification || ended(d.step) || d.step === 'approval') return 409;
       const [old] = await tx<{ t: string; before_report: boolean }[]>`
         select to_char(target_date, 'YYYY-MM-DD') as t, ${body.data.targetDate}::date < (reported_at at time zone ${PLANT_TZ})::date as before_report
         from deviations where id = ${id}`;
@@ -295,6 +299,42 @@ export function deviationRoutes(app: FastifyInstance, sql: Sql, sources: Sources
     if (out === 400) return reply.code(400).send({ error: 'invalid_request', problems: ['The target date cannot be before the report date.'] });
     if (out !== 200) return reply.code(out).send({ error: out === 404 ? 'not_found' : 'wrong_step' });
     return { targetDate: body.data.targetDate };
+  });
+
+  // D-67: QA cancels a report as "not a deviation" before the investigation is signed (awaiting classification,
+  // awaiting approval, or classified and under investigation), with a reason and one e-signature. Not the reporter
+  // (independent check), not once a CAPA was raised here or the deviation was ever closed. The record is kept: the reason
+  // is a new section 'cancellation', signed 'cancelled'; the step becomes 'cancelled' (not open, never overdue, not in the
+  // trends). source_ref stays, so an automatic report is never filed again.
+  const CANCELLABLE: readonly Step[] = ['classification', 'approval', 'investigation'];
+  app.post<{ Params: { id: string } }>('/api/deviations/:id/cancel', { preHandler: requirePermission('deviations.report.cancel') }, async (req, reply) => {
+    const id = parseId(req.params.id);
+    const body = cancelBody.safeParse(req.body);
+    if (id === null || !body.success) return reply.code(400).send({ error: 'invalid_request', problems: ['Give the reason why this is not a deviation.'] });
+    const user = req.user as SessionUser;
+    try {
+      const signer = await authenticateSigner(sql, app.proofKey, user, body.data.signature,
+        { objectType: 'deviation', objectId: id, meaning: 'cancelled', needs: 'deviations.report.cancel' });
+      return await sql.begin(async (tx) => {
+        const d = await lockHeader(tx, id);
+        if (!d) return reply.code(404).send({ error: 'not_found' });
+        if (!CANCELLABLE.includes(d.step)) return reply.code(409).send({ error: 'wrong_step', problems: ['Only a report not yet investigated can be cancelled as not a deviation.'] });
+        if (d.reporter_id === user.id) return reply.code(403).send({ error: 'reporter_cannot_cancel', problems: ['You reported this deviation, so another QA person decides.'] });
+        const [used] = await tx<{ capas: number; closed: boolean }[]>`
+          select (select count(*)::int from capas where deviation_id = ${id}) as capas,
+            exists (select 1 from sections where deviation_id = ${id} and kind = 'closure') as closed`;
+        if (used!.capas || used!.closed) return reply.code(409).send({ error: 'wrong_step', problems: ['A CAPA was raised or the deviation was closed before: it cannot be cancelled as not a deviation.'] });
+        const content = { notADeviation: true, reason: body.data.reason, stepBefore: d.step };
+        const section = await addSection(tx, id, 'cancellation', content, user.id);
+        await sign(tx, { signer, shownHash: contentHash('section', section.id, content), objectType: 'section', objectId: section.id, meaning: 'cancelled', content });
+        await tx`update deviations set step = 'cancelled' where id = ${id}`;
+        await audit(tx, { actorId: user.id, action: 'deviation.cancelled', objectType: 'deviation', objectId: id,
+          old: { step: d.step }, new: { step: 'cancelled' }, reason: body.data.reason });
+        return { step: 'cancelled' };
+      });
+    } catch (e) {
+      return signFail(reply, e);
+    }
   });
 }
 
