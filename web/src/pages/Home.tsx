@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, can, CLASS_LABEL, plantDate, STEP_CHIP, STEP_LABEL, type DeviationItem, type Me } from '../api.js';
 
-type View = 'mine' | 'open' | 'overdue' | 'all';
-const VIEWS: [View, string][] = [['mine', 'Waiting for me'], ['open', 'Open'], ['overdue', 'Overdue'], ['all', 'All']];
+type View = 'mine' | 'open' | 'overdue' | 'all' | 'cancelled';
+// D-67: reports QA cancelled as not a deviation have their own filter.
+const VIEWS: [View, string][] = [['mine', 'Waiting for me'], ['open', 'Open'], ['overdue', 'Overdue'], ['all', 'All'], ['cancelled', 'Not a deviation']];
 
 // Home: the next action is obvious (report button, "waiting for me"), with status and due dates at a glance.
 export function Home({ me, onReport, onOpen, onCapas }: { me: Me; onReport: () => void; onOpen: (id: number) => void; onCapas: () => void }) {
@@ -10,7 +11,7 @@ export function Home({ me, onReport, onOpen, onCapas }: { me: Me; onReport: () =
   const [view, setView] = useState<View>('mine');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<DeviationItem[]>([]);
-  const [counts, setCounts] = useState<Record<View, number>>({ mine: 0, open: 0, overdue: 0, all: 0 });
+  const [counts, setCounts] = useState<Record<View, number>>({ mine: 0, open: 0, overdue: 0, all: 0, cancelled: 0 });
   const canReport = can(me, 'deviations.deviation.report');
 
   const load = async (v = view, search = q) => {

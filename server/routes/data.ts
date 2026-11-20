@@ -5,6 +5,7 @@ import { fetchRelated, type Sources } from '../readers/fetch.js';
 import { batchPicks } from '../readers/picks.js';
 import { LIMS_OFF, listOos } from '../readers/lims.js';
 import { BATCH_PRODUCTS } from '../readers/truebatch.js';
+import { ended } from '../deviations.js';
 
 // S17 (D-37, DV-23): data collection for a deviation from the TrueBatch products (D-51, D-57) and the Logbook (read-only; Batchwright retired, D-56).
 export function dataRoutes(app: FastifyInstance, sql: Sql, sources: Sources) {
@@ -38,7 +39,7 @@ export function dataRoutes(app: FastifyInstance, sql: Sql, sources: Sources) {
     if (id === null) return reply.code(400).send({ error: 'invalid_request' });
     const [d] = await sql<{ step: string }[]>`select step from deviations where id = ${id}`;
     if (!d) return reply.code(404).send({ error: 'not_found' });
-    if (d.step === 'closed' || d.step === 'rejected') return reply.code(409).send({ error: 'closed' });
+    if (ended(d.step)) return reply.code(409).send({ error: 'closed' });
     // One fetch per deviation every 30 s at most: each one is kept.
     const [recent] = await sql`select 1 from data_fetches where deviation_id = ${id} and fetched_at > now() - interval '30 seconds'`;
     if (recent) return reply.code(429).send({ error: 'too_soon', message: 'The data was fetched less than 30 seconds ago.' });

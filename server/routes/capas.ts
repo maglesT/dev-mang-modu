@@ -124,7 +124,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       if (source === 'deviation') {
         const [d] = await tx<{ step: string }[]>`select step from deviations where id = ${deviationId!} for update`;
         if (!d) return { status: 400, problems: ['Unknown deviation.'] };
-        if (d.step === 'rejected' || d.step === 'classification' || d.step === 'approval') return { status: 409, problems: ['CAPAs are raised once the deviation is classified (and approved, if planned).'] };
+        if (d.step === 'rejected' || d.step === 'cancelled' || d.step === 'classification' || d.step === 'approval') return { status: 409, problems: ['CAPAs are raised once the deviation is classified (and approved, if planned).'] };
       }
       if (!(await okOwner(tx, app.people, fields.ownerId))) return { status: 400, problems: ['Choose an active owner from the list.'] };
       if (await pastDate(tx, fields.dueDate)) return { status: 400, problems: ['The due date cannot be in the past.'] };

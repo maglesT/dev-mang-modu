@@ -9,7 +9,11 @@ import { FMEA_SCALE } from './fmea.js';
 export const PLANT_TZ = 'Asia/Kolkata';
 export const CLASSIFICATIONS = ['minor', 'major', 'critical'] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
-export type Step = 'classification' | 'approval' | 'investigation' | 'closure' | 'closed' | 'rejected';
+export type Step = 'classification' | 'approval' | 'investigation' | 'closure' | 'closed' | 'rejected' | 'cancelled';
+// Steps after which a deviation is no longer worked on: closed, a rejected planned deviation, or cancelled by QA as
+// not a deviation (D-67). Ended deviations are not open, never overdue and are not edited.
+export const ENDED: readonly Step[] = ['closed', 'rejected', 'cancelled'];
+export const ended = (step: string) => (ENDED as readonly string[]).includes(step);
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 // Lower case without spaces, dashes, slashes or dots: "B-123/A" and "b123a" match (DV-11).
@@ -160,7 +164,7 @@ export async function targetDate(tx: Tx | Sql, deviationId: number, classificati
 
 // SQL fragment: overdue = past the target date in plant time and still open.
 export const overdueSql = (sql: Sql) =>
-  sql`(d.target_date is not null and d.target_date < (now() at time zone ${PLANT_TZ})::date and d.step not in ('closed', 'rejected'))`;
+  sql`(d.target_date is not null and d.target_date < (now() at time zone ${PLANT_TZ})::date and d.step not in ('closed', 'rejected', 'cancelled'))`;
 
 // Fishbone (Ishikawa) categories: possible causes considered per category (owner decision D-26). Optional;
 // older investigations without it read as empty. Saved and signed with the investigation.
@@ -339,7 +343,7 @@ async function approvalValid(tx: Tx, id: number): Promise<boolean> {
 
 // The step a deviation is in after its sections changed (DV-14: a correction supersedes earlier signatures).
 export async function recomputeStep(tx: Tx, d: { id: number; planned: boolean; step: Step }): Promise<Step> {
-  if (d.step === 'closed' || d.step === 'rejected') return d.step;
+  if (ended(d.step)) return d.step;
   const classification = await latestId(tx, d.id, 'classification');
   if (!classification) return 'classification';
   if (d.planned && !(await approvalValid(tx, d.id))) return 'approval';

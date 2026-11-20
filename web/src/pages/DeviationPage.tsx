@@ -20,7 +20,9 @@ import { QMS_CLOSED, type CapaItem } from '../api.js';
 
 interface Person { id: number; fullName: string; username: string }
 type Kind = 'report' | 'classification' | 'investigation';
-type SignKind = 'approved' | 'rejected' | 'resign' | 'closed' | 'reopened';
+type SignKind = 'approved' | 'rejected' | 'resign' | 'closed' | 'reopened' | 'cancelled';
+// D-67: QA may cancel a report as not a deviation until the investigation is signed.
+const CANCELLABLE = ['classification', 'approval', 'investigation'];
 
 const latestOf = (d: Deviation, kind: SectionVersion['kind']) => d.sections.find((s) => s.kind === kind && s.latest);
 const str = (v: unknown) => (v === undefined || v === null || v === '' ? '—' : String(v));
@@ -46,6 +48,7 @@ function nextAction(d: Deviation): string {
     case 'closure': return 'QA raises CAPAs and closes the deviation.';
     case 'closed': return 'Closed.';
     case 'rejected': return 'Rejected: the planned deviation must not be carried out.';
+    case 'cancelled': return 'Nothing: QA decided this is not a deviation.';
   }
 }
 
@@ -101,7 +104,11 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
   // D-62: the hints and the data collection are for those who investigate (the server's INVESTIGATES); others never ask for them.
   const investigates = holds(me, 'deviations.investigation.write') || oversee;
   const classifier = holds(me, 'deviations.deviation.classify') && d.reporterId !== me.id;
-  const open = d.step !== 'closed' && d.step !== 'rejected';
+  const open = d.step !== 'closed' && d.step !== 'rejected' && d.step !== 'cancelled';
+  const cancelled = d.step === 'cancelled';
+  const cancellation = latestOf(d, 'cancellation');
+  const cancelSig = cancellation && d.signatures.find((g) => g.sectionId === cancellation.id && g.meaning === 'cancelled');
+  const canCancel = holds(me, 'deviations.report.cancel') && CANCELLABLE.includes(d.step) && d.reporterId !== me.id && d.openCapas === 0;
   const report = latestOf(d, 'report')!.data as Record<string, unknown>;
   const classification = latestOf(d, 'classification');
   const investigation = latestOf(d, 'investigation');
@@ -131,6 +138,20 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         <span>Target date: <b>{plantDate(d.targetDate)}</b>{d.overdue && <span className="chip chip-bad">Overdue</span>}</span>
         <span className="next">Next: {nextAction(d)}</span>
       </div>
+      {cancelled && cancellation && (
+        <section className="card notice">
+          <h2>Cancelled by QA: not a deviation</h2>
+          <Fields rows={[
+            ['Reason', str(cancellation.data.reason)],
+            ['Signed', cancelSig ? `${cancelSig.printedName} · ${plantTime(cancelSig.signedAt)}` : `${cancellation.savedBy} · ${plantTime(cancellation.savedAt)}`],
+            ['Status before', STEP_LABEL[cancellation.data.stepBefore as keyof typeof STEP_LABEL] ?? str(cancellation.data.stepBefore)],
+          ]} />
+          <p className="muted small">The record is kept. It is not counted as a deviation in the open and overdue lists or the trends.</p>
+        </section>
+      )}
+      {canCancel && (
+        <div className="actions"><button onClick={() => setSigning('cancelled')}>Not a deviation (cancel)</button></div>
+      )}
       <DmaicBar d={d} noCapaReason={String((latestOf(d, 'closure')?.data as Record<string, unknown> | undefined)?.noCapaReason ?? '')} />
 
       <PhaseHead k="D" step={d.step} />
@@ -176,7 +197,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         )}
       </section>
 
-      {d.step !== 'rejected' && <>
+      {d.step !== 'rejected' && !cancelled && <>
         <PhaseHead k="M" step={d.step} />
         {investigates && <>
           <Signals id={d.id} onOpen={onOpenDeviation} />
@@ -184,8 +205,9 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         </>}
         <Attachments d={d} me={me} open={open} onChange={load} />
         </>}
-      {d.step === 'rejected' && <Attachments d={d} me={me} open={open} onChange={load} />}
+      {(d.step === 'rejected' || cancelled) && <Attachments d={d} me={me} open={open} onChange={load} />}
 
+      {!cancelled && <>
       <PhaseHead k="A" step={d.step} />
       <section className="card">
         <div className="section-head"><h2>Investigation</h2>{correctButton('investigation')}</div>
@@ -224,6 +246,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
       </section>
 
       <Closure d={d} me={me} onOpenCapa={onOpenCapa} onChange={load} />
+      </>}
 
 
       <section className="card">
@@ -240,6 +263,9 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
 
       {(signing === 'approved' || signing === 'rejected') && (
         <ApproveDialog d={d} meaning={signing} onCancel={() => setSigning(null)} onDone={async () => { setSigning(null); await load(); }} />
+      )}
+      {signing === 'cancelled' && (
+        <CancelDialog d={d} onCancel={() => setSigning(null)} onDone={async () => { setSigning(null); await load(); }} />
       )}
       {signing === 'resign' && (
         <SignDialog meaning="investigation_complete" what={`${d.number}: the corrected investigation as shown.`} onCancel={() => setSigning(null)}
@@ -696,6 +722,24 @@ function ApproveDialog({ d, meaning, onCancel, onDone }: { d: Deviation; meaning
       }}
     >
       {meaning === 'rejected' && <label>Reason<textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} /></label>}
+    </SignDialog>
+  );
+}
+
+// D-67: QA cancels the report as not a deviation: a reason and one e-signature. The record is kept.
+function CancelDialog({ d, onCancel, onDone }: { d: Deviation; onCancel: () => void; onDone: () => Promise<void> }) {
+  const [reason, setReason] = useState('');
+  return (
+    <SignDialog
+      meaning="cancelled"
+      what={`${d.number}: this report is not a deviation. It is cancelled and kept on record with your reason; it leaves the open and overdue lists and the trends.`}
+      onCancel={onCancel}
+      onSign={async (cred) => {
+        await api('POST', `/api/deviations/${d.id}/cancel`, { reason, signature: cred });
+        await onDone();
+      }}
+    >
+      <label>Reason why this is not a deviation<textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
     </SignDialog>
   );
 }

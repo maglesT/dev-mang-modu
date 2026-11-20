@@ -6,7 +6,7 @@ import type { Permission, SessionUser } from './auth.js';
 import type { Identity } from './signon.js';
 
 // DV-16: the meanings a signature can carry in this system.
-export const MEANINGS = ['approved', 'rejected', 'investigation_complete', 'verified', 'closed', 'reopened'] as const;
+export const MEANINGS = ['approved', 'rejected', 'investigation_complete', 'verified', 'closed', 'reopened', 'cancelled'] as const;
 export type Meaning = (typeof MEANINGS)[number];
 
 // D-43 (platform PL-05), as Logbook B1-4 and MMS B2-3: at every signing the signer enters their password again at

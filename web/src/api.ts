@@ -95,9 +95,10 @@ export const MEANING_LABEL: Record<string, string> = {
   verified: 'Verified',
   closed: 'Closed',
   reopened: 'Reopened',
+  cancelled: 'Cancelled: not a deviation',
 };
 
-export type Step = 'classification' | 'approval' | 'investigation' | 'closure' | 'closed' | 'rejected';
+export type Step = 'classification' | 'approval' | 'investigation' | 'closure' | 'closed' | 'rejected' | 'cancelled';
 // What the step means and who acts next, in plain words.
 export const STEP_LABEL: Record<Step, string> = {
   classification: 'Awaiting classification',
@@ -106,6 +107,7 @@ export const STEP_LABEL: Record<Step, string> = {
   closure: 'Awaiting closure',
   closed: 'Closed',
   rejected: 'Rejected',
+  cancelled: 'Cancelled by QA: not a deviation',
 };
 export const STEP_CHIP: Record<Step, string> = {
   classification: 'chip-warn',
@@ -114,6 +116,7 @@ export const STEP_CHIP: Record<Step, string> = {
   closure: 'chip-info',
   closed: 'chip-ok',
   rejected: 'chip',
+  cancelled: 'chip',
 };
 export const CLASS_LABEL: Record<string, string> = { minor: 'Minor', major: 'Major', critical: 'Critical' };
 
@@ -140,7 +143,7 @@ export interface DeviationItem {
 
 export interface SectionVersion {
   id: number;
-  kind: 'report' | 'classification' | 'investigation' | 'investigation_draft' | 'closure' | 'target_date';
+  kind: 'report' | 'classification' | 'investigation' | 'investigation_draft' | 'closure' | 'target_date' | 'cancellation';
   version: number;
   data: Record<string, unknown>;
   savedAt: string;

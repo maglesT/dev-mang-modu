@@ -43,6 +43,7 @@ signing (Logbook D-30, MMS D-55).
 | `deviations.investigation.write` | Investigate deviations assigned to you, attachments, fetch related data, AI suggestions | /investigate*, /attachments, /fetch, /signals, /ai-suggest: user, qa |
 | `deviations.qa.oversee` | Act on any deviation's investigation, report, attachments or CAPA, not only your own; QA to-do lists | the "or QA" checks; enough on its own for the investigation routes and CAPA done (D-52) |
 | `deviations.deviation.close` | Close and reopen deviations (e-signature) | /close, /reopen: qa |
+| `deviations.report.cancel` | Cancel a report as not a deviation (reason and e-signature) | /cancel: qa (D-67) |
 | `deviations.capa.raise` | Raise CAPAs, correct them, change due dates | POST /capas, /correct, /due-date: qa |
 | `deviations.capa.complete` | Mark CAPAs you own as done | /capas/:id/done: user, qa |
 | `deviations.capa.verify` | Verify CAPAs and record effectiveness checks (e-signature) | /verify, /check: qa |
