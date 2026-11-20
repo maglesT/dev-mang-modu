@@ -14,7 +14,8 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, readTrueBatch, trueBatchFindings, viewsOf
 // copy (source = the product).
 // D-60: LIMS (oos_v1) for the OOS pick list and the filing of an OOS phase II investigation; not read by this fetch.
 // D-63: the QMS (capa_v1) and its web address, for the CAPAs when the QMS owns them; not read by this fetch.
-export type Sources = { logbook?: Source; lims?: Source; qms?: QmsSource } & Partial<Record<BatchProduct, Source>>;
+// D-66: Operations (cpv_signal_v1), for the filing of the CPV signals QA sent; not read by this fetch.
+export type Sources = { logbook?: Source; lims?: Source; qms?: QmsSource; ops?: Source } & Partial<Record<BatchProduct, Source>>;
 export const WINDOW_BEFORE_DAYS = 7;
 export const WINDOW_AFTER_DAYS = 1;
 const NOT_A_BATCH = new Set(['none', 'na', 'nil', 'nan', 'null', 'nobatch', 'notapplicable', '0']);
