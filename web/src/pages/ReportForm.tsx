@@ -1,3 +1,4 @@
+import { oosItemWords, oosLotWord } from '../../../server/words.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, ApiError, localInputValue, type NamedItem } from '../api.js';
 
@@ -16,9 +17,9 @@ export interface Oos {
 interface OosPick extends Oos { status: string; phaseII: boolean; filed: string | null }
 // D-61: an OOS report is filed in the QC laboratory area, set by the server (made the first time); not chosen here.
 export const LIMS_AREA = 'QC laboratory (Medhanta LIMS)';
-const oosItem = (o: Oos) => [o.itemCode, o.itemName].filter(Boolean).join(' ');
+const oosItem = (o: Oos) => oosItemWords(o);
 export const oosText = (o: Oos) =>
-  `${o.number}: ${o.test} of ${oosItem(o)}, lot ${o.lot}; result ${o.result}, limit ${o.limit}`;
+  `${o.number}: ${o.test} of ${oosItem(o)}, ${oosLotWord(o.itemKind)} ${o.lot}; result ${o.result}, limit ${o.limit}`;
 // D-57: a batch picked from a linked TrueBatch product names it (`from`); without it the batch was typed by hand.
 export interface ProductRow { product: string; batch: string; from?: string }
 interface BatchPick { batch: string; product: string | null; productName: string | null; status: string | null; from: string }
@@ -69,8 +70,8 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
     }
     setOos(o);
     setF({ ...f, planned: false, noBatch: false, eventAt: localInputValue(new Date(o.openedAt)),
-      title: `${o.number} phase II: ${o.test} of ${oosItem(o)}, lot ${o.lot}`.slice(0, 200),
-      description: `Phase II investigation of LIMS OOS ${o.number}. ${o.test} of ${oosItem(o)}, lot ${o.lot}, sample ${o.sample}, analysis ${o.analysis}: `
+      title: `${o.number} phase II: ${o.test} of ${oosItem(o)}, ${oosLotWord(o.itemKind)} ${o.lot}`.slice(0, 200),
+      description: `Phase II investigation of LIMS OOS ${o.number}. ${o.test} of ${oosItem(o)}, ${oosLotWord(o.itemKind)} ${o.lot}, sample ${o.sample}, analysis ${o.analysis}: `
         + `result ${o.result}, limit ${o.limit}. ${o.phaseI}` });
     setProducts([{ product: o.itemCode || o.itemName, batch: o.lot || o.sample, from: 'lims' }, ...others]);
   };
@@ -127,7 +128,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
           {!oosList.note && <p className="muted small">The open OOS of LIMS. Pick one whose phase I found no laboratory error; its details come from LIMS. An OOS that already has a deviation cannot be picked again.</p>}
         </div>
       )}
-      {oos && <p className="small"><b>LIMS OOS {oos.number}</b> · {oos.test} · {oosItem(oos)} · lot {oos.lot} · result {oos.result} · limit {oos.limit} · {oos.phaseI}</p>}
+      {oos && <p className="small"><b>LIMS OOS {oos.number}</b> · {oos.test} · {oosItem(oos)} · {oosLotWord(oos.itemKind)} {oos.lot} · result {oos.result} · limit {oos.limit} · {oos.phaseI}</p>}
       {!correct && <fieldset className="choice">
         <label className="check"><input type="radio" checked={!f.planned} onChange={() => setF({ ...f, planned: false })} /> It has happened (unplanned)</label>
         <label className="check"><input type="radio" checked={f.planned} disabled={!!oos} onChange={() => setF({ ...f, planned: true })} /> It is planned (needs QA approval first)</label>
@@ -161,7 +162,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
         {!f.noBatch && products.map((p, i) => (
           <div className="row" key={i}>
             <input aria-label={`Batch ${i + 1}`} placeholder={picks.batches.length ? 'Pick or type the batch number' : 'Batch number'} list="batch-picks" value={p.batch}
-              readOnly={p.from === 'lims'} title={p.from === 'lims' ? 'The lot of the OOS, from LIMS' : undefined} onChange={(e) => setBatch(i, e.target.value)} />
+              readOnly={p.from === 'lims'} title={p.from === 'lims' ? `The ${oos ? oosLotWord(oos.itemKind) : 'lot'} of the OOS, from LIMS` : undefined} onChange={(e) => setBatch(i, e.target.value)} />
             <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} readOnly={!!p.from} title={p.from === 'lims' ? 'From the OOS in LIMS' : p.from ? 'From the picked batch' : undefined}
               onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, product: e.target.value } : x)))} />
             {p.batch.trim() && !p.from && <span className="chip chip-warn">Typed by hand</span>}

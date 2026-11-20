@@ -8,6 +8,7 @@ import { fields, heading, plant, render, t, table } from '../pdf.js';
 import { BATCH_PRODUCTS, PRODUCT_NAME } from '../readers/products.js';
 import { withQmsOpen, type QmsCapa, type QmsSource } from '../readers/qms.js';
 import { fmeaLine } from '../fmea.js';
+import { MEANING_WORDS, STEP_WORDS, actionWords, oosItemWords, oosLotWord, plantDay, valueWords } from '../words.js';
 
 // D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
 const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (Batchwright)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
@@ -60,13 +61,14 @@ export function spikeFlags(rows: { key: string; month: string; n: number }[], fr
 }
 
 const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
-const STEP: Record<string, string> = {
-  classification: 'Awaiting classification', approval: 'Awaiting approval', investigation: 'Investigation',
-  closure: 'Awaiting closure', closed: 'Closed', rejected: 'Rejected', cancelled: 'Cancelled by QA: not a deviation', open: 'Open', done: 'Done, awaiting QA', check: 'Effectiveness check due',
-};
-const MEANING: Record<string, string> = {
-  approved: 'Approved', rejected: 'Rejected', investigation_complete: 'Investigation complete', verified: 'Verified', closed: 'Closed', reopened: 'Reopened', cancelled: 'Cancelled: not a deviation',
-};
+const STEP = STEP_WORDS;
+const MEANING = MEANING_WORDS;
+// A kept copy's outcome, in words.
+const FETCH_STATUS: Record<string, string> = { ok: 'read', not_configured: 'not linked', failed: 'could not be read' };
+const rows = (n: unknown) => `${Number(n).toLocaleString('en-IN')} ${Number(n) === 1 ? 'row' : 'rows'}`;
+// A history line's old and new values and action, in words (no raw keys or JSON on the PDF). Fixed widths: a long
+// hash in Old or New wraps inside its column instead of pushing the table off the page.
+const historyTable = (history: Row[]) => table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], history.map((h) => [plant(h.at as string), h.actor ?? 'System', actionWords(String(h.action)), valueWords(h.oldValue), valueWords(h.newValue), h.reason ?? '']), [55, 45, 60, 135, 135, 60]);
 
 // Reads one of this app's own JSON endpoints as the same user, so the PDF shows exactly what the screen shows.
 async function asUser<T>(app: FastifyInstance, req: FastifyRequest, url: string): Promise<{ status: number; body: T }> {
@@ -78,6 +80,8 @@ const sendPdf = (reply: FastifyReply, name: string, pdf: Buffer) =>
   reply.header('content-type', 'application/pdf').header('content-disposition', `attachment; filename="${name}.pdf"`).send(pdf);
 
 type Row = Record<string, unknown>;
+// A stored key as a label: "eventAt" -> "event at".
+const words = (k: string) => k.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ').toLowerCase();
 const val = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 type Names = { area: Map<number, string>; type: Map<number, string>; user: Map<number, string> };
 // Ids in stored data are printed with their names, so every version is readable on its own (DV-21).
@@ -91,7 +95,7 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     // D-60: the LIMS OOS of an OOS phase II investigation, as read from LIMS when it was filed.
     if (k === 'oos' && v && typeof v === 'object') {
       const o = v as Row;
-      return [['LIMS OOS', `${val(o.number)}: ${val(o.test)} of ${[o.itemCode, o.itemName].filter(Boolean).map(val).join(' ')}, lot ${val(o.lot)}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
+      return [['LIMS OOS', `${val(o.number)}: ${val(o.test)} of ${oosItemWords(o as { itemKind?: string; itemCode?: string; itemName?: string })}, ${oosLotWord(o.itemKind as string)} ${val(o.lot)}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
     }
     // D-67: QA's "not a deviation", in words.
     if (k === 'notADeviation') return [['not a deviation', v ? 'yes: cancelled by QA' : 'no']];
@@ -156,7 +160,7 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
       return [['final impact', `product quality affected: ${val(a.productQuality)}; patient safety at risk: ${val(a.patientSafety)}; other batches affected: ${val(a.otherBatches)}. ${val(a.notes)}`]];
     }
     const n = NAMED[k];
-    return [n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [k, val(v)]];
+    return [n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [words(k), valueWords(v, k)]];
   });
 async function loadNames(sql: Sql): Promise<Names> {
   const rows = async (q: Promise<{ id: number; name: string }[]>) => new Map((await q).map((r) => [r.id, r.name]));
@@ -268,7 +272,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       t(`${d.number} · ${val((d.sections.find((x) => x.kind === 'report' && x.latest)?.data as Row)?.title)}`, { bold: true, fontSize: 14 }),
       fields([
         ['Status', STEP[String(d.step)]], ['Classification', d.classification], ['Planned', d.planned ? 'yes' : 'no'],
-        ['Target date', d.targetDate], ['Overdue', d.overdue ? 'yes' : 'no'], ['Area', d.area],
+        ['Target date', plantDay(d.targetDate as string)], ['Overdue', d.overdue ? 'yes' : 'no'], ['Area', d.area],
         ['Reported by', `${val(d.reporter)} · ${plant(d.reportedAt as string)}`], ['Investigator', d.investigator], ['Open CAPAs', d.openCapas],
       ]),
       heading('Product and batches'),
@@ -296,7 +300,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     if (fetches.length) {
       content.push(heading('Data collected (read from other systems)'));
       for (const f of fetches) {
-        content.push(t(`${SOURCE_NAME[f.source] ?? 'Logbook'} · ${f.status} · ${plant(f.fetched_at)} · ${f.by} · ${f.row_count} rows · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        content.push(t(`${SOURCE_NAME[f.source] ?? 'Logbook'} · ${FETCH_STATUS[f.status] ?? f.status} · ${plant(f.fetched_at)} · ${f.by} · ${rows(f.row_count)} · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
       }
@@ -305,11 +309,11 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     if (fromQms.linked) {
       content.push(heading('CAPAs in QMS (read from QMS)'));
       if (fromQms.off) content.push(t(val(fromQms.note), { fontSize: 8 }));
-      else content.push(table(['Number', 'Title', 'Status', 'Owner', 'Due', 'Effective'], fromQms.capas.map((c) => [c.capa_number, c.title, c.status_text, c.owner_name ?? '', c.due_date ?? '', c.effective === null ? '' : c.effective ? 'yes' : 'no']), [60, '*', 70, 70, 50, 40]));
+      else content.push(table(['Number', 'Title', 'Status', 'Owner', 'Due', 'Effective'], fromQms.capas.map((c) => [c.capa_number, c.title, c.status_text, c.owner_name ?? '', c.due_date ? plantDay(c.due_date) : '', c.effective === null ? '' : c.effective ? 'yes' : 'no']), [60, '*', 70, 70, 50, 40]));
     }
-    if (!fromQms.linked || capas.length) content.push(heading(fromQms.linked ? 'CAPAs recorded here before QMS was linked' : 'CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], c.dueDate]), [60, 50, '*', 70, 70, 50]));
+    if (!fromQms.linked || capas.length) content.push(heading(fromQms.linked ? 'CAPAs recorded here before QMS was linked' : 'CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], plantDay(c.dueDate as string)]), [60, 50, '*', 70, 70, 50]));
     content.push(heading('Attachments'), table(['File', 'Size', 'SHA-256', 'By', 'When', 'Withdrawn'], d.attachments.map((a) => [a.filename, a.size, a.sha256, a.uploadedBy, plant(a.uploadedAt as string), a.withdrawnReason ?? '']), ['*', 30, 120, 50, 60, 60]));
-    content.push(heading('History (audit trail)'), table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], d.history.map((h) => [plant(h.at as string), h.actor ?? 'System', h.action, val(h.oldValue), val(h.newValue), h.reason ?? '']), [60, 50, 60, '*', '*', 60]));
+    content.push(heading('History (audit trail)'), historyTable(d.history));
     return sendPdf(reply, String(d.number), await render(s!.site_name, `Deviation ${d.number}`, req.user!.fullName, content));
   });
 
@@ -324,7 +328,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       t(String(c.number), { bold: true, fontSize: 14 }),
       fields([
         ['Status', STEP[String(c.step)]], ['Source', c.source === 'deviation' ? `Deviation ${val(c.deviationNumber)}` : `${val(c.source)}: ${val(c.sourceRef)}`],
-        ['Owner', c.owner], ['Due date', c.dueDate], ['Check due', c.checkDue], ['Overdue', c.overdue ? 'yes' : 'no'],
+        ['Owner', c.owner], ['Due date', plantDay(c.dueDate as string)], ['Check due', c.checkDue ? plantDay(c.checkDue as string) : ''], ['Overdue', c.overdue ? 'yes' : 'no'],
         ['Raised by', `${val(c.raisedBy)} · ${plant(c.raisedAt as string)}`],
       ]),
       heading('Versions'),
@@ -334,13 +338,13 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     for (const v of [...c.versions].reverse()) {
       // Each version adds to the one before; the highest is in force, earlier ones are kept as history.
       const isCurrent = Number(v.version) === current;
-      content.push(t(`Version ${v.version}${isCurrent ? ' (current)' : ' (superseded)'} · ${v.action} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+      content.push(t(`Version ${v.version}${isCurrent ? ' (current)' : ' (superseded)'} · ${words(String(v.action))} · ${val(v.savedBy)} · ${plant(v.savedAt as string)}${v.reason ? ` · reason: ${v.reason}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
       content.push(fields(dataRows(v.data as Row, names)));
       for (const g of c.signatures.filter((x) => x.versionId === v.id)) {
         content.push(t(`Signed: ${MEANING[String(g.meaning)] ?? g.meaning} · ${val(g.printedName)} · ${plant(g.signedAt as string)}`, { fontSize: 8, margin: [0, 2, 0, 0] }));
       }
     }
-    content.push(heading('History (audit trail)'), table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], c.history.map((h) => [plant(h.at as string), h.actor ?? 'System', h.action, val(h.oldValue), val(h.newValue), h.reason ?? '']), [60, 50, 60, '*', '*', 60]));
+    content.push(heading('History (audit trail)'), historyTable(c.history));
     return sendPdf(reply, String(c.number), await render(s!.site_name, `CAPA ${c.number}`, req.user!.fullName, content));
   });
 }

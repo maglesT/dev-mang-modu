@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, can, type Me } from './api.js';
+import { api, can, type Me } from './api.js';
 import { Login } from './pages/Login.js';
 import { AuditTrail } from './pages/AuditTrail.js';
 import { Home } from './pages/Home.js';
@@ -18,12 +18,8 @@ export function App() {
   const [openId, setOpenId] = useState(0);
 
   const refresh = useCallback(async () => {
-    try {
-      setMe(await api<Me>('GET', '/api/me'));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setMe(null);
-      else throw e;
-    }
+    // Signed out is a plain answer here, not a 401 (display rule, item 7).
+    setMe((await api<{ me: Me | null }>('GET', '/api/session')).me);
   }, []);
 
   useEffect(() => {

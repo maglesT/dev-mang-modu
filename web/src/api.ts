@@ -1,3 +1,4 @@
+import { plantDateTime, plantDay } from '../../server/words.js';
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -82,9 +83,7 @@ export interface AuditRow {
 
 // DV-16: times are shown in plant time with the zone label.
 export function plantTime(iso: string | null): string {
-  if (!iso) return '—';
-  const s = new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
-  return `${s} IST`;
+  return plantDateTime(iso, false);
 }
 
 // DV-16: the meaning of each signature, in words.
@@ -186,8 +185,7 @@ export function localInputValue(d: Date = new Date()): string {
 
 // A plain date (YYYY-MM-DD) in words.
 export function plantDate(d: string | null): string {
-  if (!d) return '—';
-  return new Date(`${d}T00:00:00+05:30`).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' });
+  return plantDay(d);
 }
 
 export type CapaStep = 'open' | 'done' | 'check' | 'closed';

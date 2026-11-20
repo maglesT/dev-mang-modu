@@ -1,5 +1,6 @@
 import type { Sql } from '../db.js';
 import { PLANT_TZ } from '../deviations.js';
+import { plantDay } from '../words.js';
 
 // S17 (D-37, DV-23): reads the Logbook's read-only report views (contract: docs/07-data-contracts.md).
 // Nothing is written to the Logbook. Values are compared as text; no casts on the other system's data.
@@ -70,7 +71,7 @@ export function logbookFindings(d: LogbookData, q: Query): string[] {
   for (const e of d.equipment.filter((x) => x.needs_calibration || x.kind === 'instrument')) {
     const last = d.calibrations.find((c) => c.equipment_code.toUpperCase() === e.code.toUpperCase() && c.performed_at && new Date(c.performed_at) <= q.eventAt);
     if (!last) out.push(`${e.code}: no calibration on record before the event.`);
-    else if (last.next_due && last.next_due < event) out.push(`${e.code}: calibration was overdue at the event (due ${last.next_due}; event ${event}). Results it gave may not be valid.`);
+    else if (last.next_due && last.next_due < event) out.push(`${e.code}: calibration was overdue at the event (due ${plantDay(last.next_due)}; event ${plantDay(event)}). Results it gave may not be valid.`);
     else if (last.result && !/^pass/i.test(last.result)) out.push(`${e.code}: last calibration result before the event: ${last.result}.`);
   }
   for (const e of d.equipment.filter((x) => x.kind === 'equipment')) {

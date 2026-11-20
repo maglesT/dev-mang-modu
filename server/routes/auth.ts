@@ -131,6 +131,12 @@ export function authRoutes(app: FastifyInstance, sql: Sql, signOn: SignOn) {
     return { ok: true, logoutUrl: signOn.logoutUrl(idToken) };
   });
 
+  // First load: whether someone is signed in, as a plain answer (no 401 in the browser console before sign-in).
+  app.get('/api/session', async (req) => {
+    const u = req.user;
+    return { me: u ? { id: u.id, username: u.username, fullName: u.fullName, permissions: u.permissions } : null };
+  });
+
   app.get('/api/me', { preHandler: requirePermission() }, async (req) => {
     const u = req.user!;
     return { id: u.id, username: u.username, fullName: u.fullName, permissions: u.permissions };

@@ -31,6 +31,12 @@ describe('sign-on through core (PL-01)', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it('display item 7: the first-load session check answers "signed out" without a 401', async () => {
+    const res = await t.app.inject({ method: 'GET', url: '/api/session' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ me: null });
+  });
+
   it('DV-18 PL-01: /login sends the browser to core; sign-on opens a session with the codes from core and is audited', async () => {
     const id = await seedUser(t.owner, uniq('us'), ['user']);
     const username = `us${n}`;
@@ -41,6 +47,8 @@ describe('sign-on through core (PL-01)', () => {
     expect(res.headers.location).toBe('/');
     expect((await call(t.app, cookie, 'GET', '/api/me')).json()).toEqual({ id, username, fullName: username.toUpperCase(),
       permissions: ROLE_PERMISSIONS.user });
+    expect((await call(t.app, cookie, 'GET', '/api/session')).json()).toEqual({ me: { id, username, fullName: username.toUpperCase(),
+      permissions: ROLE_PERMISSIONS.user } });
     expect(await auditRows('login', id)).toHaveLength(1);
   });
 

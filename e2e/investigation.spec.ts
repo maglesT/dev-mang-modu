@@ -174,12 +174,22 @@ test('DV-23: the Measure band fetches related data; a system that is not connect
   await page.getByRole('button', { name: number }).click();
   const card = page.getByRole('region', { name: 'Data collection' });
   await card.getByRole('button', { name: 'Fetch related data' }).click();
-  // D-57: the linked TrueBatch product (Injectables on the test server) is read; the Logbook is not connected.
-  await expect(card).toContainText('Batch record (TrueBatch Injectables)');
-  await expect(card).toContainText('No batch with this number was found in TrueBatch Injectables.');
-  // D-59: and the new product linked on the test server, under its own name.
-  await expect(card).toContainText('Batch record (TrueBatch Capsules Packing)');
-  await expect(card).toContainText('No batch with this number was found in TrueBatch Capsules Packing.');
+  // D-57, D-59: each linked TrueBatch product is read (Injectables and Capsules Packing on the test server); neither has
+  // the batch, so they are one line (display item 27); the Logbook is not connected.
+  await expect(card).toContainText('No batch with this number was found in TrueBatch Injectables, TrueBatch Capsules Packing.');
   await expect(card).toContainText('Not connected on this installation.');
+  await expect(card).not.toContainText('_v1');
   await expect(card.getByRole('button', { name: 'Fetch again' })).toBeVisible();
+});
+
+test('display item 27: the product that has the batch is shown; the others are one short line', async ({ page }) => {
+  const number = await inInvestigation('TI26E01');
+  await logIn(page, 'us2');
+  await page.getByRole('button', { name: number }).click();
+  const card = page.getByRole('region', { name: 'Data collection' });
+  await card.getByRole('button', { name: 'Fetch related data' }).click();
+  await expect(card).toContainText('Batch record (TrueBatch Injectables)');
+  await expect(card).toContainText('Also read, the batch is not there: TrueBatch Capsules Packing.');
+  await expect(card).not.toContainText('Batch record (TrueBatch Capsules Packing)');
+  await expect(card).not.toContainText('No batch with this number');
 });
