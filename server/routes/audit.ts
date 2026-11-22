@@ -29,10 +29,12 @@ export function auditRoutes(app: FastifyInstance, sql: Sql) {
         user: z.string().max(40).optional(),
         from: z.coerce.date().optional(),
         to: z.coerce.date().optional(),
+        deviation: z.string().max(40).optional(),
+        hideSignIns: z.string().max(5).optional(),
       })
       .safeParse(req.query);
     if (!f.success) return reply.code(400).send({ error: 'invalid_request' });
-    const { objectType, objectId, user, from, to } = f.data;
+    const { objectType, objectId, user, from, to, deviation, hideSignIns } = f.data;
     return sql<AuditRow[]>`
       select a.id::int, a.at, u.full_name as actor, u.username as "actorUsername", a.action, a.object_type as "objectType",
         a.object_id as "objectId", a.old_value as "oldValue", a.new_value as "newValue", a.reason,
@@ -49,6 +51,8 @@ export function auditRoutes(app: FastifyInstance, sql: Sql) {
                  or (a.object_type = 'user' and (a.object_id = ${user.toLowerCase()}
                      or a.object_id = (select id::text from users where username = ${user.toLowerCase()}))))`
           : sql`true`}
+        and ${deviation ? sql`(a.object_type = 'deviation' and a.object_id = (select id::text from deviations where upper(number) = ${deviation.trim().toUpperCase()}))` : sql`true`}
+        and ${hideSignIns ? sql`a.action not in ('login', 'logout', 'login.failed')` : sql`true`}
         and ${from ? sql`a.at >= ${from}` : sql`true`}
         and ${to ? sql`a.at < ${to}` : sql`true`}
       order by a.at desc, a.id desc limit ${AUDIT_LIMIT}`;

@@ -1,4 +1,4 @@
-import { actionWords, valueWords } from '../../../server/words.js';
+import { actionWords, titleText, valueWords } from '../../../server/words.js';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { FISHBONE, Fishbone, SixMDiagram, emptyFishbone, emptySixM, hasFishbone } from '../components/Fishbone.js';
 import {
@@ -132,7 +132,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
   return (
     <>
       <button className="link" onClick={onBack}>← All deviations</button>
-      <div className="home-head"><h1>{d.number} · {str(report.title)}</h1><a className="button" href={`/api/deviations/${d.id}/pdf`}>Print PDF</a></div>
+      <div className="home-head"><h1 title={str(report.title)}>{d.number} · {titleText(str(report.title))}</h1><a className="button" href={`/api/deviations/${d.id}/pdf`}>Print PDF</a></div>
       <div className={`statusbar ${d.overdue ? 'blocked' : 'fit'}`}>
         <span className={`chip ${STEP_CHIP[d.step]}`}>{STEP_LABEL[d.step]}</span>
         {d.classification && <span className="chip">{CLASS_LABEL[d.classification]}</span>}

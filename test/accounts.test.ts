@@ -90,6 +90,7 @@ describe('sign-on through core (PL-01)', () => {
     directory.get(`aud${n}`)!.permissions = ['deviations.audit.read'];
     const { cookie } = await login(t.app, `aud${n}`);
     expect((await call(t.app, cookie, 'GET', '/api/audit')).statusCode).toBe(200);
+    expect((await call(t.app, cookie, 'GET', '/api/audit?deviation=DEV-2026-0001&hideSignIns=1')).json()).toEqual([]);
     expect((await call(t.app, cookie, 'GET', '/api/deviations')).statusCode).toBe(200);
     expect((await call(t.app, cookie, 'GET', '/api/capas')).statusCode).toBe(200);
     expect((await call(t.app, cookie, 'POST', '/api/deviations', {})).statusCode).toBe(403);

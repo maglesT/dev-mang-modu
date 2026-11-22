@@ -162,3 +162,11 @@ export function oosRoomArea(o: OosWhere): string | null {
 }
 // "Assay of FG-EX-10 Example tablets, lot EX26001" / "Contact plate, grade B (CFU/plate), point RM207-CP1, room RM-207, ...".
 export const oosWhat = (o: OosWhere & { test?: string }) => `${o.test ?? ''}${isEmOos(o) ? ',' : ' of'} ${oosWhere(o)}`;
+
+// A title stored at the 200-character limit was cut when it was filed (no data rewrite): shown with "…", the full stored
+// text on hover where the screen has one.
+export const TITLE_LIMIT = 200;
+export const titleText = (t: unknown): string => {
+  const s = String(t ?? '');
+  return s.length >= TITLE_LIMIT ? `${s.trimEnd()}…` : s;
+};

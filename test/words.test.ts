@@ -38,3 +38,11 @@ describe('words on screens and PDFs', () => {
     expect(oosRoomArea({ itemKind: 'PRODUCT', itemCode: 'P1' })).toBeNull();
   });
 });
+
+describe('titles stored at the limit', () => {
+  it('shows … when the stored title was cut, nothing otherwise', async () => {
+    const { titleText } = await import('../server/words.js');
+    expect(titleText('Short title')).toBe('Short title');
+    expect(titleText('x'.repeat(200))).toBe(`${'x'.repeat(200)}…`);
+  });
+});

@@ -8,7 +8,7 @@ import { fields, heading, plant, render, t, table } from '../pdf.js';
 import { BATCH_PRODUCTS, PRODUCT_NAME } from '../readers/products.js';
 import { withQmsOpen, type QmsCapa, type QmsSource } from '../readers/qms.js';
 import { fmeaLine } from '../fmea.js';
-import { MEANING_WORDS, STEP_WORDS, actionWords, oosWhat, plantDay, valueWords, type OosWhere } from '../words.js';
+import { MEANING_WORDS, STEP_WORDS, actionWords, oosWhat, plantDay, titleText, valueWords, type OosWhere } from '../words.js';
 
 // D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
 const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (earlier system, retired)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
@@ -281,7 +281,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     const latestIds = new Set(d.sections.filter((x) => x.latest).map((x) => x.id));
     const names = await loadNames(sql);
     const content: Content[] = [
-      t(`${d.number} · ${val((d.sections.find((x) => x.kind === 'report' && x.latest)?.data as Row)?.title)}`, { bold: true, fontSize: 14 }),
+      t(`${d.number} · ${titleText((d.sections.find((x) => x.kind === 'report' && x.latest)?.data as Row)?.title)}`, { bold: true, fontSize: 14 }),
       fields([
         ['Status', STEP[String(d.step)]], ['Classification', d.classification], ['Planned', d.planned ? 'yes' : 'no'],
         ['Target date', plantDay(d.targetDate as string)], ['Overdue', d.overdue ? 'yes' : 'no'], ['Area', d.area],

@@ -1,3 +1,4 @@
+import { titleText } from '../../../server/words.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, can, CLASS_LABEL, plantDate, STEP_CHIP, STEP_LABEL, type DeviationItem, type Me } from '../api.js';
 
@@ -67,7 +68,7 @@ export function Home({ me, onReport, onOpen, onCapas }: { me: Me; onReport: () =
             {rows.map((d) => (
               <tr key={d.id} className="click" onClick={() => onOpen(d.id)}>
                 <td><button className="link">{d.number}</button>{d.planned && <span className="muted"> · planned</span>}</td>
-                <td>{d.title}</td>
+                <td title={d.title}>{titleText(d.title)}</td>
                 <td>{d.batches || <span className="muted">none</span>}</td>
                 <td>{d.area}</td>
                 <td>{d.classification ? CLASS_LABEL[d.classification] : '—'}</td>
