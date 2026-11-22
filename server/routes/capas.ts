@@ -100,7 +100,7 @@ export function capaRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       const capas: QmsCapa[] = number ? await capasFor(qms, [number]) : await allCapas(qms);
       return { ...base, off: false, note: null, capas };
     } catch (e) {
-      req.log.warn(`QMS CAPA read failed: ${e instanceof Error ? e.message : String(e)}`);
+      req.log.warn(`ASSURE CAPA read failed: ${e instanceof Error ? e.message : String(e)}`);
       return { ...base, off: true, note: QMS_OFF, capas: [] };
     }
   });

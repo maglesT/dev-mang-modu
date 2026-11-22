@@ -82,8 +82,8 @@ const close = (app: typeof alone, cookie: string, id: number, data: object = {})
   call(app, cookie, 'POST', `/api/deviations/${id}/close`, { data: { summary: 'Batch sorted.', ...FINAL, ...data }, signature: sig('qa63') });
 const localCapa = (deviationId: number) => ({ source: 'deviation', deviationId, type: 'corrective', strength: 'medium', description: 'Lock the feeder setting.', ownerId: ids.us63, dueDate: inDays(14) });
 
-describe('D-63: QMS owns CAPA while it is linked', () => {
-  it('DV-08: the new-CAPA link is the QMS screen pre-filled with the deviation number; the QMS address is set or found beside this app', () => {
+describe('D-63: ASSURE owns CAPA while it is linked', () => {
+  it('DV-08: the new-CAPA link is the ASSURE screen pre-filled with the deviation number; the ASSURE address is set or found beside this app', () => {
     expect(newCapaUrl(QMS_URL, 'DEV-2026-0007')).toBe(`${QMS_URL}${QMS_NEW_CAPA_PATH}?source=deviation&ref=DEV-2026-0007`);
     expect(newCapaUrl(QMS_URL)).toBe(`${QMS_URL}${QMS_NEW_CAPA_PATH}`);
     expect(newCapaUrl(undefined, 'DEV-2026-0007')).toBeNull();
@@ -92,7 +92,7 @@ describe('D-63: QMS owns CAPA while it is linked', () => {
     expect(qmsBaseUrl(undefined, 'https://dev.example/cb')).toBeUndefined();
   });
 
-  it('DV-08: no local CAPA is raised while the QMS is linked; the deviation shows its QMS CAPAs read-only, with the link to raise one in QMS', async () => {
+  it('DV-08: no local CAPA is raised while the ASSURE is linked; the deviation shows its ASSURE CAPAs read-only, with the link to raise one in ASSURE', async () => {
     const { id, number } = await awaitingClosure();
     const res = await call(t.app, c.qa63!, 'POST', '/api/capas', localCapa(id));
     expect(res.statusCode).toBe(409);
@@ -111,7 +111,7 @@ describe('D-63: QMS owns CAPA while it is linked', () => {
     expect((await call(t.app, c.us63!, 'GET', '/api/qms/capas')).json()).toMatchObject({ linked: true, capas: [], newCapaUrl: `${QMS_URL}${QMS_NEW_CAPA_PATH}` });
   });
 
-  it('DV-08: open CAPAs are one number: the QMS ones are counted on the deviation, the list and the batch lookup; closed and cancelled are not', async () => {
+  it('DV-08: open CAPAs are one number: the ASSURE ones are counted on the deviation, the list and the batch lookup; closed and cancelled are not', async () => {
     const { id, number } = await awaitingClosure();
     await qmsCapa(number, 'open');
     await qmsCapa(number, 'effectiveness_check');
@@ -126,7 +126,7 @@ describe('D-63: QMS owns CAPA while it is linked', () => {
     expect((await call(alone, c.alone!, 'GET', `/api/deviations/${id}`)).json().openCapas).toBe(0);
   });
 
-  it('DV-10: closure needs a CAPA of a major deviation checked once against the QMS CAPAs (a cancelled one does not count), kept with the closure', async () => {
+  it('DV-10: closure needs a CAPA of a major deviation checked once against the ASSURE CAPAs (a cancelled one does not count), kept with the closure', async () => {
     const { id, number } = await awaitingClosure();
     await qmsCapa(number, 'cancelled');
     const refused = await close(t.app, c.qa63!, id);
@@ -141,7 +141,7 @@ describe('D-63: QMS owns CAPA while it is linked', () => {
     expect(closure.data.noCapaReason).toBe('');
   });
 
-  it('DV-10: a minor deviation with a QMS CAPA needs no "no CAPA" reason; without one it does', async () => {
+  it('DV-10: a minor deviation with a ASSURE CAPA needs no "no CAPA" reason; without one it does', async () => {
     const a = await awaitingClosure('minor');
     expect((await close(t.app, c.qa63!, a.id)).statusCode).toBe(400);
     expect((await close(t.app, c.qa63!, a.id, { noCapaReason: 'Immediate sort was enough.' })).statusCode).toBe(200);
@@ -150,7 +150,7 @@ describe('D-63: QMS owns CAPA while it is linked', () => {
     expect((await close(t.app, c.qa63!, b.id)).statusCode).toBe(200);
   });
 
-  it('DV-08: the link off: "QMS link off" is shown, no local CAPA is raised (try again) and closure waits for the QMS', async () => {
+  it('DV-08: the link off: "ASSURE link off" is shown, no local CAPA is raised (try again) and closure waits for the ASSURE', async () => {
     const { id } = await awaitingClosure();
     const q = (await call(cut, c.cut!, 'GET', `/api/qms/capas?deviationId=${id}`)).json();
     expect(q).toMatchObject({ linked: true, off: true, note: QMS_OFF, capas: [] });
@@ -164,7 +164,7 @@ describe('D-63: QMS owns CAPA while it is linked', () => {
     expect((await call(cut, c.cut!, 'GET', `/api/deviations/${id}`)).statusCode).toBe(200);
   });
 
-  it('DV-08: sold alone, CAPAs work as before; local CAPAs raised then stay readable and count once the QMS is linked', async () => {
+  it('DV-08: sold alone, CAPAs work as before; local CAPAs raised then stay readable and count once the ASSURE is linked', async () => {
     const { id, number } = await awaitingClosure();
     expect((await call(alone, c.alone!, 'GET', '/api/qms/capas')).json()).toMatchObject({ linked: false, capas: [] });
     const r = await call(alone, c.alone!, 'POST', '/api/capas', localCapa(id));

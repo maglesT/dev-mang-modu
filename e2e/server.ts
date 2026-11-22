@@ -36,13 +36,13 @@ await stand.unsafe(`drop schema if exists ${TCP} cascade; create schema ${TCP};
     released boolean, read_at timestamptz default now(), data_as_of timestamptz default now());
   insert into ${TCP}.packing_batch_v1 values ('CP26E01', 'TC26E01', 'PK-CAP-EX20-B10', 'FG-CAP-EX20', 'IN_PRODUCTION', now() - interval '2 hours', false);`);
 // D-60: a stand-in for LIMS's published OOS (oos_v1): one whose phase I found no laboratory error, one still in phase I.
-const LIMS = `${E2E_SCHEMA}_lims`;
-await stand.unsafe(`drop schema if exists ${LIMS} cascade; create schema ${LIMS};
-  create table ${LIMS}.oos_v1 (oos_id uuid, oos_number text, sample_number text, lot_number text, item_kind text, item_master_id text, item_code text,
+const QLIMS = `${E2E_SCHEMA}_lims`;
+await stand.unsafe(`drop schema if exists ${QLIMS} cascade; create schema ${QLIMS};
+  create table ${QLIMS}.oos_v1 (oos_id uuid, oos_number text, sample_number text, lot_number text, item_kind text, item_master_id text, item_code text,
     item_name text, analysis_number text, test_key text, test_name text, value numeric, unit text, shown text, limit_text text, status text,
     phase_ii_needed boolean, deviation_number text, opened_at timestamptz, closed_at timestamptz, read_at timestamptz default now(),
     data_as_of timestamptz default now(), outside_lab text);
-  insert into ${LIMS}.oos_v1 (oos_id, oos_number, sample_number, lot_number, item_kind, item_code, item_name, analysis_number, test_key, test_name,
+  insert into ${QLIMS}.oos_v1 (oos_id, oos_number, sample_number, lot_number, item_kind, item_code, item_name, analysis_number, test_key, test_name,
     value, unit, shown, limit_text, status, phase_ii_needed, opened_at) values
     (gen_random_uuid(), 'OOS26E001', 'LS26E0001', 'EX26E01', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg (invented)', 'LA26E0001', 'assay', 'Assay',
       91.2, '%', '91.2 %', '95.0 to 105.0 %', 'OPEN', true, now() - interval '1 day'),
@@ -53,7 +53,7 @@ const sql = connect(TEST_DATABASE_URL, { role: APP_ROLE, searchPath: E2E_SCHEMA 
 // Sign-on and signing go through a stand-in for Medhanta core (D-43), which signs in whoever login_hint names.
 const app = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: new URL('../dist/web', import.meta.url).pathname, cookieSecure: false,
   sources: { truebatch_injectables: { sql: stand, schema: TBI }, truebatch_capsules_packing: { sql: stand, schema: TCP },
-    lims: { sql: stand, schema: LIMS } } });
+    lims: { sql: stand, schema: QLIMS } } });
 await app.listen({ port: E2E_PORT, host: '127.0.0.1' });
 
 // D-66: a stand-in for Operations' published CPV signals (cpv_signal_v1) with one signal QA sent there; filed once at start,
@@ -68,10 +68,10 @@ await stand.unsafe(`drop schema if exists ${OPS} cascade; create schema ${OPS};
 await fileCpvSignals(sql, { sql: stand, schema: OPS });
 
 // D-63: a stand-in for the QMS's published CAPAs (capa_v1, fixed columns) and the app with the QMS linked: the QMS owns CAPA.
-const QMS = `${E2E_SCHEMA}_qms`;
-await stand.unsafe(`drop schema if exists ${QMS} cascade; create schema ${QMS};
-  create table ${QMS}.capa_v1 (capa_number text, title text, status text, status_text text, source_kind text, source_ref text, owner_name text,
+const ASSURE = `${E2E_SCHEMA}_qms`;
+await stand.unsafe(`drop schema if exists ${ASSURE} cascade; create schema ${ASSURE};
+  create table ${ASSURE}.capa_v1 (capa_number text, title text, status text, status_text text, source_kind text, source_ref text, owner_name text,
     due_date date, closed_at timestamptz, effective boolean, data_as_of timestamptz default now());`);
 const linked = await buildApp({ sql, signOn: fakeSignOn(), people: fakePeople(), proofKey: TEST_PROOF_KEY, webRoot: new URL('../dist/web', import.meta.url).pathname, cookieSecure: false,
-  sources: { qms: { sql: stand, schema: QMS, url: QMS_URL } } });
+  sources: { qms: { sql: stand, schema: ASSURE, url: QMS_URL } } });
 await linked.listen({ port: E2E_QMS_PORT, host: '127.0.0.1' });

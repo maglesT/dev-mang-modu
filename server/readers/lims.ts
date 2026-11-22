@@ -12,7 +12,7 @@ import type { Source } from './logbook.js';
 export const LIMS_VIEWS = ['oos_v1'];
 export const OOS_PREFIX = 'lims:oos:';
 export const PICK_LIMIT = 300;
-export const LIMS_OFF = 'Connection to LIMS is off. Ask your administrator.';
+export const LIMS_OFF = 'Connection to QLIMS is off. Ask your administrator.';
 
 interface OosRow {
   oos_id: string; oos_number: string; sample_number: string | null; lot_number: string | null; item_kind: string | null;
@@ -34,8 +34,8 @@ export type OosRef = {
 export type OosPick = OosRef & { status: string; phaseII: boolean; filed: string | null };
 
 const s = (v: string | null | undefined) => (v ?? '').trim();
-export const PHASE_I_DONE = 'Phase I found no laboratory error (reviewed in LIMS): phase II needed.';
-export const PHASE_I_OPEN = 'No phase II now: phase I is not finished or not reviewed in LIMS, or it found a laboratory error.';
+export const PHASE_I_DONE = 'Phase I found no laboratory error (reviewed in QLIMS): phase II needed.';
+export const PHASE_I_OPEN = 'No phase II now: phase I is not finished or not reviewed in QLIMS, or it found a laboratory error.';
 
 // D-61: `shown` is the result as LIMS reports it, unit included ("0.9 %"): kept as it is. Only when LIMS gives no shown
 // text is it built from the value and the unit.
@@ -88,26 +88,26 @@ export async function listOos(sql: Sql, src: Source): Promise<OosPick[]> {
  * filings at the same moment: the unique source_ref refuses the second (fileOos).
  */
 export async function pickOos(sql: Sql, src: Source | undefined, id: string): Promise<{ oos: OosRef } | { problem: string }> {
-  if (!src) return { problem: 'LIMS is not connected on this installation, so an OOS cannot be picked.' };
+  if (!src) return { problem: 'QLIMS is not connected on this installation, so an OOS cannot be picked.' };
   let row: OosRow | undefined;
   try {
     [row] = await read(src, (q, v) => q<OosRow[]>`select ${q.unsafe(COLUMNS)} from ${q(v)} as o where oos_id::text = ${id}`);
   } catch (e) {
     const code = (e as { code?: string }).code ?? '';
-    return { problem: ['42501', '28000'].includes(code) ? LIMS_OFF : 'LIMS could not be read now. Try again later.' };
+    return { problem: ['42501', '28000'].includes(code) ? LIMS_OFF : 'QLIMS could not be read now. Try again later.' };
   }
-  if (!row) return { problem: 'This OOS is not in LIMS. Pick it from the list again.' };
+  if (!row) return { problem: 'This OOS is not in QLIMS. Pick it from the list again.' };
   const done = (await filedHere(sql, [row.oos_id])).get(row.oos_id);
   if (done) return { problem: `${row.oos_number} already has deviation ${done}. Open that deviation instead.` };
-  if (s(row.deviation_number)) return { problem: `${row.oos_number} already has deviation ${s(row.deviation_number)} in LIMS. Open that deviation instead.` };
-  if (row.status !== 'OPEN') return { problem: `${row.oos_number} is concluded in LIMS (${row.status.toLowerCase()}): no phase II is filed for it.` };
+  if (s(row.deviation_number)) return { problem: `${row.oos_number} already has deviation ${s(row.deviation_number)} in QLIMS. Open that deviation instead.` };
+  if (row.status !== 'OPEN') return { problem: `${row.oos_number} is concluded in QLIMS (${row.status.toLowerCase()}): no phase II is filed for it.` };
   if (!row.phase_ii_needed) return { problem: `${row.oos_number}: ${PHASE_I_OPEN}` };
   return { oos: ref(row) };
 }
 
 /** The report's row of product and lot for the OOS: pulled from LIMS (`from` lims), not typed. */
 // An EM OOS taken during a batch names that batch (LIMS 0031), not the sampling point.
-export const oosProduct = (o: OosRef) => ({ product: o.itemCode || o.itemName || 'not named in LIMS', batch: o.batch || o.lot || o.sample, from: 'lims' as const });
+export const oosProduct = (o: OosRef) => ({ product: o.itemCode || o.itemName || 'not named in QLIMS', batch: o.batch || o.lot || o.sample, from: 'lims' as const });
 
 // D-61: an OOS is a QC laboratory deviation, and the report's areas are the plant's production areas. Picking an OOS sets
 // the area to this one (not chosen on the form). It is made by the app the first time an OOS is filed, audited

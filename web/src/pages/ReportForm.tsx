@@ -71,7 +71,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
     setOos(o);
     setF({ ...f, planned: false, noBatch: false, eventAt: localInputValue(new Date(o.openedAt)),
       title: `${o.number} phase II: ${oosWhat(o)}`.slice(0, 200),
-      description: `Phase II investigation of LIMS OOS ${o.number}. ${oosWhat(o)}, sample ${o.sample}, analysis ${o.analysis}: `
+      description: `Phase II investigation of QLIMS OOS ${o.number}. ${oosWhat(o)}, sample ${o.sample}, analysis ${o.analysis}: `
         + `result ${o.result}, limit ${o.limit}. ${o.phaseI}` });
     setProducts([{ product: o.itemCode || o.itemName, batch: o.batch || o.lot || o.sample, from: 'lims' }, ...others]);
   };
@@ -114,7 +114,7 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
       {correct ? <h2>Correct the report</h2> : <h1>Report a deviation</h1>}
       {!correct && oosList.linked && (
         <div>
-          <label>OOS from LIMS (phase II investigation)
+          <label>OOS from QLIMS (phase II investigation)
             <select className="fit" value={oos?.id ?? ''} onChange={(e) => pickOos(e.target.value)}>
               <option value="">None: not an OOS</option>
               {oosList.oos.map((o) => (
@@ -125,10 +125,10 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
             </select>
           </label>
           {oosList.note && <p className="muted small">{oosList.note}</p>}
-          {!oosList.note && <p className="muted small">The open OOS of LIMS. Pick one whose phase I found no laboratory error; its details come from LIMS. An OOS that already has a deviation cannot be picked again.</p>}
+          {!oosList.note && <p className="muted small">The open OOS of QLIMS. Pick one whose phase I found no laboratory error; its details come from QLIMS. An OOS that already has a deviation cannot be picked again.</p>}
         </div>
       )}
-      {oos && <p className="small"><b>LIMS OOS {oos.number}</b> · {oosWhat(oos)} · result {oos.result} · limit {oos.limit} · {oos.phaseI}</p>}
+      {oos && <p className="small"><b>QLIMS OOS {oos.number}</b> · {oosWhat(oos)} · result {oos.result} · limit {oos.limit} · {oos.phaseI}</p>}
       {!correct && <fieldset className="choice">
         <label className="check"><input type="radio" checked={!f.planned} onChange={() => setF({ ...f, planned: false })} /> It has happened (unplanned)</label>
         <label className="check"><input type="radio" checked={f.planned} disabled={!!oos} onChange={() => setF({ ...f, planned: true })} /> It is planned (needs QA approval first)</label>
@@ -163,12 +163,12 @@ export function ReportForm({ onDone, onCancel, initial, correct }: {
         {!f.noBatch && products.map((p, i) => (
           <div className="row" key={i}>
             <input aria-label={`Batch ${i + 1}`} placeholder={picks.batches.length ? 'Pick or type the batch number' : 'Batch number'} list="batch-picks" value={p.batch}
-              readOnly={p.from === 'lims'} title={p.from === 'lims' ? (oos?.batch ? 'The batch the sample was taken during, from LIMS' : 'The lot of the OOS, from LIMS') : undefined} onChange={(e) => setBatch(i, e.target.value)} />
-            <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} readOnly={!!p.from} title={p.from === 'lims' ? 'From the OOS in LIMS' : p.from ? 'From the picked batch' : undefined}
+              readOnly={p.from === 'lims'} title={p.from === 'lims' ? (oos?.batch ? 'The batch the sample was taken during, from QLIMS' : 'The lot of the OOS, from QLIMS') : undefined} onChange={(e) => setBatch(i, e.target.value)} />
+            <input aria-label={`Product ${i + 1}`} placeholder="Product" value={p.product} readOnly={!!p.from} title={p.from === 'lims' ? 'From the OOS in QLIMS' : p.from ? 'From the picked batch' : undefined}
               onChange={(e) => setProducts(products.map((x, j) => (j === i ? { ...x, product: e.target.value } : x)))} />
             {p.batch.trim() && !p.from && <span className="chip chip-warn">Typed by hand</span>}
-            {p.from === 'lims' && <span className="chip">From LIMS OOS</span>}
-            {p.from === 'ops' && <span className="chip">From Operations CPV</span>}
+            {p.from === 'lims' && <span className="chip">From QLIMS OOS</span>}
+            {p.from === 'ops' && <span className="chip">From RISE CPV</span>}
             {products.length > 1 && p.from !== 'lims' && <button type="button" onClick={() => setProducts(products.filter((_, j) => j !== i))}>Remove</button>}
           </div>
         ))}

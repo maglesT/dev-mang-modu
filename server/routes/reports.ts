@@ -107,13 +107,13 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     // D-60: the LIMS OOS of an OOS phase II investigation, as read from LIMS when it was filed.
     if (k === 'oos' && v && typeof v === 'object') {
       const o = v as Row;
-      return [['LIMS OOS', `${val(o.number)}: ${oosWhat(o as OosWhere & { test?: string })}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
+      return [['QLIMS OOS', `${val(o.number)}: ${oosWhat(o as OosWhere & { test?: string })}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
     }
     // D-67: QA's "not a deviation", in words.
     if (k === 'notADeviation') return [['Not a deviation', v ? 'yes: cancelled by QA' : 'no']];
     if (k === 'stepBefore') return [['Status before', STEP[String(v)] ?? val(v)]];
     // D-63: the QMS CAPAs a closure was checked against.
-    if (k === 'qmsCapas' && Array.isArray(v)) return [['CAPAs in QMS (checked at closure)', v.length ? v.join(', ') : 'none']];
+    if (k === 'qmsCapas' && Array.isArray(v)) return [['CAPAs in ASSURE (checked at closure)', v.length ? v.join(', ') : 'none']];
     // S13 tools print readably (D-35).
     if (k === 'isIsNot' && v && typeof v === 'object') {
       return Object.entries(v as Record<string, Row>).map(([q, r]): [string, unknown] => [`is / is not: ${q}`, `is: ${val(r.is)} | is not: ${val(r.isNot)} | tells: ${val(r.tells)}`]);
@@ -319,11 +319,11 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     }
     // D-63: the QMS's CAPAs for this deviation, as read now (the QMS owns CAPA while linked); then any local CAPAs.
     if (fromQms.linked) {
-      content.push(heading('CAPAs in QMS (read from QMS)'));
+      content.push(heading('CAPAs in ASSURE (read from ASSURE)'));
       if (fromQms.off) content.push(t(val(fromQms.note), { fontSize: 8 }));
       else content.push(table(['Number', 'Title', 'Status', 'Owner', 'Due', 'Effective'], fromQms.capas.map((c) => [c.capa_number, c.title, c.status_text, c.owner_name ?? '', c.due_date ? plantDay(c.due_date) : '', c.effective === null ? '' : c.effective ? 'yes' : 'no']), [60, '*', 70, 70, 50, 40]));
     }
-    if (!fromQms.linked || capas.length) content.push(heading(fromQms.linked ? 'CAPAs recorded here before QMS was linked' : 'CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], plantDay(c.dueDate as string)]), [60, 50, '*', 70, 70, 50]));
+    if (!fromQms.linked || capas.length) content.push(heading(fromQms.linked ? 'CAPAs recorded here before ASSURE was linked' : 'CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], plantDay(c.dueDate as string)]), [60, 50, '*', 70, 70, 50]));
     content.push(heading('Attachments'), table(['File', 'Size', 'SHA-256', 'By', 'When', 'Withdrawn'], d.attachments.map((a) => [a.filename, a.size, a.sha256, a.uploadedBy, plant(a.uploadedAt as string), a.withdrawnReason ?? '']), ['*', 30, 120, 50, 60, 60]));
     content.push(heading('History (audit trail)'), historyTable(d.history, names));
     return sendPdf(reply, String(d.number), await render(s!.site_name, `Deviation ${d.number}`, req.user!.fullName, content));

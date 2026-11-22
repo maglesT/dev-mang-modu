@@ -55,7 +55,7 @@ export function App() {
   return (
     <>
       <header className="bar">
-        <span className="brand"><img src="/medhanta-mark.png" alt="Medhanta" /><span><b>Deviations &amp; CAPA</b><small>by Medhanta</small></span></span>
+        <span className="brand"><img src="/brand/dive-mark.svg" alt="" /><span><b>Medhanta DIVE</b></span></span>
         <nav>
           {!isAdmin && tab('home', 'Deviations')}
           {!isAdmin && tab('capas', 'CAPAs')}

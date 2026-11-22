@@ -70,10 +70,10 @@ test('D-59: a batch of TrueBatch Capsules Packing is picked from the list, its p
 });
 
 // D-60: QA files the phase II investigation of a LIMS OOS by picking it; the OOS cannot be picked a second time.
-test('D-60: QA picks an OOS from LIMS: its details fill the report, the record keeps the OOS, and it is not offered again', async ({ page }) => {
+test('D-60: QA picks an OOS from QLIMS: its details fill the report, the record keeps the OOS, and it is not offered again', async ({ page }) => {
   await logIn(page, 'qa1');
   await page.getByRole('button', { name: 'Report a deviation' }).click();
-  const pick = page.getByLabel('OOS from LIMS (phase II investigation)');
+  const pick = page.getByLabel('OOS from QLIMS (phase II investigation)');
   // The OOS still in phase I is listed but cannot be picked.
   await expect(pick.locator('option', { hasText: 'OOS26E002' })).toHaveJSProperty('disabled', true);
   await pick.selectOption({ label: 'OOS26E001: Assay of FG-EX-10 Example tablets 10 mg (invented), lot EX26E01; result 91.2 %, limit 95.0 to 105.0 %' });
@@ -82,7 +82,7 @@ test('D-60: QA picks an OOS from LIMS: its details fill the report, the record k
   await expect(page.getByLabel('Batch 1')).toHaveValue('EX26E01');
   await expect(page.getByLabel('Batch 1')).not.toBeEditable();
   await expect(page.getByLabel('Product 1')).toHaveValue('FG-EX-10');
-  await expect(page.getByText('From LIMS OOS', { exact: true })).toBeVisible();
+  await expect(page.getByText('From QLIMS OOS', { exact: true })).toBeVisible();
   // D-61: an OOS is a QC laboratory deviation: the area is set, not chosen; the long OOS list stays inside the form card.
   await expect(page.getByLabel('Area *')).toHaveValue('QC laboratory (Medhanta LIMS)');
   await expect(page.getByLabel('Area *')).not.toBeEditable();
@@ -103,7 +103,7 @@ test('D-60: QA picks an OOS from LIMS: its details fill the report, the record k
   // Back on the form, the OOS shows the deviation it already has and cannot be picked again.
   await page.getByRole('button', { name: '← All deviations' }).click();
   await page.getByRole('button', { name: 'Report a deviation' }).click();
-  await expect(page.getByLabel('OOS from LIMS (phase II investigation)').locator('option', { hasText: `already has ${number}` })).toHaveJSProperty('disabled', true);
+  await expect(page.getByLabel('OOS from QLIMS (phase II investigation)').locator('option', { hasText: `already has ${number}` })).toHaveJSProperty('disabled', true);
 });
 
 // D-58: a batch picked from TrueBatch was checked there: QA classifies without the tick, and the record says so.

@@ -65,7 +65,7 @@ describe('sign-on through core (PL-01)', () => {
     directory.set(login_, { sub: randomUUID(), name: 'Nobody', permissions: [], active: true });
     const { res, cookie } = await login(t.app, login_);
     expect(res.statusCode).toBe(403);
-    expect(res.body).toContain('no right to use Deviations');
+    expect(res.body).toContain('no right to use Medhanta DIVE');
     expect(cookie).toBe('');
     expect(await t.owner`select 1 from audit_log where action = 'login.failed' and object_id = ${login_}`).toHaveLength(1);
     // No id-map row, so they are never offered as an investigator or CAPA owner.

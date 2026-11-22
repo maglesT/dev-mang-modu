@@ -36,7 +36,7 @@ async function standIn(o: TestApp['owner']) {
       ('${ID.o4}', 'OOS260004', 'LS2600014', 'EX26003', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600024', 'assay', 'Assay', 106.1, '%', '106.1 %', '95.0 to 105.0 %', 'OPEN', true, 'DEV-2026-9001', now()),
       ('${ID.o5}', 'OOS260005', 'LS2600015', 'EX26004', 'PRODUCT', 'FG-EX-10', 'Example tablets 10 mg', 'LA2600025', 'assay', 'Assay', 94.0, '%', '94.0 %', '95.0 to 105.0 %', 'INVALIDATED', false, null, now());
     create table ${S.cut}.oos_v1 (oos_id uuid);
-    -- LIMS migration 0031: an environmental-monitoring OOS names its batch, point and room (columns at the end).
+    -- QLIMS migration 0031: an environmental-monitoring OOS names its batch, point and room (columns at the end).
     create schema ${S.em};
     create table ${S.em}.oos_v1 as select * from ${S.lims}.oos_v1 where false;
     alter table ${S.em}.oos_v1 add column batch_number text, add column point_code text, add column room_code text;
@@ -52,7 +52,7 @@ const appWith = async (db: Awaited<ReturnType<typeof freshDb>>, sources: object)
   apps.push(a);
   return a;
 };
-let off: Awaited<ReturnType<typeof buildApp>>;   // LIMS not linked
+let off: Awaited<ReturnType<typeof buildApp>>;   // QLIMS not linked
 let cut: Awaited<ReturnType<typeof buildApp>>;   // the link cut (no grant: 42501)
 
 beforeAll(async () => {
@@ -87,9 +87,9 @@ const body = (oosId: string, over: object = {}) => ({
 type Pick = { id: string; number: string; lot: string; itemCode: string; test: string; result: string; limit: string; phaseI: string; phaseII: boolean; filed: string | null };
 const list = async (cookie = c.qa60!, app = t.app) => (await call(app, cookie, 'GET', '/api/oos')).json() as { linked: boolean; oos: Pick[]; note: string | null };
 
-describe('OOS phase II from LIMS (D-60)', () => {
+describe('OOS phase II from QLIMS (D-60)', () => {
 
-  it('D-61: the result is LIMS\'s shown text as it is; only without it is it the value and the unit', () => {
+  it('D-61: the result is QLIMS\'s shown text as it is; only without it is it the value and the unit', () => {
     expect(resultText({ shown: '0.9 %', value: '0.9', unit: '%' })).toBe('0.9 %');
     expect(resultText({ shown: ' Complies ', value: null, unit: null })).toBe('Complies');
     expect(resultText({ shown: '', value: '0.9', unit: '%' })).toBe('0.9 %');
@@ -97,7 +97,7 @@ describe('OOS phase II from LIMS (D-60)', () => {
     expect(resultText({ shown: null, value: null, unit: null })).toBe('');
   });
 
-  it('DV-23: the OOS list holds the open OOS of LIMS with their result, limit and phase I outcome; concluded ones are not listed', async () => {
+  it('DV-23: the OOS list holds the open OOS of QLIMS with their result, limit and phase I outcome; concluded ones are not listed', async () => {
     const l = await list();
     expect(l).toMatchObject({ linked: true, note: null });
     expect(l.oos.map((o) => o.number).sort()).toEqual(['OOS260001', 'OOS260002', 'OOS260003', 'OOS260004']);
@@ -110,7 +110,7 @@ describe('OOS phase II from LIMS (D-60)', () => {
     expect(l.oos.find((o) => o.number === 'OOS260004')).toMatchObject({ filed: 'DEV-2026-9001' });
   });
 
-  it('DV-01: a picked OOS is filed once: product, lot, test, result, limit, phase I and the OOS number come from LIMS, not from the form', async () => {
+  it('DV-01: a picked OOS is filed once: product, lot, test, result, limit, phase I and the OOS number come from QLIMS, not from the form', async () => {
     // D-61: the QC laboratory area of LIMS is not there before the first OOS is filed.
     expect(await t.owner`select 1 from areas where name = ${LIMS_AREA}`).toHaveLength(0);
     // Texts typed over the pulled facts are not taken: the OOS is read from LIMS and its lot replaces any product row.
@@ -150,23 +150,23 @@ describe('OOS phase II from LIMS (D-60)', () => {
     expect(v).toEqual({ batch: 'EX26001', source_ref: `lims:oos:${ID.o1}` });
   });
 
-  it('DV-01: an OOS without phase II, one LIMS already names a deviation for, an unknown one, and a planned OOS deviation are refused', async () => {
+  it('DV-01: an OOS without phase II, one QLIMS already names a deviation for, an unknown one, and a planned OOS deviation are refused', async () => {
     const refused = async (b: object) => { const r = await call(t.app, c.qa60!, 'POST', '/api/deviations', b); expect(r.statusCode).toBe(400); return r.json().problems as string[]; };
     expect(await refused(body(ID.o3))).toEqual([expect.stringMatching(/^OOS260003: No phase II now: phase I is not finished/)]);
-    expect(await refused(body(ID.o4))).toEqual(['OOS260004 already has deviation DEV-2026-9001 in LIMS. Open that deviation instead.']);
-    expect(await refused(body(ID.o5))).toEqual(['OOS260005 is concluded in LIMS (invalidated): no phase II is filed for it.']);
-    expect(await refused(body(randomUUID()))).toEqual(['This OOS is not in LIMS. Pick it from the list again.']);
+    expect(await refused(body(ID.o4))).toEqual(['OOS260004 already has deviation DEV-2026-9001 in QLIMS. Open that deviation instead.']);
+    expect(await refused(body(ID.o5))).toEqual(['OOS260005 is concluded in QLIMS (invalidated): no phase II is filed for it.']);
+    expect(await refused(body(randomUUID()))).toEqual(['This OOS is not in QLIMS. Pick it from the list again.']);
     expect(await refused(body(ID.o2, { planned: true, plannedReason: 'x' }))).toEqual(['An OOS phase II investigation is an unplanned deviation.']);
     // A lot "from LIMS" without its OOS is not accepted.
     expect(await refused(body(ID.o2, { oos: undefined, products: [{ product: 'RM-EX-01', batch: 'RM-LOT-77', from: 'lims' }] })))
-      .toEqual(['A lot from LIMS comes only with its OOS: pick the OOS.']);
+      .toEqual(['A lot from QLIMS comes only with its OOS: pick the OOS.']);
     expect((await t.owner`select 1 from deviations where source_ref like 'lims:oos:%' and source_ref <> ${`lims:oos:${ID.o1}`}`).length).toBe(0);
   });
 
-  it('DV-23: without the LIMS link nothing is listed and no OOS can be picked; a cut link says so in plain words', async () => {
+  it('DV-23: without the QLIMS link nothing is listed and no OOS can be picked; a cut link says so in plain words', async () => {
     expect(await list(c.off!, off)).toEqual({ linked: false, oos: [], note: null });
     const r = await call(off, c.off!, 'POST', '/api/deviations', body(ID.o2));
-    expect(r.json().problems).toEqual(['LIMS is not connected on this installation, so an OOS cannot be picked.']);
+    expect(r.json().problems).toEqual(['QLIMS is not connected on this installation, so an OOS cannot be picked.']);
     expect(await list(c.cut!, cut)).toEqual({ linked: true, oos: [], note: LIMS_OFF });
     expect((await call(cut, c.cut!, 'POST', '/api/deviations', body(ID.o2))).json().problems).toEqual([LIMS_OFF]);
     // A plain report is filed as before on both.
@@ -174,7 +174,7 @@ describe('OOS phase II from LIMS (D-60)', () => {
     expect((await call(off, c.off!, 'POST', '/api/deviations', plain)).statusCode).toBe(201);
   });
 
-  it('DV-14: a correction keeps the OOS and its lot as read from LIMS; an OOS cannot be added by a correction', async () => {
+  it('DV-14: a correction keeps the OOS and its lot as read from QLIMS; an OOS cannot be added by a correction', async () => {
     const res = await call(t.app, c.us60!, 'POST', '/api/deviations', body(ID.o2, { products: [{ product: 'FG-EX-10', batch: 'EX26009' }] }));
     expect(res.statusCode, res.body).toBe(201);
     const { id } = res.json() as { id: number };
@@ -228,7 +228,7 @@ describe('OOS phase II from LIMS (D-60)', () => {
     expect((await call(t.app, c.qa60!, 'GET', `/api/deviations/${ok6.json().id}`)).json().area).toBe(LIMS_AREA);
   });
 
-  it('display 19 Nov: an EM OOS (LIMS 0031 columns) names point, room and batch, and is filed in its room', async () => {
+  it('display 19 Nov: an EM OOS (QLIMS 0031 columns) names point, room and batch, and is filed in its room', async () => {
     const em = await appWith(t, { lims: { sql: t.owner, schema: S.em } });
     const cookie = (await login(em, 'qa60')).cookie;
     const res = await call(em, cookie, 'POST', '/api/deviations', body(ID.em));

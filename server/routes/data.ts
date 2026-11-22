@@ -27,9 +27,9 @@ export function dataRoutes(app: FastifyInstance, sql: Sql, sources: Sources) {
     try {
       return { linked: true, oos: await listOos(sql, sources.lims), note: null };
     } catch (e) {
-      req.log.warn(`LIMS OOS list failed: ${e instanceof Error ? e.message : String(e)}`);
+      req.log.warn(`QLIMS OOS list failed: ${e instanceof Error ? e.message : String(e)}`);
       const off = ['42501', '28000'].includes((e as { code?: string }).code ?? '');
-      return { linked: true, oos: [], note: off ? LIMS_OFF : 'LIMS could not be read now, so its OOS are not listed. Try again later.' };
+      return { linked: true, oos: [], note: off ? LIMS_OFF : 'QLIMS could not be read now, so its OOS are not listed. Try again later.' };
     }
   });
 
