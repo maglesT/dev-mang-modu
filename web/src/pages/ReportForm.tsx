@@ -17,7 +17,7 @@ export interface Oos {
 }
 interface OosPick extends Oos { status: string; phaseII: boolean; filed: string | null }
 // D-61: an OOS report is filed in the QC laboratory area, set by the server (made the first time); not chosen here.
-export const LIMS_AREA = 'QC laboratory (Medhanta LIMS)';
+export const LIMS_AREA = 'QC laboratory (QLIMS)';
 export const oosText = (o: Oos) =>
   `${o.number}: ${oosWhat(o)}; result ${o.result}, limit ${o.limit}`;
 // D-57: a batch picked from a linked TrueBatch product names it (`from`); without it the batch was typed by hand.

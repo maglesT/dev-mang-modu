@@ -11,7 +11,7 @@ import { fmeaLine } from '../fmea.js';
 import { MEANING_WORDS, STEP_WORDS, actionWords, oosWhat, plantDay, valueWords, type OosWhere } from '../words.js';
 
 // D-57, D-59: a kept copy is named by its source (each TrueBatch product from the one list; Batchwright's older copies).
-const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (Batchwright)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
+const SOURCE_NAME: Record<string, string> = { batchwright: 'Batch record (earlier system, retired)', ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])) };
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const trendQuery = z.object({
@@ -311,7 +311,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
       from data_fetches f join users u on u.id = f.fetched_by where f.deviation_id = ${id} order by f.id`;
     if (fetches.length) {
       content.push(heading('Data collected (read from other systems)'));
-      for (const f of fetches) {
+      for (const f of fetches.filter((x) => !(x.source === 'batchwright' && x.status === 'not_configured'))) {
         content.push(t(`${SOURCE_NAME[f.source] ?? 'Logbook'} · ${FETCH_STATUS[f.status] ?? f.status} · ${plant(f.fetched_at)} · ${f.by} · ${rows(f.row_count)} · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));

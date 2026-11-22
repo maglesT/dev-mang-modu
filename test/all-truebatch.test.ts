@@ -139,7 +139,7 @@ describe('all four TrueBatch products (D-57)', () => {
     // Picked from a product that does not have it: refused in plain words.
     const wrong = await call(t.app, c.us57!, 'POST', '/api/deviations', body([{ product: 'X', batch: 'TI26001', from: 'truebatch_packing' }]));
     expect(wrong.statusCode).toBe(400);
-    expect(wrong.json().problems).toEqual(['Batch TI26001 is not in TrueBatch Packing. Pick it from the list, or type it by hand.']);
+    expect(wrong.json().problems).toEqual(['Batch TI26001 is not in TrueBatch Tablets Packing. Pick it from the list, or type it by hand.']);
     // Picked from a product whose link is cut: refused; typed by hand it is accepted.
     const down = await call(cutApp, c.cut!, 'POST', '/api/deviations', body([{ product: 'FG-INJ-X25-C5', batch: 'TIP26001', from: 'truebatch_injectables_packing' }]));
     expect(down.statusCode).toBe(400);
@@ -173,7 +173,7 @@ describe('all four TrueBatch products (D-57)', () => {
       'TP26001 (PK-PCM500-B10): status in production, not released; batch printed on the packs TB26001 (FG-PCM500).',
       'Equipment used by the batch: BLISTER-01 (looked up in the Logbook too).',
     ]);
-    expect(by('truebatch').data.findings).toEqual(['No batch with this number was found in TrueBatch.']);
+    expect(by('truebatch').data.findings).toEqual(['No batch with this number was found in TrueBatch Tablets.']);
     expect(by('truebatch_injectables_packing')).toMatchObject({ status: 'failed', error: offMessage('truebatch_injectables_packing'), views: ['packing_batch_v1', 'equipment_use_v1'] });
     expect(by('logbook').status).toBe('not_configured');
     // The record PDF names every copy.
@@ -203,7 +203,7 @@ describe('the new TrueBatch products (D-59)', () => {
     expect(d.batches.map((b) => b.typed)).toEqual(NEW.map(() => false));
     const wrong = await call(t.app, c.us57!, 'POST', '/api/deviations', body([{ product: 'X', batch: 'TC26001', from: 'truebatch_liquids_packing' }]));
     expect(wrong.statusCode).toBe(400);
-    expect(wrong.json().problems).toEqual(['Batch TC26001 is not in TrueBatch Oral Liquids Packing. Pick it from the list, or type it by hand.']);
+    expect(wrong.json().problems).toEqual(['Batch TC26001 is not in TrueBatch Liquids Packing. Pick it from the list, or type it by hand.']);
     // An unknown product key is not accepted as a pick.
     expect((await call(t.app, c.us57!, 'POST', '/api/deviations', body([{ product: 'X', batch: 'TC26001', from: 'truebatch_unknown' }]))).statusCode).toBe(400);
   });

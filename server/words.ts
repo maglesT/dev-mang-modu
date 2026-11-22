@@ -89,7 +89,7 @@ const ACTION_WORDS: Record<string, string> = {
 
 const sentence = (s: string) => {
   const w = s.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll(/[._]+/g, ' ').trim().toLowerCase();
-  return w.replace(/^\w/, (c) => c.toUpperCase());
+  return w.replace(/ id$/, '').replace(/^\w/, (c) => c.toUpperCase());
 };
 
 // A history action in words: "signed.cancelled" -> "Signed: Cancelled: not a deviation".
@@ -105,7 +105,7 @@ export function actionWords(a: string): string {
 const KEY_WORDS: Record<string, string> = {
   step: 'Status', targetDate: 'Target date', dueDate: 'Due date', checkDue: 'Check due', labOos: 'OOS type',
   sha256: 'SHA-256', contentHash: 'Content hash', signatureId: 'Signature', attachmentId: 'Attachment', fetchId: 'Fetch',
-  capas: 'CAPAs', capa: 'CAPA', eventAt: 'Event time', actionTakenAt: 'Action taken at', areaId: 'Area',
+  capas: 'CAPAs', capa: 'CAPA', noCapaReason: 'Reason for no CAPA', weakCapaJustification: 'Why a weak CAPA is enough', sixM: '6M', typeId: 'Type', investigatorId: 'Investigator', ownerId: 'Owner', fiveWhys: '5 whys', isIsNot: 'Is / is not', fishbone: 'Fishbone', fmea: 'FMEA', kt: 'Kepner-Tregoe', stepBefore: 'Status before', noBatch: 'No batch involved', notADeviation: 'Not a deviation', initialImpact: 'Initial impact', finalImpact: 'Final impact', eventAt: 'Event time', actionTakenAt: 'Action taken at', areaId: 'Area',
 };
 
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;

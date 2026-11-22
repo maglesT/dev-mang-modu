@@ -13,8 +13,8 @@ interface Fetch {
   rowCount: number; sha256: string; error: string | null; fetchedAt: string; fetchedBy: string;
 }
 // D-57, D-59: every TrueBatch product (the one list, shared with the server), each its own copy.
-const NAME: Record<string, string> = { ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])), logbook: 'Logbook', batchwright: 'Batch record (Batchwright)' };
-const SOURCES = [...BATCH_PRODUCTS, 'logbook', 'batchwright'];
+const NAME: Record<string, string> = { ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])), logbook: 'Logbook' };
+const SOURCES = [...BATCH_PRODUCTS, 'logbook'];
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const time = (v: unknown) => (v ? plantTime(String(v)) : '—');
 const rowsText = (n: number) => `${n.toLocaleString('en-IN')} ${n === 1 ? 'row' : 'rows'}`;
@@ -91,7 +91,8 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
   const first = fetches?.[0];
   // The newest copy per source is shown in full; every other copy is listed as an earlier fetch.
   const shown = new Set(SOURCES.map((src) => latest(src)?.id));
-  const earlier = (fetches ?? []).filter((f) => !shown.has(f.id));
+  // Copies from the retired earlier batch-record system are not listed (its link is gone).
+  const earlier = (fetches ?? []).filter((f) => !shown.has(f.id) && f.source in NAME);
   const missing = SOURCES.map((src) => latest(src)).filter((f): f is Fetch => !!f && notFound(f));
   return (
     <section className="card" aria-label="Data collection">
@@ -105,8 +106,9 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
       {missing.length > 0 && (
         <p className="muted small" aria-label="Batch records without this batch">
           {missing.length < SOURCES.filter((src) => isBatchRecord(src) && latest(src)).length
-            ? `Also read, the batch is not there: ${missing.map((f) => PRODUCT_NAME[f.source as keyof typeof PRODUCT_NAME]).join(', ')}.`
+            ? `Also read, the batch is not there: ${missing.map((f) => PRODUCT_NAME[f.source as keyof typeof PRODUCT_NAME]).join(', ')}..`
             : `No batch with this number was found in ${missing.map((f) => PRODUCT_NAME[f.source as keyof typeof PRODUCT_NAME]).join(', ')}.`}
+          {' '}Fetch again to look in every linked product.
         </p>
       )}
       {earlier.length > 0 && (

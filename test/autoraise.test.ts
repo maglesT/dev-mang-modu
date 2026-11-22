@@ -180,7 +180,7 @@ describe('deviation notes from TrueBatch (D-51)', () => {
 
     const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string; step: string }[];
     const d = list.find((x) => x.number === first.filed[0])!;
-    expect(d).toMatchObject({ title: 'Batch MGL26001, compression/compress: Hardness 48 N below the 60 N limit at 10:20', area: TB_AREA, reporter: 'TrueBatch (automatic report)', step: 'classification' });
+    expect(d).toMatchObject({ title: 'Batch MGL26001, compression/compress: Hardness 48 N below the 60 N limit at 10:20', area: TB_AREA, reporter: 'TrueBatch Tablets (automatic report)', step: 'classification' });
     const [row] = await t.owner<{ source_ref: string; event_at: string; batch: string; product: string; batch_typed: boolean; from: string }[]>`
       select d.source_ref, s.data->>'eventAt' as event_at, b.batch, b.product, b.batch_typed, s.data->'products'->0->>'from' as from from deviations d
       join latest_sections s on s.deviation_id = d.id and s.kind = 'report' join batches b on b.section_id = s.id where d.id = ${d.id}`;
@@ -239,12 +239,12 @@ describe('deviation notes from TrueBatch Packing (D-53)', () => {
     const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string; step: string }[];
     const d = list.find((x) => x.number === first.filed[0])!;
     expect(d).toMatchObject({ title: 'Batch TP260001, Packing › Coding check: Coding check 40 min late: line stopped for a jam', area: TBP_AREA,
-      reporter: 'TrueBatch Packing (automatic report)', step: 'classification' });
+      reporter: 'TrueBatch Tablets Packing (automatic report)', step: 'classification' });
     const [row] = await t.owner<{ source_ref: string; event_at: string; description: string; batch: string; product: string }[]>`
       select d.source_ref, s.data->>'eventAt' as event_at, s.data->>'description' as description, b.batch, b.product from deviations d
       join latest_sections s on s.deviation_id = d.id and s.kind = 'report' join batches b on b.section_id = s.id where d.id = ${d.id}`;
     expect(row).toMatchObject({ source_ref: `${TBP_PREFIX}41`, batch: 'TP260001', product: 'FG-ATV20-BL10' });
-    expect(row!.description).toContain('in the TrueBatch Packing batch record of TP260001, step Packing › Coding check. Filed automatically from TrueBatch Packing.');
+    expect(row!.description).toContain('in the TrueBatch Tablets Packing batch record of TP260001, step Packing › Coding check. Filed automatically from TrueBatch Tablets Packing.');
     expect(Math.abs(Date.parse(row!.event_at) - (Date.now() - 2 * 3_600_000))).toBeLessThan(120_000);
     // TrueBatch's own note 41 keeps its own deviation.
     expect(await t.owner`select 1 from deviations where source_ref in (${TB_PREFIX + '41'}, ${TBP_PREFIX + '41'})`).toHaveLength(2);
@@ -371,8 +371,8 @@ describe('deviation notes from the new TrueBatch products (D-59)', () => {
   const NEW = [
     { p: 'truebatch_capsules', name: 'TrueBatch Capsules', batch: 'TC260001', product: 'FG-CAP-EX20', step: 'Encapsulation › Fill the capsules' },
     { p: 'truebatch_capsules_packing', name: 'TrueBatch Capsules Packing', batch: 'CP260001', product: 'PK-CAP-EX20-B10', step: 'Blistering › Blister' },
-    { p: 'truebatch_liquids', name: 'TrueBatch Oral Liquids', batch: 'TL260001', product: 'FG-SYR-EX5', step: 'Compounding › Dissolve' },
-    { p: 'truebatch_liquids_packing', name: 'TrueBatch Oral Liquids Packing', batch: 'LP260001', product: 'PK-SYR-EX5-100', step: 'Filling › Fill the bottles' },
+    { p: 'truebatch_liquids', name: 'TrueBatch Liquids', batch: 'TL260001', product: 'FG-SYR-EX5', step: 'Compounding › Dissolve' },
+    { p: 'truebatch_liquids_packing', name: 'TrueBatch Liquids Packing', batch: 'LP260001', product: 'PK-SYR-EX5-100', step: 'Filling › Fill the bottles' },
     { p: 'truebatch_api', name: 'TrueBatch API', batch: 'TA260001', product: 'API-EX-01', step: 'Packing › Drum and label' },
   ] as const satisfies readonly { p: BatchProduct; name: string; batch: string; product: string; step: string }[];
   const schemaOf = (p: BatchProduct) => `${p.replace('truebatch_', 'n59')}_${process.pid}`;
@@ -393,7 +393,7 @@ describe('deviation notes from the new TrueBatch products (D-59)', () => {
       expect(noteFeed(p)).toEqual({ username: `${p}.auto`, fullName: `${name} (automatic report)`, area: `${name} (automatic)`, prefix: `${p}:note:`, what: `deviation notes from ${name}` });
     }
     // The four products before keep their names exactly.
-    expect([TB_AREA, TBP_AREA, TBI_AREA, TBIP_AREA]).toEqual(['TrueBatch (automatic)', 'TrueBatch Packing (automatic)', 'TrueBatch Injectables (automatic)', 'TrueBatch Injectables Packing (automatic)']);
+    expect([TB_AREA, TBP_AREA, TBI_AREA, TBIP_AREA]).toEqual(['TrueBatch Tablets (automatic)', 'TrueBatch Tablets Packing (automatic)', 'TrueBatch Injectables (automatic)', 'TrueBatch Injectables Packing (automatic)']);
     expect([TB_PREFIX, TBP_PREFIX, TBI_PREFIX, TBIP_PREFIX]).toEqual(['truebatch:note:', 'truebatch_packing:note:', 'truebatch_injectables:note:', 'truebatch_injectables_packing:note:']);
   });
 

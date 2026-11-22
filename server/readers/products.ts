@@ -6,14 +6,14 @@
 // equipment_use_v1 and deviation_note_v1 with the same columns. TrueBatch API is one product (packing is its last
 // stage), so it publishes batch_fact_v1. No imports: the web pages use this list too.
 export const TRUEBATCH_PRODUCTS = [
-  { key: 'truebatch', name: 'TrueBatch', packing: false },
+  { key: 'truebatch', name: 'TrueBatch Tablets', packing: false },
   { key: 'truebatch_injectables', name: 'TrueBatch Injectables', packing: false },
-  { key: 'truebatch_packing', name: 'TrueBatch Packing', packing: true },
+  { key: 'truebatch_packing', name: 'TrueBatch Tablets Packing', packing: true },
   { key: 'truebatch_injectables_packing', name: 'TrueBatch Injectables Packing', packing: true },
   { key: 'truebatch_capsules', name: 'TrueBatch Capsules', packing: false },
   { key: 'truebatch_capsules_packing', name: 'TrueBatch Capsules Packing', packing: true },
-  { key: 'truebatch_liquids', name: 'TrueBatch Oral Liquids', packing: false },
-  { key: 'truebatch_liquids_packing', name: 'TrueBatch Oral Liquids Packing', packing: true },
+  { key: 'truebatch_liquids', name: 'TrueBatch Liquids', packing: false },
+  { key: 'truebatch_liquids_packing', name: 'TrueBatch Liquids Packing', packing: true },
   { key: 'truebatch_api', name: 'TrueBatch API', packing: false },
 ] as const;
 

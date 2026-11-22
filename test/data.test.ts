@@ -222,7 +222,7 @@ describe('data collection (S17)', () => {
     expect((await call(t.app, c.admin1!, 'POST', `/api/deviations/${id}/fetch`, {})).statusCode).toBe(403);
     await call(t.app, c.us1!, 'POST', `/api/deviations/${id}/fetch`, {});
     const f = (await call(t.app, c.us1!, 'GET', `/api/deviations/${id}/fetches`)).json() as { source: string; status: string; data: { findings: string[] } }[];
-    expect(f.find((x) => x.source === 'truebatch')!.data.findings).toContain('No batch with this number was found in TrueBatch.');
+    expect(f.find((x) => x.source === 'truebatch')!.data.findings).toContain('No batch with this number was found in TrueBatch Tablets.');
     // Without configured sources, each is recorded as not configured, and the fetch still succeeds.
     await seedUser(off.owner, 'adm9', ['admin']);
     await seedUser(off.owner, 'usr9', ['user']);

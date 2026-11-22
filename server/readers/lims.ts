@@ -3,7 +3,7 @@ import { audit } from '../audit.js';
 import { oosRoomArea } from '../words.js';
 import type { Source } from './logbook.js';
 
-// D-60: Medhanta LIMS publishes each OOS (out-of-specification result) in report.oos_v1 (database lims; contract:
+// D-60: QLIMS publishes each OOS (out-of-specification result) in report.oos_v1 (database lims; contract:
 // docs/07-data-contracts.md). QA files the phase II investigation of an OOS here by picking it: the product or material,
 // lot, test, result, limit, phase I outcome and OOS number come from the view, never typed. The deviation keeps the
 // OOS (report data `oos`, source_ref 'lims:oos:<oos_id>', unique), so an OOS is filed once. LIMS is only read, through
@@ -113,7 +113,7 @@ export const oosProduct = (o: OosRef) => ({ product: o.itemCode || o.itemName ||
 // the area to this one (not chosen on the form). It is made by the app the first time an OOS is filed, audited
 // 'area.created' (automatic), as the areas of the automatic reporters are (D-50). An area an administrator made
 // inactive stays inactive.
-export const LIMS_AREA = 'QC laboratory (Medhanta LIMS)';
+export const LIMS_AREA = 'QC laboratory (QLIMS)';
 export const LIMS_AREA_OFF = `The area of this OOS ("${LIMS_AREA}", or for an environmental-monitoring OOS its room) is inactive, so the OOS cannot be filed. Ask your administrator.`;
 
 /**
