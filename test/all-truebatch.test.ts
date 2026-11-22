@@ -203,7 +203,7 @@ describe('the new TrueBatch products (D-59)', () => {
     expect(d.batches.map((b) => b.typed)).toEqual(NEW.map(() => false));
     const wrong = await call(t.app, c.us57!, 'POST', '/api/deviations', body([{ product: 'X', batch: 'TC26001', from: 'truebatch_liquids_packing' }]));
     expect(wrong.statusCode).toBe(400);
-    expect(wrong.json().problems).toEqual(['Batch TC26001 is not in TrueBatch Liquids Packing. Pick it from the list, or type it by hand.']);
+    expect(wrong.json().problems).toEqual(['Batch TC26001 is not in TrueBatch Oral Liquids Packing. Pick it from the list, or type it by hand.']);
     // An unknown product key is not accepted as a pick.
     expect((await call(t.app, c.us57!, 'POST', '/api/deviations', body([{ product: 'X', batch: 'TC26001', from: 'truebatch_unknown' }]))).statusCode).toBe(400);
   });

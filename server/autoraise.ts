@@ -8,7 +8,7 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, type BatchProduct } from './readers/produ
 
 // D-50 (owner 2026-11-12, Logbook D-37): every missed limit the Logbook publishes in report.overdue_v1 (overdue
 // cleaning, preventive maintenance, calibration, requalification) is filed here once, as a deviation from the automatic
-// reporter in the area "Logbook (automatic)", with the Logbook's report text. QA classifies it like any other report.
+// reporter in the area "LEAD (automatic)", with the Logbook's report text. QA classifies it like any other report.
 // The Logbook is only read (its own login, read-only transaction); deviations.source_ref keeps each record filed once.
 // D-51 (owner 2026-11-15): the same for TrueBatch's deviation notes (report.deviation_note_v1) that carry no deviation
 // number: each is filed once as a deviation from the automatic reporter truebatch.auto in the area "TrueBatch
@@ -41,14 +41,14 @@ import { BATCH_PRODUCTS, PRODUCT_NAME, type BatchProduct } from './readers/produ
 // from when it was sent.
 
 export const AUTO_REPORTER = 'logbook.auto';
-export const AUTO_AREA = 'Logbook (automatic)';
+export const AUTO_AREA = 'LEAD (automatic)';
 export const SOURCE_PREFIX = 'logbook:overdue:';
 // Records older than this are not filed (e.g. when the link is first switched on at a site with a long history).
 export const LOOKBACK_DAYS = 30;
 
 /** One automatic source: who files, in which area, and how its records are named in source_ref. */
 interface Feed { username: string; fullName: string; area: string; prefix: string; what: string }
-const LOGBOOK: Feed = { username: AUTO_REPORTER, fullName: 'Logbook (automatic report)', area: AUTO_AREA, prefix: SOURCE_PREFIX, what: 'missed limits from the Logbook' };
+const LOGBOOK: Feed = { username: AUTO_REPORTER, fullName: 'LEAD (automatic report)', area: AUTO_AREA, prefix: SOURCE_PREFIX, what: 'missed limits from the Logbook' };
 /** D-51, D-53 to D-55, D-59: a TrueBatch product's notes, named after the product (one list: readers/products.ts). */
 export const noteFeed = (p: BatchProduct): Feed => ({ username: `${p}.auto`, fullName: `${PRODUCT_NAME[p]} (automatic report)`,
   area: `${PRODUCT_NAME[p]} (automatic)`, prefix: `${p}:note:`, what: `deviation notes from ${PRODUCT_NAME[p]}` });

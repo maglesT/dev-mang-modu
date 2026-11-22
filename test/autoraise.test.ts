@@ -62,7 +62,7 @@ describe('missed limits from the Logbook (D-50)', () => {
 
     const list = (await call(t.app, c.qa!, 'GET', '/api/deviations?view=all')).json() as { id: number; number: string; title: string; area: string; reporter: string; step: string }[];
     const d = list.find((x) => x.number === first.filed[0])!;
-    expect(d).toMatchObject({ title: 'Preventive maintenance overdue: RMG-01 (due 2026-11-10)', area: AUTO_AREA, reporter: 'Logbook (automatic report)', step: 'classification' });
+    expect(d).toMatchObject({ title: 'Preventive maintenance overdue: RMG-01 (due 2026-11-10)', area: AUTO_AREA, reporter: 'LEAD (automatic report)', step: 'classification' });
     const full = (await call(t.app, c.qa!, 'GET', `/api/deviations/${d.id}`)).json();
     expect(JSON.stringify(full)).toContain('RMG-01');
     const [row] = await t.owner<{ source_ref: string; event_at: string }[]>`
@@ -371,8 +371,8 @@ describe('deviation notes from the new TrueBatch products (D-59)', () => {
   const NEW = [
     { p: 'truebatch_capsules', name: 'TrueBatch Capsules', batch: 'TC260001', product: 'FG-CAP-EX20', step: 'Encapsulation › Fill the capsules' },
     { p: 'truebatch_capsules_packing', name: 'TrueBatch Capsules Packing', batch: 'CP260001', product: 'PK-CAP-EX20-B10', step: 'Blistering › Blister' },
-    { p: 'truebatch_liquids', name: 'TrueBatch Liquids', batch: 'TL260001', product: 'FG-SYR-EX5', step: 'Compounding › Dissolve' },
-    { p: 'truebatch_liquids_packing', name: 'TrueBatch Liquids Packing', batch: 'LP260001', product: 'PK-SYR-EX5-100', step: 'Filling › Fill the bottles' },
+    { p: 'truebatch_liquids', name: 'TrueBatch Oral Liquids', batch: 'TL260001', product: 'FG-SYR-EX5', step: 'Compounding › Dissolve' },
+    { p: 'truebatch_liquids_packing', name: 'TrueBatch Oral Liquids Packing', batch: 'LP260001', product: 'PK-SYR-EX5-100', step: 'Filling › Fill the bottles' },
     { p: 'truebatch_api', name: 'TrueBatch API', batch: 'TA260001', product: 'API-EX-01', step: 'Packing › Drum and label' },
   ] as const satisfies readonly { p: BatchProduct; name: string; batch: string; product: string; step: string }[];
   const schemaOf = (p: BatchProduct) => `${p.replace('truebatch_', 'n59')}_${process.pid}`;

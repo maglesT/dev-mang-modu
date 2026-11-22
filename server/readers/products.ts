@@ -12,8 +12,8 @@ export const TRUEBATCH_PRODUCTS = [
   { key: 'truebatch_injectables_packing', name: 'TrueBatch Injectables Packing', packing: true },
   { key: 'truebatch_capsules', name: 'TrueBatch Capsules', packing: false },
   { key: 'truebatch_capsules_packing', name: 'TrueBatch Capsules Packing', packing: true },
-  { key: 'truebatch_liquids', name: 'TrueBatch Liquids', packing: false },
-  { key: 'truebatch_liquids_packing', name: 'TrueBatch Liquids Packing', packing: true },
+  { key: 'truebatch_liquids', name: 'TrueBatch Oral Liquids', packing: false },
+  { key: 'truebatch_liquids_packing', name: 'TrueBatch Oral Liquids Packing', packing: true },
   { key: 'truebatch_api', name: 'TrueBatch API', packing: false },
 ] as const;
 

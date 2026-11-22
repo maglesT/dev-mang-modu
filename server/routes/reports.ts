@@ -92,8 +92,8 @@ type Row = Record<string, unknown>;
 // A stored key as a label: "eventAt" -> "event at".
 const words = (k: string) => k.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ').toLowerCase();
 // A stored key as a printed label: "eventAt" -> "When it happened", "stepBefore" -> "Status before".
-const LABELS: Record<string, string> = { eventAt: 'When it happened', noBatch: 'No batch involved', stepBefore: 'Status before', actionTakenAt: 'Action taken at', notADeviation: 'Not a deviation' };
-const label = (k: string) => LABELS[k] ?? words(k).replace(/^\w/, (c) => c.toUpperCase());
+const LABELS: Record<string, string> = { eventAt: 'When it happened', noBatch: 'No batch involved', stepBefore: 'Status before', actionTakenAt: 'Action taken at', notADeviation: 'Not a deviation', noCapaReason: 'Reason for no CAPA', weakCapaJustification: 'Why a weak CAPA is enough', sixM: '6M' };
+const label = (k: string) => LABELS[k] ?? words(k).replace(/ id$/, '').replace(/^\w/, (c) => c.toUpperCase());
 const val = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 type Names = { area: Map<number, string>; type: Map<number, string>; user: Map<number, string> };
 // Ids in stored data are printed with their names, so every version is readable on its own (DV-21).

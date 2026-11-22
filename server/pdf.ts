@@ -43,7 +43,7 @@ export const heading = (text: string): Content => ({ text: runs(text), bold: tru
 
 // Two-column field list.
 export const fields = (rows: [string, unknown][]): Content => ({
-  table: { widths: [130, '*'], body: rows.map(([k, v]) => [t(k, { bold: true }), t(v)]) },
+  table: { widths: [130, '*'], body: rows.map(([k, v]) => [t(k.replace(/^\w/, (c) => c.toUpperCase()), { bold: true }), t(v)]) },
   layout: 'lightHorizontalLines',
   fontSize: 8,
 });
