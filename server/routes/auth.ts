@@ -106,8 +106,8 @@ export function authRoutes(app: FastifyInstance, sql: Sql, signOn: SignOn) {
     });
     if ('refused' in outcome) {
       return reply.code(403).type('text/html').send(outcome.refused === 'permission'
-        ? page('No access', 'You have no right to use Deviations &amp; CAPA. Ask your administrator.')
-        : page('Login cannot be used', 'This login cannot be used in Deviations &amp; CAPA. Ask your administrator.'));
+        ? page('No access', 'You have no right to use Medhanta DIVE. Ask your administrator.')
+        : page('Login cannot be used', 'This login cannot be used in Medhanta DIVE. Ask your administrator.'));
     }
     void reply.setCookie(SESSION_COOKIE, outcome.sessionId, { path: '/', httpOnly: true, sameSite: 'strict', secure: app.cookieSecure });
     return reply.redirect('/');

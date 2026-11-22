@@ -100,7 +100,7 @@ describe('Deviations on a platform database (D-42)', () => {
     await app.end();
   });
 
-  it('DV-08 report.capa_v1 for the QMS link: same name, version and columns on the platform as standalone', async () => {
+  it('DV-08 report.capa_v1 for the ASSURE link: same name, version and columns on the platform as standalone', async () => {
     const schema = (await standalone.owner<{ s: string }[]>`select current_schema() as s`)[0]!.s;
     const platform = await columns(su, 'report');
     expect(platform.map((c) => c.name)).toEqual(['number', 'status', 'due_date', 'deviation_number', 'description', 'source', 'read_at', 'data_as_of']);

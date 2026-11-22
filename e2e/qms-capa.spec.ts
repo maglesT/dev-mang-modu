@@ -7,7 +7,7 @@ import { E2E_QMS_PORT, E2E_SCHEMA, QMS_URL } from './config.js';
 
 // D-63: with the QMS linked, the deviation page and the CAPA list show the QMS's CAPAs read-only, and "Raise CAPA in QMS"
 // opens the QMS new-CAPA screen with the deviation number. Set-up through the API of the app without the QMS (same data).
-test('DV-08: QMS linked: the deviation shows its QMS CAPAs read-only and raises a CAPA in QMS with the deviation number', async ({ page }) => {
+test('DV-08: ASSURE linked: the deviation shows its ASSURE CAPAs read-only and raises a CAPA in ASSURE with the deviation number', async ({ page }) => {
   const us1 = await apiAs('us1');
   const areas = await (await us1.get('/api/areas')).json();
   const { id, number } = await post(us1, '/api/deviations', {
@@ -39,14 +39,14 @@ test('DV-08: QMS linked: the deviation shows its QMS CAPAs read-only and raises 
   await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
   await page.getByRole('button', { name: number }).click();
   await expect(page.getByText('QCAPA-26-E01')).toBeVisible();
-  await expect(page.getByText('from QMS').first()).toBeVisible();
+  await expect(page.getByText('from ASSURE').first()).toBeVisible();
   await expect(page.getByText('Implementation')).toBeVisible();
-  const raise = page.getByRole('link', { name: 'Raise CAPA in QMS' });
+  const raise = page.getByRole('link', { name: 'Raise CAPA in ASSURE' });
   await expect(raise).toHaveAttribute('href', `${QMS_URL}/capa/new?source=deviation&ref=${number}`);
   await expect(page.getByRole('button', { name: 'Raise a CAPA' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'CAPAs' }).first().click();
-  await expect(page.getByRole('heading', { name: 'CAPAs in QMS' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'CAPAs in ASSURE' })).toBeVisible();
   await expect(page.getByText('QCAPA-26-E01')).toBeVisible();
   await expect(page.getByText('New CAPA (audit, complaint, other)')).toHaveCount(0);
 });

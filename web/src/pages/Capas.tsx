@@ -38,15 +38,15 @@ export function CapaTable({ rows, onOpen, showSource = true }: { rows: CapaItem[
 
 // D-63: the QMS's CAPAs, read-only (the QMS owns CAPA while it is linked); opened and worked on in the QMS.
 export function QmsCapaTable({ q }: { q: QmsCapas }) {
-  if (q.off) return <div className="notice"><span className="chip chip-bad">QMS link off</span> {q.note}</div>;
-  if (q.capas.length === 0) return <p className="muted">No CAPAs in QMS here.</p>;
+  if (q.off) return <div className="notice"><span className="chip chip-bad">ASSURE link off</span> {q.note}</div>;
+  if (q.capas.length === 0) return <p className="muted">No CAPAs in ASSURE here.</p>;
   return (
     <table className="list">
       <thead><tr><th>Number</th><th>Title</th><th>Owner</th><th>Status</th><th>Due</th><th>Effective</th></tr></thead>
       <tbody>
         {q.capas.map((c: QmsCapa) => (
           <tr key={c.capa_number}>
-            <td>{c.capa_number} <span className="chip chip-info">from QMS</span></td>
+            <td>{c.capa_number} <span className="chip chip-info">from ASSURE</span></td>
             <td>{c.title}{c.source_kind === 'deviation' && c.source_ref && !c.title.includes(c.source_ref) ? <span className="muted small"> · {c.source_ref}</span> : null}</td>
             <td>{c.owner_name ?? '—'}</td>
             <td><span className={`chip ${QMS_CLOSED.includes(c.status) ? 'chip-ok' : 'chip-info'}`}>{c.status_text}</span></td>
@@ -63,8 +63,8 @@ export function QmsCapaTable({ q }: { q: QmsCapas }) {
 export function RaiseInQms({ q }: { q: QmsCapas }) {
   if (q.off) return null;
   return q.newCapaUrl
-    ? <a className="button primary" href={q.newCapaUrl} target="_blank" rel="noopener">Raise CAPA in QMS</a>
-    : <p className="muted small">CAPAs are raised in QMS.</p>;
+    ? <a className="button primary" href={q.newCapaUrl} target="_blank" rel="noopener">Raise CAPA in ASSURE</a>
+    : <p className="muted small">CAPAs are raised in ASSURE.</p>;
 }
 
 const NOT_LINKED: QmsCapas = { linked: false, off: false, note: null, newCapaUrl: null, capas: [] };
@@ -102,12 +102,12 @@ export function CapaList({ me, onOpen }: { me: Me; onOpen: (id: number) => void 
       {raising && <RaiseForm onCancel={() => setRaising(false)} onDone={(id) => { setRaising(false); onOpen(id); }} />}
       {qms.linked && (
         <section className="card">
-          <h2>CAPAs in QMS</h2>
-          <p className="muted small">QMS owns CAPA: these are read from QMS and worked on there. Status filter applies.</p>
+          <h2>CAPAs in ASSURE</h2>
+          <p className="muted small">ASSURE owns CAPA: these are read from ASSURE and worked on there. Status filter applies.</p>
           <QmsCapaTable q={{ ...qms, capas: qmsRows }} />
         </section>
       )}
-      {qms.linked && <h2>CAPAs recorded here before QMS was linked</h2>}
+      {qms.linked && <h2>CAPAs recorded here before ASSURE was linked</h2>}
       <div className="row filters">
         <label className="check"><input type="checkbox" checked={f.mine} onChange={(e) => setF({ ...f, mine: e.target.checked })} /> Waiting for me</label>
         <label className="check"><input type="checkbox" checked={f.overdue} onChange={(e) => setF({ ...f, overdue: e.target.checked })} /> Overdue only</label>

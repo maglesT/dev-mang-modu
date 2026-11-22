@@ -2,8 +2,7 @@
 export function Login() {
   return (
     <main className="page narrow login">
-      <img className="login-logo" src="/medhanta-logo.png" alt="Medhanta: Where Expertise Meets Intelligence" />
-      <h1>Deviations &amp; CAPA</h1>
+      <h1><img className="login-logo" src="/brand/dive-logo.svg" alt="Medhanta DIVE" /></h1>
       <p className="muted">Report deviations and follow CAPAs. Sign in with your own Medhanta login.</p>
       <div className="card">
         <a className="button primary" href="/login">Sign in</a>

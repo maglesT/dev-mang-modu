@@ -163,7 +163,7 @@ export function DeviationPage({ me, id, onBack, onOpenCapa, onOpenDeviation }: {
         ) : (
           <Fields rows={[
             // D-60: the LIMS OOS whose phase II this is, as read from LIMS when it was filed.
-            ...(report.oos ? [['LIMS OOS', <>{oosText(report.oos as Oos)}<br /><span className="muted small">{(report.oos as Oos).phaseI} Sample {(report.oos as Oos).sample}, analysis {(report.oos as Oos).analysis}; OOS opened {plantTime((report.oos as Oos).openedAt)}.</span></>] as [string, ReactNode]] : []),
+            ...(report.oos ? [['QLIMS OOS', <>{oosText(report.oos as Oos)}<br /><span className="muted small">{(report.oos as Oos).phaseI} Sample {(report.oos as Oos).sample}, analysis {(report.oos as Oos).analysis}; OOS opened {plantTime((report.oos as Oos).openedAt)}.</span></>] as [string, ReactNode]] : []),
             ['What happened', str(report.description)],
             ...(d.planned ? [['Reason for the planned deviation', str(report.plannedReason)] as [string, ReactNode]] : []),
             ['Area', str(d.area)],
@@ -312,7 +312,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
     if (missing.length) return setProblems(missing);
     if (!fi.notes.trim()) return setProblems(['Final impact: write the final assessment.']);
     if ((fi.productQuality === 'yes' || fi.otherBatches === 'yes') && !f.disposition.trim()) return setProblems(['Product quality or other batches are affected: write the batch disposition.']);
-    if (qms.off) return setProblems([qms.note ?? 'QMS link off. Try again later.']);
+    if (qms.off) return setProblems([qms.note ?? 'ASSURE link off. Try again later.']);
     if (nCapas === 0 && d.classification !== 'minor') return setProblems(['A major or critical deviation needs at least one CAPA before closure.']);
     if (noCapaAllowed && !f.noCapaReason.trim()) return setProblems(['Raise a CAPA, or say why the immediate action was enough.']);
     if (allWeak && !f.weakCapaJustification.trim()) return setProblems(['Every CAPA is weak. Raise a strong or medium CAPA, or say why weak CAPAs are enough.']);
@@ -327,10 +327,10 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
       <h2>CAPAs</h2>
       {qms.linked ? (
         <>
-          <p className="muted small">QMS owns CAPA: CAPAs for this deviation are raised and followed in QMS, and shown here as read from QMS.</p>
+          <p className="muted small">ASSURE owns CAPA: CAPAs for this deviation are raised and followed in ASSURE, and shown here as read from ASSURE.</p>
           <QmsCapaTable q={qms} />
           {canRaise && <div><RaiseInQms q={qms} /></div>}
-          {capas.length > 0 && <><h3>Recorded here before QMS was linked</h3><CapaTable rows={capas} onOpen={onOpenCapa} showSource={false} /></>}
+          {capas.length > 0 && <><h3>Recorded here before ASSURE was linked</h3><CapaTable rows={capas} onOpen={onOpenCapa} showSource={false} /></>}
         </>
       ) : <CapaTable rows={capas} onOpen={onOpenCapa} showSource={false} />}
       {!qms.linked && canRaise && !raising && <div><button onClick={() => setRaising(true)}>Raise a CAPA</button></div>}
@@ -350,8 +350,8 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
           ['Batch disposition', str(closure.data.disposition)],
           ...(closure.data.noCapaReason ? [['No CAPA because', str(closure.data.noCapaReason)] as [string, ReactNode]] : []),
           ...(closure.data.weakCapaJustification ? [['Weak CAPAs accepted because', str(closure.data.weakCapaJustification)] as [string, ReactNode]] : []),
-          ['Open CAPAs', d.openCapas ? `${d.openCapas} still open (followed in ${qms.linked ? 'QMS' : 'the CAPA list'})` : 'None'],
-          ...(Array.isArray(closure.data.qmsCapas) ? [['CAPAs in QMS at closure', (closure.data.qmsCapas as string[]).join(', ') || 'None'] as [string, ReactNode]] : []),
+          ['Open CAPAs', d.openCapas ? `${d.openCapas} still open (followed in ${qms.linked ? 'ASSURE' : 'the CAPA list'})` : 'None'],
+          ...(Array.isArray(closure.data.qmsCapas) ? [['CAPAs in ASSURE at closure', (closure.data.qmsCapas as string[]).join(', ') || 'None'] as [string, ReactNode]] : []),
         ]} />
       )}
       <Signatures d={d} kind={'closure' as Kind} />
@@ -382,7 +382,7 @@ function Closure({ d, me, onOpenCapa, onChange }: { d: Deviation; me: Me; onOpen
       )}
       {d.step === 'closed' && closer && <div className="actions"><button onClick={() => setSigning('reopened')}>Reopen</button></div>}
       {signing === 'closed' && (
-        <SignDialog meaning="closed" what={`${d.number}: the deviation is reviewed and closed${d.openCapas || capas.some((c) => c.step !== 'closed') || qmsCounted.some((c) => !QMS_CLOSED.includes(c.status)) ? `; open CAPAs continue in ${qms.linked ? 'QMS' : 'the CAPA list'}` : ''}.`}
+        <SignDialog meaning="closed" what={`${d.number}: the deviation is reviewed and closed${d.openCapas || capas.some((c) => c.step !== 'closed') || qmsCounted.some((c) => !QMS_CLOSED.includes(c.status)) ? `; open CAPAs continue in ${qms.linked ? 'ASSURE' : 'the CAPA list'}` : ''}.`}
           onCancel={() => setSigning(null)}
           onSign={async (cred) => {
             await api('POST', `/api/deviations/${d.id}/close`, { data: { ...f, finalImpact: fi }, signature: cred });

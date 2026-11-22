@@ -7,8 +7,8 @@ import type { Source } from './logbook.js';
 // from its report.capa_v1 (read-only). Without the link (Deviations sold alone) the local CAPA register works as before.
 // Old local CAPAs stay readable and are still published in this app's own capa_v1 (D-40).
 export const QMS_VIEWS = ['capa_v1'];
-export const QMS_OFF = 'QMS link off: CAPAs are raised and read in QMS, which is not answering now. Try again in a few minutes.';
-export const RAISE_IN_QMS = 'QMS is linked: CAPAs are raised in QMS, not here. Use "Raise CAPA in QMS".';
+export const QMS_OFF = 'ASSURE link off: CAPAs are raised and read in ASSURE, which is not answering now. Try again in a few minutes.';
+export const RAISE_IN_QMS = 'ASSURE is linked: CAPAs are raised in ASSURE, not here. Use "Raise CAPA in ASSURE".';
 
 // The QMS screen for a new CAPA (one constant, easy to change). It takes ?source=deviation&ref=<deviation number>.
 export const QMS_NEW_CAPA_PATH = '/capa/new';
@@ -74,7 +74,7 @@ export async function openCounts(src: Source | undefined, numbers: string[], log
     for (const r of rows) if (isOpen(r) && r.source_ref) m.set(r.source_ref, (m.get(r.source_ref) ?? 0) + 1);
     return m;
   } catch (e) {
-    log(`QMS CAPA read failed: ${e instanceof Error ? e.message : String(e)}`);
+    log(`ASSURE CAPA read failed: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
 }

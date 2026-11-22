@@ -179,7 +179,7 @@ function TrendView() {
             <p className="muted small">Fix the top one or two causes at the system level first.</p>
           </div>
           <h3>CAPAs raised in the period</h3>
-          {data.capasInQms && <p className="muted small">QMS owns CAPA: CAPAs raised in QMS are counted in QMS. Below: CAPAs recorded here before QMS was linked.</p>}
+          {data.capasInQms && <p className="muted small">ASSURE owns CAPA: CAPAs raised in ASSURE are counted in ASSURE. Below: CAPAs recorded here before ASSURE was linked.</p>}
           <div className="grid3">
             <table><thead><tr><th>Source</th><th>Count</th></tr></thead><tbody>{sum((c) => SOURCE_LABEL[c.source] ?? c.source).map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody></table>
             <table><thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>{sum((c) => (c.step === 'closed' ? 'Closed' : 'Not closed')).map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody></table>

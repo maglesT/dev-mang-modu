@@ -72,7 +72,7 @@ export const reportData = z
     if (d.products.length === 0 && !d.noBatch && !d.oos) ctx.addIssue({ code: 'custom', path: ['products'], message: 'Give the product and batch, or tick "no product or batch concerned".' });
     if (d.products.length > 0 && d.noBatch) ctx.addIssue({ code: 'custom', path: ['noBatch'], message: 'Either list products and batches or tick "none", not both.' });
     if (d.oos && d.planned) ctx.addIssue({ code: 'custom', path: ['planned'], message: 'An OOS phase II investigation is an unplanned deviation.' });
-    if (!d.oos && d.products.some((p) => p.from === 'lims')) ctx.addIssue({ code: 'custom', path: ['products'], message: 'A lot from LIMS comes only with its OOS: pick the OOS.' });
+    if (!d.oos && d.products.some((p) => p.from === 'lims')) ctx.addIssue({ code: 'custom', path: ['products'], message: 'A lot from QLIMS comes only with its OOS: pick the OOS.' });
     if (d.planned && !d.plannedReason) ctx.addIssue({ code: 'custom', path: ['plannedReason'], message: 'Give the reason for the planned deviation.' });
     // DV-13: the event cannot be in the future (2 minutes allowed for clock differences).
     if (new Date(d.eventAt).getTime() > Date.now() + 120_000) ctx.addIssue({ code: 'custom', path: ['eventAt'], message: 'When it happened cannot be in the future.' });
