@@ -217,7 +217,12 @@ table.audit td { font-size: 0.92rem; }
   .page { padding: 16px 12px 40px; }
   .bar { padding: 8px 12px; }
   .who { width: 100%; justify-content: flex-end; }
-  table { display: block; overflow-x: auto; }
+  table { display: block; overflow-x: auto; max-width: 100%; }
+  .row { flex-wrap: wrap; }
+  .search { flex: 1 1 100%; margin-left: 0; display: flex; }
+  .search input { flex: 1; min-width: 0; width: auto; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html, body { overflow-x: hidden; }
 }
 /* The breakdown register uses the full screen width. */
 .page:has(table.register) { max-width: 1680px; }

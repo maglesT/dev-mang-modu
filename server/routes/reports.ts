@@ -68,7 +68,16 @@ const FETCH_STATUS: Record<string, string> = { ok: 'read', not_configured: 'not 
 const rows = (n: unknown) => `${Number(n).toLocaleString('en-IN')} ${Number(n) === 1 ? 'row' : 'rows'}`;
 // A history line's old and new values and action, in words (no raw keys or JSON on the PDF). Fixed widths: a long
 // hash in Old or New wraps inside its column instead of pushing the table off the page.
-const historyTable = (history: Row[]) => table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], history.map((h) => [plant(h.at as string), h.actor ?? 'System', actionWords(String(h.action)), valueWords(h.oldValue), valueWords(h.newValue), h.reason ?? '']), [55, 45, 60, 135, 135, 60]);
+const ID_KEYS: Record<string, keyof Names> = { areaId: 'area', typeId: 'type', investigatorId: 'user', ownerId: 'user' };
+// Ids become names; the signature id and the content hash are dropped (the signature has its own line).
+const readable = (v: unknown, names: Names): unknown => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
+  return Object.fromEntries(Object.entries(v as Row).filter(([k]) => !['signatureId', 'contentHash', 'sha256'].includes(k)).map(([k, x]) => {
+    const m = ID_KEYS[k];
+    return m ? [k.replace(/Id$/, ''), names[m].get(Number(x)) ?? '—'] : [k, x];
+  }));
+};
+const historyTable = (history: Row[], names: Names) => table(['When', 'Who', 'What', 'Old', 'New', 'Reason'], history.map((h) => [plant(h.at as string), h.actor ?? 'System', actionWords(String(h.action)), valueWords(readable(h.oldValue, names)), valueWords(readable(h.newValue, names)), h.reason ?? '']), [55, 45, 60, 135, 135, 60]);
 
 // Reads one of this app's own JSON endpoints as the same user, so the PDF shows exactly what the screen shows.
 async function asUser<T>(app: FastifyInstance, req: FastifyRequest, url: string): Promise<{ status: number; body: T }> {
@@ -82,6 +91,9 @@ const sendPdf = (reply: FastifyReply, name: string, pdf: Buffer) =>
 type Row = Record<string, unknown>;
 // A stored key as a label: "eventAt" -> "event at".
 const words = (k: string) => k.replaceAll(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ').toLowerCase();
+// A stored key as a printed label: "eventAt" -> "When it happened", "stepBefore" -> "Status before".
+const LABELS: Record<string, string> = { eventAt: 'When it happened', noBatch: 'No batch involved', stepBefore: 'Status before', actionTakenAt: 'Action taken at', notADeviation: 'Not a deviation' };
+const label = (k: string) => LABELS[k] ?? words(k).replace(/^\w/, (c) => c.toUpperCase());
 const val = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 type Names = { area: Map<number, string>; type: Map<number, string>; user: Map<number, string> };
 // Ids in stored data are printed with their names, so every version is readable on its own (DV-21).
@@ -90,7 +102,7 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
   Object.entries(data).flatMap(([k, v]): [string, unknown][] => {
     // The fishbone prints one row per category that has text (D-26).
     if (k === 'fishbone' && v && typeof v === 'object') {
-      return FISHBONE.filter(([key]) => (v as Row)[key]).map(([key, label]) => [`fishbone: ${label}`, val((v as Row)[key])]);
+      return FISHBONE.filter(([key]) => (v as Row)[key]).map(([key, label]) => [`Fishbone: ${label}`, val((v as Row)[key])]);
     }
     // D-60: the LIMS OOS of an OOS phase II investigation, as read from LIMS when it was filed.
     if (k === 'oos' && v && typeof v === 'object') {
@@ -98,8 +110,8 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
       return [['LIMS OOS', `${val(o.number)}: ${oosWhat(o as OosWhere & { test?: string })}, sample ${val(o.sample)}, analysis ${val(o.analysis)}; result ${val(o.result)}, limit ${val(o.limit)}; ${val(o.phaseI)} (OOS opened ${plant(o.openedAt as string)})`]];
     }
     // D-67: QA's "not a deviation", in words.
-    if (k === 'notADeviation') return [['not a deviation', v ? 'yes: cancelled by QA' : 'no']];
-    if (k === 'stepBefore') return [['status before', STEP[String(v)] ?? val(v)]];
+    if (k === 'notADeviation') return [['Not a deviation', v ? 'yes: cancelled by QA' : 'no']];
+    if (k === 'stepBefore') return [['Status before', STEP[String(v)] ?? val(v)]];
     // D-63: the QMS CAPAs a closure was checked against.
     if (k === 'qmsCapas' && Array.isArray(v)) return [['CAPAs in QMS (checked at closure)', v.length ? v.join(', ') : 'none']];
     // S13 tools print readably (D-35).
@@ -152,15 +164,15 @@ const dataRows = (data: Row, names: Names): [string, unknown][] =>
     if (k === 'initialImpact' && v && typeof v === 'object') {
       const a = v as Row;
       const word = (x: unknown) => ({ yes: 'yes', no: 'no', unknown: 'not known' } as Record<string, string>)[String(x)] ?? val(x);
-      return [['initial impact', `product quality ${word(a.productQuality)}; patient safety ${word(a.patientSafety)}; other batches ${word(a.otherBatches)}. ${val(a.notes)}`]];
+      return [['Initial impact', `product quality ${word(a.productQuality)}; patient safety ${word(a.patientSafety)}; other batches ${word(a.otherBatches)}. ${val(a.notes)}`]];
     }
     // D-39: QA's final impact assessment at closure, readable like the initial one.
     if (k === 'finalImpact' && v && typeof v === 'object') {
       const a = v as Row;
-      return [['final impact', `product quality affected: ${val(a.productQuality)}; patient safety at risk: ${val(a.patientSafety)}; other batches affected: ${val(a.otherBatches)}. ${val(a.notes)}`]];
+      return [['Final impact', `product quality affected: ${val(a.productQuality)}; patient safety at risk: ${val(a.patientSafety)}; other batches affected: ${val(a.otherBatches)}. ${val(a.notes)}`]];
     }
     const n = NAMED[k];
-    return [n ? [n[1], `${names[n[0]].get(Number(v)) ?? '?'} (#${val(v)})`] : [words(k), valueWords(v, k)]];
+    return [n ? [label(k), names[n[0]].get(Number(v)) ?? '—'] : [label(k), valueWords(v, k)]];
   });
 async function loadNames(sql: Sql): Promise<Names> {
   const rows = async (q: Promise<{ id: number; name: string }[]>) => new Map((await q).map((r) => [r.id, r.name]));
@@ -313,7 +325,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     }
     if (!fromQms.linked || capas.length) content.push(heading(fromQms.linked ? 'CAPAs recorded here before QMS was linked' : 'CAPAs'), table(['Number', 'Type', 'What', 'Owner', 'Status', 'Due'], capas.map((c) => [c.number, c.type, c.description, c.owner, STEP[String(c.step)], plantDay(c.dueDate as string)]), [60, 50, '*', 70, 70, 50]));
     content.push(heading('Attachments'), table(['File', 'Size', 'SHA-256', 'By', 'When', 'Withdrawn'], d.attachments.map((a) => [a.filename, a.size, a.sha256, a.uploadedBy, plant(a.uploadedAt as string), a.withdrawnReason ?? '']), ['*', 30, 120, 50, 60, 60]));
-    content.push(heading('History (audit trail)'), historyTable(d.history));
+    content.push(heading('History (audit trail)'), historyTable(d.history, names));
     return sendPdf(reply, String(d.number), await render(s!.site_name, `Deviation ${d.number}`, req.user!.fullName, content));
   });
 
@@ -344,7 +356,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
         content.push(t(`Signed: ${MEANING[String(g.meaning)] ?? g.meaning} · ${val(g.printedName)} · ${plant(g.signedAt as string)}`, { fontSize: 8, margin: [0, 2, 0, 0] }));
       }
     }
-    content.push(heading('History (audit trail)'), historyTable(c.history));
+    content.push(heading('History (audit trail)'), historyTable(c.history, names));
     return sendPdf(reply, String(c.number), await render(s!.site_name, `CAPA ${c.number}`, req.user!.fullName, content));
   });
 }
