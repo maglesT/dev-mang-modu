@@ -177,7 +177,7 @@ dl.details { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18p
 dl.details dt { color: var(--muted); font-weight: 500; }
 dl.details dd { margin: 0; }
 .fields { margin: 0; display: grid; gap: 3px; }
-.fields div { display: flex; gap: 10px; }
+.fields > div { display: flex; gap: 10px; }
 .fields dt { color: var(--muted); min-width: 9.5em; flex-shrink: 0; font-size: 0.92em; }
 .fields dd { margin: 0; }
 @media (max-width: 640px) { .fields div { display: block; } .fields dt { min-width: 0; } }
@@ -312,6 +312,7 @@ fieldset.impact { border: 1px solid var(--line); border-radius: var(--radius); p
 fieldset.impact .row { margin: 2px 0; align-items: center; }
 fieldset.impact .q { min-width: 17em; }
 .impact-view { display: grid; gap: 4px; }
+.impact-view .chip { margin-right: 10px; }
 
 /* S13 tools (D-35). */
 .fishbone .bone.ruled_in { border-left-color: var(--bad); }
