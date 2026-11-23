@@ -22,6 +22,7 @@ import type { People } from './people.js';
 import { capaRoutes } from './routes/capas.js';
 import { reportRoutes } from './routes/reports.js';
 import { integrityRoutes } from './routes/integrity.js';
+import { hasEncodedUnreserved, isApiUrl } from './path-gate.js';
 
 export const VERSION = '0.1.0';
 
@@ -58,7 +59,8 @@ export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger
   await app.register(fastifyCookie);
 
   app.addHook('onRequest', async (req, reply) => {
-    if (!req.url.startsWith('/api/')) return;
+    if (hasEncodedUnreserved(req.url)) return reply.code(400).send({ error: 'bad_path' });
+    if (!isApiUrl(req.url)) return;
     // Writes must be JSON: together with SameSite=Strict cookies this blocks cross-site form posts.
     if (req.method !== 'GET' && req.method !== 'HEAD' && !req.headers['content-type']?.startsWith('application/json')) {
       return reply.code(415).send({ error: 'json_required' });
@@ -95,7 +97,7 @@ export async function buildApp({ sql, signOn, proofKey = randomBytes(32), logger
   if (existsSync(path.join(root, 'index.html'))) {
     await app.register(fastifyStatic, { root, allowedPath: (p) => !p.endsWith('.map') });
     app.setNotFoundHandler((req, reply) =>
-      req.url.startsWith('/api/') ? reply.code(404).send({ error: 'not found' }) : (isPagePath(req.url) ? reply.sendFile('index.html') : reply.code(404).send({ error: 'not found' })),
+      isApiUrl(req.url) ? reply.code(404).send({ error: 'not found' }) : (isPagePath(req.url) ? reply.sendFile('index.html') : reply.code(404).send({ error: 'not found' })),
     );
   }
 
