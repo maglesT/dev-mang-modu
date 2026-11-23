@@ -21,7 +21,7 @@ const capaFields = z.object({
   description: text(5000),
   // S14 (D-36): CAPA strength (owner method): strong = mistake-proofing / interlock, medium = automation /
   // alarm / checklist, weak = training / SOP revision / awareness.
-  strength: z.enum(['strong', 'medium', 'weak'], { errorMap: () => ({ message: 'Choose the CAPA strength (strong, medium or weak).' }) }),
+  strength: z.enum(['strong', 'medium', 'weak'], { error: () => 'Choose the CAPA strength (strong, medium or weak).' }),
   ownerId: z.number().int().positive(),
   dueDate: isoDate,
   product: z.string().trim().max(200).default(''),

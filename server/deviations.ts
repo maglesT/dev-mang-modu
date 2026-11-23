@@ -34,13 +34,13 @@ export const ownRows = (products: { product: string; batch: string; from?: strin
   products.map((p) => ({ product: p.product, batch: p.batch, role: 'own' as const, typed: !p.from }));
 
 // S12 (D-34): the reporter's initial impact assessment: three quick answers and a short note.
-const answer = (what: string) => z.enum(['yes', 'no', 'unknown'], { errorMap: () => ({ message: `Initial impact: answer "${what}" (yes, no or not known).` }) });
+const answer = (what: string) => z.enum(['yes', 'no', 'unknown'], { error: () => `Initial impact: answer "${what}" (yes, no or not known).` });
 export const initialImpactData = z.object({
   productQuality: answer('product quality affected?'),
   patientSafety: answer('patient safety at risk?'),
   otherBatches: answer('other batches possibly affected?'),
   notes: z.string().trim().min(1, 'Initial impact: write a short assessment.').max(3000),
-}, { errorMap: () => ({ message: 'Give the initial impact assessment.' }) });
+}, { error: () => 'Give the initial impact assessment.' });
 
 // DV-01: the report. "None" must be said explicitly. D-57: the batch is picked from the linked TrueBatch products (the
 // product comes with it); one not in the list is typed by hand, and product and batch are then free text as before.
@@ -178,64 +178,64 @@ export const fishboneData = z.object({ man: cause, machine: cause, method: cause
 // S13 (D-33, D-35): investigation tools, required on every deviation (owner's house method).
 // Every text field names itself in its message, so the investigator sees exactly what is missing.
 const req = (label: string, max = 2000) =>
-  z.string({ required_error: `${label}: required.`, invalid_type_error: `${label}: required.` }).trim().min(1, `${label}: required.`).max(max, `${label}: too long.`);
+  z.string({ error: `${label}: required.` }).trim().min(1, `${label}: required.`).max(max, `${label}: too long.`);
 export const ROOT_CAUSE_CATEGORIES = ['system', 'process', 'human', 'equipment', 'material', 'environment'] as const;
 export const IS_IS_NOT = [['what', 'What'], ['where', 'Where'], ['when', 'When'], ['who', 'Who'], ['extent', 'Extent']] as const;
 const isRow = (q: string) => z.object({ is: req(`Is / Is Not, ${q}: is`, 1000), isNot: req(`Is / Is Not, ${q}: is not`, 1000), tells: req(`Is / Is Not, ${q}: what it tells`, 1000) },
-  { required_error: `Is / Is Not, ${q}: required.` });
+  { error: (i) => (i.input === undefined ? `Is / Is Not, ${q}: required.` : undefined) });
 export const isIsNotData = z.object({ what: isRow('what'), where: isRow('where'), when: isRow('when'), who: isRow('who'), extent: isRow('extent') },
-  { required_error: 'Is / Is Not: required.' });
+  { error: (i) => (i.input === undefined ? 'Is / Is Not: required.' : undefined) });
 const mCheck = (m: string) => z.object({
   checked: req(`6M, ${m}: what was checked`),
   evidence: req(`6M, ${m}: evidence`),
-  verdict: z.enum(['ruled_in', 'ruled_out'], { errorMap: () => ({ message: `6M, ${m}: ruled in or ruled out?` }) }),
-}, { required_error: `6M, ${m}: required.` });
+  verdict: z.enum(['ruled_in', 'ruled_out'], { error: () => `6M, ${m}: ruled in or ruled out?` }),
+}, { error: (i) => (i.input === undefined ? `6M, ${m}: required.` : undefined) });
 export const sixMData = z.object({
   man: mCheck('People'), machine: mCheck('Machine / equipment'), method: mCheck('Method'),
   material: mCheck('Material'), measurement: mCheck('Measurement'), environment: mCheck('Environment'),
-}, { required_error: '6M fishbone: required.' }).refine((m) => Object.values(m).some((x) => x.verdict === 'ruled_in'),
+}, { error: (i) => (i.input === undefined ? '6M fishbone: required.' : undefined) }).refine((m) => Object.values(m).some((x) => x.verdict === 'ruled_in'),
   { message: '6M: at least one M must be ruled in (the root cause sits there).' });
 export const fiveWhysData = z.object({
   problem: req('5 Whys: problem statement', 1000),
   whys: z.array(z.object({ answer: z.string().trim().max(1000), evidence: z.string().trim().max(1000) }))
     .min(3, '5 Whys: at least 3 whys, each with evidence.').max(7, '5 Whys: at most 7 whys.'),
-}, { required_error: '5 Whys: required.' }).superRefine((w, ctx) => w.whys.forEach((x, i) => {
+}, { error: (i) => (i.input === undefined ? '5 Whys: required.' : undefined) }).superRefine((w, ctx) => w.whys.forEach((x, i) => {
   // Each missing piece names its why, as on the screen.
   if (!x.answer) ctx.addIssue({ code: 'custom', path: ['whys', i, 'answer'], message: `5 Whys, why ${i + 1}: answer required.` });
   if (!x.evidence) ctx.addIssue({ code: 'custom', path: ['whys', i, 'evidence'], message: `5 Whys, why ${i + 1}: evidence required.` });
 }));
 
 // S14 (D-36): barrier analysis, FMEA (every deviation); KT checklist (lab / OOS types); fault tree (critical).
-const yn = (label: string) => z.enum(['yes', 'no'], { errorMap: () => ({ message: `${label}: answer yes or no.` }) });
-const verdictOf = (label: string) => z.enum(['ruled_in', 'ruled_out'], { errorMap: () => ({ message: `${label}: ruled in or ruled out?` }) });
+const yn = (label: string) => z.enum(['yes', 'no'], { error: () => `${label}: answer yes or no.` });
+const verdictOf = (label: string) => z.enum(['ruled_in', 'ruled_out'], { error: () => `${label}: ruled in or ruled out?` });
 export const barriersData = z.array(z.object({
   barrier: req('Barrier analysis: barrier', 500),
-  worked: z.enum(['yes', 'no', 'not_present'], { errorMap: () => ({ message: 'Barrier analysis: did the barrier work (yes, no, not present)?' }) }),
+  worked: z.enum(['yes', 'no', 'not_present'], { error: () => 'Barrier analysis: did the barrier work (yes, no, not present)?' }),
   whyFailed: z.string().trim().max(1000).default(''),
 }).refine((b) => b.worked === 'yes' || b.whyFailed.length > 0, { message: 'Barrier analysis: say why each failed or missing barrier did not stop it.' }),
-{ required_error: 'Barrier analysis: required.' }).min(1, 'Barrier analysis: list at least one barrier that should have prevented it.').max(20);
+{ error: (i) => (i.input === undefined ? 'Barrier analysis: required.' : undefined) }).min(1, 'Barrier analysis: list at least one barrier that should have prevented it.').max(20);
 // D-64: severity, occurrence and detection are picked from the QMS 1-5 word scales (server/fmea.ts); score S x O x D.
-const score = (label: string) => z.number({ required_error: `FMEA: ${label} (1 to 5).`, invalid_type_error: `FMEA: ${label} (1 to 5).` })
+const score = (label: string) => z.number({ error: `FMEA: ${label} (1 to 5).` })
   .int(`FMEA: ${label} (1 to 5).`).min(1, `FMEA: ${label} (1 to 5).`).max(FMEA_SCALE, `FMEA: ${label} (1 to 5).`);
 export const fmeaData = z.object({
-  scale: z.literal(FMEA_SCALE, { errorMap: () => ({ message: 'FMEA: pick severity, occurrence and detection again on the 1 to 5 scale.' }) }),
+  scale: z.literal(FMEA_SCALE, { error: () => 'FMEA: pick severity, occurrence and detection again on the 1 to 5 scale.' }),
   severity: score('severity'), occurrence: score('occurrence'), detection: score('detection'),
   patientRisk: req('FMEA: risk to the patient if the CAPA is not done', 2000),
-}, { required_error: 'FMEA: required.' });
+}, { error: (i) => (i.input === undefined ? 'FMEA: required.' : undefined) });
 export const KT_CHECKS = [['solutionPrep', 'Solution preparation'], ['dilution', 'Dilution'], ['instrument', 'Instrument'], ['column', 'Column'],
   ['calculation', 'Calculation'], ['glassware', 'Glassware'], ['labelling', 'Labelling']] as const;
 export const ktData = z.object({
   analystInterview: req('KT 1A: analyst interview'),
-  checklist: z.object(Object.fromEntries(KT_CHECKS.map(([k, l]) => [k, z.enum(['ok', 'error', 'na'], { errorMap: () => ({ message: `KT 1A checklist: ${l} (OK, error or not applicable).` }) })])) as Record<(typeof KT_CHECKS)[number][0], z.ZodEnum<['ok', 'error', 'na']>>,
-    { required_error: 'KT 1A: checklist required.' }),
+  checklist: z.object(Object.fromEntries(KT_CHECKS.map(([k, l]) => [k, z.enum(['ok', 'error', 'na'], { error: () => `KT 1A checklist: ${l} (OK, error or not applicable).` })])) as unknown as Record<(typeof KT_CHECKS)[number][0], z.ZodEnum<{ ok: 'ok'; error: 'error'; na: 'na' }>>,
+    { error: (i) => (i.input === undefined ? 'KT 1A: checklist required.' : undefined) }),
   sameSampleReproduces: yn('KT: can the OOS be reproduced with the same sample'),
   freshPrepReproduces: yn('KT: with a fresh sample preparation'),
   instrumentMalfunctionLogged: yn('KT: any instrument malfunction log'),
   secondAnalystSame: yn('KT: does a second analyst get the same result'),
   hypothesisTesting: req('KT 1A: hypothesis testing (re-injection, fresh preparation)'),
   assignableLabCause: yn('KT 1A: assignable lab cause found with proof'),
-  phase1b: z.object({ manufacturingReview: z.string().trim().max(3000).default(''), retestPlan: z.string().trim().max(3000).default('') }).default({}),
-}, { required_error: 'KT: required for a lab / OOS deviation.' }).superRefine((k, ctx) => {
+  phase1b: z.object({ manufacturingReview: z.string().trim().max(3000).default(''), retestPlan: z.string().trim().max(3000).default('') }).prefault({}),
+}, { error: (i) => (i.input === undefined ? 'KT: required for a lab / OOS deviation.' : undefined) }).superRefine((k, ctx) => {
   if (k.assignableLabCause === 'no' && (!k.phase1b.manufacturingReview || !k.phase1b.retestPlan)) {
     ctx.addIssue({ code: 'custom', path: ['phase1b'], message: 'KT 1B: no lab cause was found, so write the manufacturing review and the retest plan.' });
   }
@@ -247,7 +247,7 @@ export const faultTreeData = z.object({
     id: z.string().min(1).max(20), parent: z.string().max(20).nullable(), gate: z.enum(['OR', 'AND']).default('OR'),
     text: req('Fault tree: branch', 500), evidence: req('Fault tree: evidence for each branch', 1000), verdict: verdictOf('Fault tree: each branch'),
   })).min(2, 'Fault tree: at least 2 branches, each tested with evidence.').max(40),
-}, { required_error: 'Fault tree: required for a critical deviation.' }).superRefine((t, ctx) => {
+}, { error: (i) => (i.input === undefined ? 'Fault tree: required for a critical deviation.' : undefined) }).superRefine((t, ctx) => {
   const ids = new Set(t.branches.map((b) => b.id));
   const parent = new Map(t.branches.map((b) => [b.id, b.parent]));
   // Every branch must lead up to the top event (no missing parents, no loops).
@@ -282,11 +282,11 @@ export async function investigationContext(tx: Tx | Sql, deviationId: number) {
 
 // DV-04 to DV-07: the investigation, signed by the investigator.
 export const investigationData = z
-  .object({
+  .strictObject({
     isIsNot: isIsNotData,
     sixM: sixMData,
     fiveWhys: fiveWhysData,
-    rootCauseCategory: z.enum(ROOT_CAUSE_CATEGORIES, { errorMap: () => ({ message: 'Choose the root-cause category.' }) }),
+    rootCauseCategory: z.enum(ROOT_CAUSE_CATEGORIES, { error: () => 'Choose the root-cause category.' }),
     barriers: barriersData,
     fmea: fmeaData,
     // Checked against the deviation by contextProblems (lab / OOS type, critical).
@@ -310,17 +310,17 @@ export const investigationData = z
   });
 // A draft is the form as it stands: any shape, kept small. It is never signed and never counts for the step.
 // The known parts must have their shape (objects, lists, text), so a draft can always be shown and printed.
-const loose = z.record(z.unknown());
+const loose = z.record(z.string(), z.unknown());
 export const investigationDraft = z.object({
-  isIsNot: z.record(z.object({ is: z.string(), isNot: z.string(), tells: z.string() }).partial()).optional(),
-  sixM: z.record(z.object({ checked: z.string(), evidence: z.string(), verdict: z.string() }).partial()).optional(),
+  isIsNot: z.record(z.string(), z.object({ is: z.string(), isNot: z.string(), tells: z.string() }).partial()).optional(),
+  sixM: z.record(z.string(), z.object({ checked: z.string(), evidence: z.string(), verdict: z.string() }).partial()).optional(),
   fiveWhys: z.object({ problem: z.string(), whys: z.array(z.object({ answer: z.string(), evidence: z.string() }).partial()) }).partial().optional(),
   otherBatches: z.array(z.object({ product: z.string(), batch: z.string(), outcome: z.string() }).partial()).optional(),
   rootCause: z.string().optional(), rootCauseCategory: z.string().optional(), conclusion: z.string().optional(),
   noOtherReason: z.string().optional(), humanErrorJustification: z.string().optional(),
   mostLikely: z.boolean().optional(), humanError: z.boolean().optional(),
   fishbone: loose.optional(), barriers: z.array(loose).optional(), fmea: loose.optional(), kt: loose.optional(), faultTree: loose.optional(),
-}).strict('A draft holds only the investigation form.').refine((d) => JSON.stringify(d).length <= 200_000, 'The draft is too large.');
+}).strict().refine((d) => JSON.stringify(d).length <= 200_000, 'The draft is too large.');
 export type InvestigationData = z.infer<typeof investigationData>;
 
 export const latestId = async (tx: Tx | Sql, id: number, kind: string) =>

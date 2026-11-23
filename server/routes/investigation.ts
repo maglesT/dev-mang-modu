@@ -28,13 +28,13 @@ const reasonBody = z.object({ reason: z.string().trim().min(1).max(2000) });
 // DV-10: QA's closure. "No CAPA" is allowed only for a minor deviation, with a reason pointing to the immediate action (DV-08).
 // D-39: QA's final impact assessment at closure. The same three questions as the reporter's initial one (D-34),
 // now answered yes or no ("not known" is not a final answer), with QA's written assessment.
-const finalAnswer = (q: string) => z.enum(['yes', 'no'], { errorMap: () => ({ message: `Final impact: ${q} Answer yes or no.` }) });
+const finalAnswer = (q: string) => z.enum(['yes', 'no'], { error: () => `Final impact: ${q} Answer yes or no.` });
 export const finalImpactData = z.object({
   productQuality: finalAnswer('product quality affected?'),
   patientSafety: finalAnswer('patient safety at risk?'),
   otherBatches: finalAnswer('other batches affected?'),
   notes: z.string().trim().min(1, 'Final impact: write the final assessment.').max(3000),
-}, { errorMap: (issue, ctx) => (issue.code === 'invalid_type' && ctx.data === undefined ? { message: 'Give the final impact assessment.' } : { message: ctx.defaultError }) });
+}, { error: (issue) => (issue.code === 'invalid_type' && issue.input === undefined ? 'Give the final impact assessment.' : undefined) });
 const closureData = z.object({
   summary: z.string().trim().min(1, 'Write the closure summary.').max(5000),
   disposition: z.string().trim().max(2000).default(''),
