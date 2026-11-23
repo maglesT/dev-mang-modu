@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PROOF_SECONDS } from '../server/signatures.js';
-import { call, directory, proofFor, sig, freshApp, login, seedUser, type TestApp } from './helpers.js';
+import { sealPending } from '../server/routes/auth.js';
+import { call, directory, proofFor, sig, freshApp, login, seedUser, TEST_PROOF_KEY, type TestApp } from './helpers.js';
 
 let t: TestApp;
 const c: Record<string, string> = {};
@@ -377,10 +378,23 @@ describe('e-signatures through core re-authentication (DV-16, DV-17, PL-05)', ()
   it('PL-05 a signature is refused when core did not ask for the password again after it started (auth_time)', async () => {
     const start = await call(t.app, c.qa2!, 'GET', '/sign?meanings=approved');
     const [state, verifier] = start.cookies.find((x) => x.name === 'signon')!.value.split('.');
-    const late = `${state}.${verifier}.sign.${Date.now() + 60_000}.approved`;
+    const late = sealPending(TEST_PROOF_KEY, `${state}.${verifier}.sign.${Date.now() + 60_000}.approved`);
     const page = await t.app.inject({ method: 'GET', url: String(start.headers.location), headers: { cookie: `signon=${late}` } });
     expect(page.body).toContain('not asked for again');
     expect(page.body).not.toContain('signProof');
+  });
+
+  it('MED-01 PL-05: a forged sign-on cookie with startedAt=0 is refused', async () => {
+    const start = await call(t.app, c.qa2!, 'GET', '/sign?meanings=approved');
+    const [state, verifier] = start.cookies.find((x) => x.name === 'signon')!.value.split('.');
+    const forged = `${state}.${verifier}.sign.0.approved`;
+    const page = await t.app.inject({ method: 'GET', url: String(start.headers.location), headers: { cookie: `signon=${forged}` } });
+    expect(page.statusCode).toBe(400);
+    expect(page.body).not.toContain('signProof');
+    const empty = sealPending(TEST_PROOF_KEY, `${state}.${verifier}.sign..approved`);
+    const again = await t.app.inject({ method: 'GET', url: String(start.headers.location), headers: { cookie: `signon=${empty}` } });
+    expect(again.body).toContain('not asked for again');
+    expect(again.body).not.toContain('signProof');
   });
 
   it('PL-01 (D-43) the old Admin block is gone: a person holding deviations.deviation.approve signs, whatever else they hold', async () => {
