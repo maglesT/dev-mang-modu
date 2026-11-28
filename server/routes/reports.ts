@@ -312,7 +312,7 @@ export function reportRoutes(app: FastifyInstance, sql: Sql, qms?: QmsSource) {
     if (fetches.length) {
       content.push(heading('Data collected (read from other systems)'));
       for (const f of fetches.filter((x) => !(x.source === 'batchwright' && x.status === 'not_configured'))) {
-        content.push(t(`${SOURCE_NAME[f.source] ?? 'Logbook'} · ${FETCH_STATUS[f.status] ?? f.status} · ${plant(f.fetched_at)} · ${f.by} · ${rows(f.row_count)} · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
+        content.push(t(`${SOURCE_NAME[f.source] ?? 'LEAD (logbooks)'} · ${FETCH_STATUS[f.status] ?? f.status} · ${plant(f.fetched_at)} · ${f.by} · ${rows(f.row_count)} · SHA-256 ${f.sha256}${f.error ? ` · ${f.error}` : ''}`, { bold: true, fontSize: 8, margin: [0, 4, 0, 2] }));
         content.push(t(`Matched: batches ${val((f.params.batches as string[] | undefined)?.join(', '))}; equipment ${val((f.params.equipment as string[] | undefined)?.join(', '))}`, { fontSize: 8 }));
         for (const x of f.data.findings ?? []) content.push(t(`• ${x}`, { fontSize: 8 }));
       }

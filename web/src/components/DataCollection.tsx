@@ -13,7 +13,7 @@ interface Fetch {
   rowCount: number; sha256: string; error: string | null; fetchedAt: string; fetchedBy: string;
 }
 // D-57, D-59: every TrueBatch product (the one list, shared with the server), each its own copy.
-const NAME: Record<string, string> = { ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])), logbook: 'Logbook' };
+const NAME: Record<string, string> = { ...Object.fromEntries(BATCH_PRODUCTS.map((p) => [p, `Batch record (${PRODUCT_NAME[p]})`])), logbook: 'LEAD (logbooks)' };
 const SOURCES = [...BATCH_PRODUCTS, 'logbook'];
 const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
 const time = (v: unknown) => (v ? plantTime(String(v)) : '—');
@@ -65,7 +65,7 @@ function SourceView({ f }: { f: Fetch }) {
           <Table title="Alarms" rows={list(d.alarms)} cols={[['Alarm', (r) => s(r.alarm_code)], ['On', (r) => s(r.subject_code)], ['GMP-critical', (r) => (r.gmp_critical ? 'yes' : '')], ['Raised', (r) => time(r.raised_at)], ['Acknowledged', (r) => time(r.acked_at)]]} />
           <Table title="SOPs and documents the master record cites" rows={list(d.references)} cols={[['Kind', (r) => s(r.kind)], ['Code', (r) => s(r.code)], ['Version', (r) => s(r.version)], ['Title', (r) => s(r.title)]]} />
         </> : <>
-          <Table title="Logbook entries around the event and for the batch" rows={list(d.entries)} cols={[['Equipment', (r) => s(r.equipment_code)], ['Type', (r) => s(r.type).replace(/_/g, ' ')], ['Start', (r) => time(r.activity_start)], ['End', (r) => time(r.activity_end)], ['Batch', (r) => s(r.batch)], ['Signed', (r) => list(r.signed).join(', ')], ['By', (r) => s(r.entered_by)]]} />
+          <Table title="LEAD logbook entries around the event and for the batch" rows={list(d.entries)} cols={[['Equipment', (r) => s(r.equipment_code)], ['Type', (r) => s(r.type).replace(/_/g, ' ')], ['Start', (r) => time(r.activity_start)], ['End', (r) => time(r.activity_end)], ['Batch', (r) => s(r.batch)], ['Signed', (r) => list(r.signed).join(', ')], ['By', (r) => s(r.entered_by)]]} />
           <Table title="Calibrations" rows={list(d.calibrations)} cols={[['Instrument', (r) => s(r.equipment_code)], ['Performed', (r) => time(r.performed_at)], ['Result', (r) => s(r.result)], ['Next due', (r) => (r.next_due ? plantDate(String(r.next_due).slice(0, 10)) : '—')], ['Certificate', (r) => s(r.certificate_ref)]]} />
           <Table title="Last preventive maintenance" rows={list(d.lastPreventive)} cols={[['Equipment', (r) => s(r.equipment_code)], ['Done', (r) => time(r.at)]]} />
           <Table title="SOPs (equipment and logbook settings)" rows={[...list(d.equipment).flatMap((e) => list(e.sop_refs).map((x) => ({ where: e.code, sop: x }))), ...list(d.sops).map((x) => ({ where: `${s(x.type)} logbook`, sop: x.sop_ref }))]}
@@ -99,14 +99,14 @@ export function DataCollection({ deviationId, canFetch }: { deviationId: number;
       <div className="section-head"><h2>Data collection</h2>
         {canFetch && <button onClick={fetchNow} disabled={busy}>{busy ? 'Fetching…' : fetches?.length ? 'Fetch again' : 'Fetch related data'}</button>}
       </div>
-      <p className="muted small">Reads the batch records (each linked TrueBatch product) and the Logbook for this deviation's batch, its equipment and the equipment the batch used, from {7} days before to 1 day after the event. Each fetch is kept as a read-only copy; nothing is changed in the other systems.</p>
+      <p className="muted small">Reads the batch records (each linked TrueBatch product) and LEAD (the logbooks) for this deviation's batch, its equipment and the equipment the batch used, from {7} days before to 1 day after the event. Each fetch is kept as a read-only copy; nothing is changed in the other systems.</p>
       {error && <p className="error">{error}</p>}
       {first && <p className="small">Matched: batch {first.params.batches.join(', ') || 'none'} · equipment {first.params.equipment.join(', ') || 'none'} · {time(first.params.from)} to {time(first.params.to)}</p>}
       {SOURCES.map((src) => { const f = latest(src); return f && !notFound(f) ? <SourceView key={src} f={f} /> : null; })}
       {missing.length > 0 && (
         <p className="muted small" aria-label="Batch records without this batch">
           {missing.length < SOURCES.filter((src) => isBatchRecord(src) && latest(src)).length
-            ? `Also read, the batch is not there: ${missing.map((f) => PRODUCT_NAME[f.source as keyof typeof PRODUCT_NAME]).join(', ')}..`
+            ? `Also read, the batch is not there: ${missing.map((f) => PRODUCT_NAME[f.source as keyof typeof PRODUCT_NAME]).join(', ')}.`
             : `No batch with this number was found in ${missing.map((f) => PRODUCT_NAME[f.source as keyof typeof PRODUCT_NAME]).join(', ')}.`}
           {' '}Fetch again to look in every linked product.
         </p>
